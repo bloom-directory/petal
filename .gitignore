@@ -2,3 +2,4 @@
 **/target/
 *.petal.tar
 fixtures/components/
+/dist/

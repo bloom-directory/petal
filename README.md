@@ -34,6 +34,11 @@ scripts/generate-bindings.sh
 The generated SDK bindings are derived output. `wit/route` is the only
 authoritative WIT tree.
 
+The conformance build emits the WIT digest
+`2a12e23f13d4f93700a11c6af3e6996a540a4cc9c7ff0e2f9522583404095f7e`.
+Consumer CI must reject a different digest until it intentionally upgrades the
+contract release.
+
 ## Distribution
 
 Rust packages are published to crates.io at coordinated exact versions. GitHub
@@ -41,3 +46,7 @@ Releases carry the WIT archive, checksums, source archive, and optional CLI
 binaries. Git tags identify source provenance but are not the terminal Cargo
 dependency channel.
 
+`scripts/release-check.sh` runs the release gates and assembles the canonical
+WIT archive, contract provenance, and SHA-256 checksums under `dist/`. A pushed
+version tag publishes those artifacts through GitHub Releases. crates.io
+publication is performed in dependency order: contract, SDK, builder, CLI.
