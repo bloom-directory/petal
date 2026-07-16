@@ -286,7 +286,6 @@ fn generate_lockfile(workspace: &Path) -> Result<(), String> {
     command(
         Command::new("cargo")
             .arg("generate-lockfile")
-            .arg("--offline")
             .arg("--manifest-path")
             .arg(workspace.join("Cargo.toml")),
     )

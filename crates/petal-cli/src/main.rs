@@ -93,7 +93,8 @@ fn scaffold(name: &str, destination: &Path) -> Result<(), String> {
         }
         let body = template
             .replace("{{petal-name}}", name)
-            .replace("{{crate-name}}", &crate_name);
+            .replace("{{crate-name}}", &crate_name)
+            .replace("petal-template", &crate_name);
         fs::write(&path, body).map_err(|error| format!("write {}: {error}", path.display()))?;
     }
     println!("created {}", destination.display());
