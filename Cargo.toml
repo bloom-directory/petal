@@ -6,7 +6,16 @@ rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/bloom-directory/petal"
 description = "Canonical Bloom Petal component contract and WIT artifacts"
-include = ["src/**", "wit/**", "templates/**", "README.md", "LICENSE"]
+include = [
+  "src/**",
+  "wit/**",
+  "templates/**",
+  "templates/rust-route-petal/route/Cargo.toml",
+  "templates/rust-route-petal/route/src/**",
+  "templates/rust-route-petal/route/files/**",
+  "README.md",
+  "LICENSE",
+]
 
 [workspace]
 members = [
