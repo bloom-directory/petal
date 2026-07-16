@@ -7,10 +7,10 @@ cd "$root"
 scripts/check.sh
 cargo package -p bloom-petal-contract
 cargo package -p bloom-petal-sdk
-if cargo info bloom-petal-contract@0.1.0 >/dev/null 2>&1; then
+if cargo search bloom-petal-contract --limit 1 | grep -q '^bloom-petal-contract = "0.1.0"'; then
   cargo package -p bloom-petal-builder
 fi
-if cargo info bloom-petal-builder@0.1.0 >/dev/null 2>&1; then
+if cargo search bloom-petal-builder --limit 1 | grep -q '^bloom-petal-builder = "0.1.0"'; then
   cargo package -p bloom-petal-cli
 fi
 
