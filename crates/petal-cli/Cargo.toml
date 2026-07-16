@@ -1,0 +1,19 @@
+[package]
+name = "bloom-petal-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI for building and inspecting Bloom Petals"
+
+[[bin]]
+name = "petal"
+path = "src/main.rs"
+
+[dependencies]
+bloom-petal-builder = { path = "../petal-builder", version = "=0.1.0" }
+bloom-petal-contract = { path = "../..", version = "=0.1.0" }
+clap.workspace = true
+serde_json.workspace = true
+

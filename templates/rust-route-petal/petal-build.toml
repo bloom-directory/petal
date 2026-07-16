@@ -1,0 +1,17 @@
+schema = "bloom.petal.build.v1"
+name = "{{petal-name}}"
+routes = "route/files"
+output = "petal/{{petal-name}}"
+
+[route_crate]
+package = "{{crate-name}}-route"
+path = "route"
+alias = "example_route"
+
+[sdk]
+package = "bloom-petal-sdk"
+version = "=0.1.0"
+
+[dependencies]
+serde_json = "1"
+
