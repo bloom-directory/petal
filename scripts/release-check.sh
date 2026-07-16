@@ -7,8 +7,12 @@ cd "$root"
 scripts/check.sh
 cargo package -p bloom-petal-contract
 cargo package -p bloom-petal-sdk
-cargo package -p bloom-petal-builder --no-verify
-cargo package -p bloom-petal-cli --no-verify
+if cargo info bloom-petal-contract@0.1.0 >/dev/null 2>&1; then
+  cargo package -p bloom-petal-builder
+fi
+if cargo info bloom-petal-builder@0.1.0 >/dev/null 2>&1; then
+  cargo package -p bloom-petal-cli
+fi
 
 rm -rf dist
 mkdir -p dist
