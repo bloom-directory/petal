@@ -10,7 +10,7 @@ include = [
   "src/**",
   "wit/**",
   "templates/**",
-  "templates/rust-route-petal/route/Cargo.toml",
+  "templates/rust-route-petal/route/Cargo.toml.template",
   "templates/rust-route-petal/route/src/**",
   "templates/rust-route-petal/route/files/**",
   "README.md",

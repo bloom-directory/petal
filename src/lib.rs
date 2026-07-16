@@ -90,7 +90,7 @@ pub const RUST_TEMPLATE_FILES: &[(&str, &str)] = &[
     ),
     (
         "route/Cargo.toml",
-        include_str!("../templates/rust-route-petal/route/Cargo.toml"),
+        include_str!("../templates/rust-route-petal/route/Cargo.toml.template"),
     ),
     (
         "route/src/lib.rs",
