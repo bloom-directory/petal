@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
+use wasmparser::{ComponentExternalKind, Parser, Payload};
 
 const ALL_CAPS: &[&str] = &[
     "bloom:http",
@@ -71,6 +72,10 @@ pub struct BuildReport {
     pub wit_digest: String,
     pub routes: usize,
     pub output: PathBuf,
+    pub artifacts: BTreeMap<String, String>,
+    pub cargo_version: String,
+    pub rustc_version: String,
+    pub wasm_tools_version: String,
 }
 
 fn default_sdk_package() -> String {
@@ -127,7 +132,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
                 "checked capability metadata for {} route components",
                 routes.len()
             );
-            return Ok(report(config, routes.len(), out_dir));
+            return report(config, &routes, &out_dir);
         }
         return Err(failures.join("\n"));
     }
@@ -188,7 +193,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
         routes.len(),
         out_dir.display()
     );
-    let report = report(config, routes.len(), out_dir);
+    let report = report(config, &routes, &out_dir)?;
     let report_path = build_root.join("build-report.json");
     write_if_changed(
         &report_path,
@@ -197,15 +202,26 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     Ok(report)
 }
 
-fn report(config: &BuildConfig, routes: usize, output: PathBuf) -> BuildReport {
-    BuildReport {
+fn report(config: &BuildConfig, routes: &[Route], output: &Path) -> Result<BuildReport, String> {
+    let mut artifacts = BTreeMap::new();
+    for route in routes {
+        let relative = format!("{}.wasm", route.path);
+        let bytes = fs::read(output.join(&relative))
+            .map_err(display_err("read", &output.join(&relative)))?;
+        artifacts.insert(relative, blake3::hash(&bytes).to_hex().to_string());
+    }
+    Ok(BuildReport {
         schema: "bloom.petal.build-report.v1",
         petal: config.name.clone(),
         contract: bloom_petal_contract::ROUTE_PACKAGE,
         wit_digest: bloom_petal_contract::wit_digest(),
-        routes,
-        output,
-    }
+        routes: routes.len(),
+        output: config.output.clone(),
+        artifacts,
+        cargo_version: tool_version("cargo")?,
+        rustc_version: tool_version("rustc")?,
+        wasm_tools_version: tool_version("wasm-tools")?,
+    })
 }
 
 fn generate_workspace(
@@ -262,19 +278,10 @@ fn generate_workspace(
             .map(|(n, i)| format!("        ({n:?}, {i}),"))
             .collect::<Vec<_>>()
             .join("\n");
-        let relative_source = route
-            .source
-            .strip_prefix(root)
-            .map_err(|e| e.to_string())?
-            .to_string_lossy()
-            .replace('\\', "/");
+        let source_path = path_from_member(&dir.join("src"), &route.source)?;
         let source = format!(
-            "#![allow(clippy::too_many_arguments)]\n#![allow(dead_code, clippy::upper_case_acronyms)]\n\npub struct __PetalRouteIdentity;\nimpl petal::RouteIdentity for __PetalRouteIdentity {{\n    const PATH: &'static str = {:?};\n    const CANONICAL_PATH: &'static str = {:?};\n    const PARAMS: &'static [(&'static str, usize)] = &[\n{}\n    ];\n}}\n\npub use {}::*;\n\nmod selected_route {{\n    include!({:?});\n}}\n\nuse selected_route::Route;\npetal::bindings::export!(Route);\n",
-            route.path,
-            route.canonical,
-            params,
-            config.route_crate.alias,
-            root.join(relative_source),
+            "#![allow(clippy::too_many_arguments)]\n#![allow(dead_code, unused_imports, clippy::upper_case_acronyms)]\n\npub struct __PetalRouteIdentity;\nimpl petal::RouteIdentity for __PetalRouteIdentity {{\n    const PATH: &'static str = {:?};\n    const CANONICAL_PATH: &'static str = {:?};\n    const PARAMS: &'static [(&'static str, usize)] = &[\n{}\n    ];\n}}\n\npub use {}::*;\n\nmod selected_route {{\n    include!({:?});\n}}\n\nuse selected_route::Route;\npetal::bindings::export!(Route);\n",
+            route.path, route.canonical, params, config.route_crate.alias, source_path,
         );
         write_if_changed(&dir.join("Cargo.toml"), &manifest)?;
         write_if_changed(&dir.join("src/lib.rs"), &source)?;
@@ -479,19 +486,8 @@ fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
 
 fn check_route_caps(route: &Route, artifact: &Path) -> Result<(), String> {
     let required = required_caps(&route.source)?;
-    let output = Command::new("wasm-tools")
-        .args(["component", "wit"])
-        .arg(artifact)
-        .output()
-        .map_err(|e| format!("inspect {}: {e}", artifact.display()))?;
-    if !output.status.success() {
-        return Err(format!(
-            "inspect {}: {}",
-            artifact.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let imported = imported_caps(&String::from_utf8_lossy(&output.stdout));
+    let bytes = fs::read(artifact).map_err(display_err("read", artifact))?;
+    let imported = imported_caps(&bytes)?;
     let missing = required.difference(&imported).copied().collect::<Vec<_>>();
     if missing.is_empty() {
         Ok(())
@@ -536,35 +532,44 @@ fn required_caps(source: &Path) -> Result<BTreeSet<&'static str>, String> {
     Ok(caps.iter().copied().collect())
 }
 
-fn imported_caps(wit: &str) -> BTreeSet<&'static str> {
+fn imported_caps(wasm: &[u8]) -> Result<BTreeSet<&'static str>, String> {
     let mut caps = BTreeSet::new();
-    for line in wit
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with("import "))
-    {
-        let import = line
-            .strip_prefix("import ")
-            .and_then(|line| line.split_whitespace().next())
-            .unwrap_or_default()
-            .trim_end_matches(';');
-        if let Some(capability) = bloom_petal_contract::capability_for_import(import) {
-            caps.insert(capability);
-        }
-        if line.contains("bloom:vfs/readwrite") {
-            let block = wit.split("interface readwrite").nth(1).unwrap_or_default();
-            if ["lookup:", "%list:", "read:"]
-                .iter()
-                .any(|n| block.contains(n))
-            {
-                caps.insert("bloom:vfs.read");
+    let mut depth = 0usize;
+    for payload in Parser::new(0).parse_all(wasm) {
+        let payload = payload.map_err(|error| format!("parse component imports: {error}"))?;
+        let current_depth = depth;
+        match payload {
+            Payload::ComponentImportSection(reader) if current_depth == 0 => {
+                for import in reader {
+                    let import =
+                        import.map_err(|error| format!("parse component import: {error}"))?;
+                    let name = import.name.0;
+                    if import.ty.kind() == ComponentExternalKind::Type
+                        && matches!(
+                            name,
+                            "ctx" | "entry-kind" | "entry" | "route-meta" | "route-error"
+                        )
+                    {
+                        continue;
+                    }
+                    if import.ty.kind() != ComponentExternalKind::Instance {
+                        return Err(format!(
+                            "component imports unsupported non-interface host item {name:?}"
+                        ));
+                    }
+                    let import_caps = bloom_petal_contract::capabilities_for_import(name)
+                        .ok_or_else(|| {
+                            format!("component imports unsupported host item {name:?}")
+                        })?;
+                    caps.extend(import_caps.iter().copied());
+                }
             }
-            if block.contains("write:") {
-                caps.insert("bloom:vfs.write");
-            }
+            Payload::ModuleSection { .. } | Payload::ComponentSection { .. } => depth += 1,
+            Payload::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
         }
     }
-    caps
+    Ok(caps)
 }
 
 fn discover_wasm_paths(root: &Path) -> Result<BTreeSet<String>, String> {
@@ -596,6 +601,16 @@ fn require_tool(tool: &str) -> Result<(), String> {
             .stdout(Stdio::null())
             .stderr(Stdio::null()),
     )
+}
+fn tool_version(tool: &str) -> Result<String, String> {
+    let output = Command::new(tool)
+        .arg("--version")
+        .output()
+        .map_err(|error| format!("run {tool} --version: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("{tool} --version failed with {}", output.status));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 fn command(command: &mut Command) -> Result<(), String> {
     let status = command.status().map_err(|e| format!("run command: {e}"))?;
@@ -684,8 +699,28 @@ fn dependency_toml(sdk: &SdkDependency, root: &Path) -> Result<String, String> {
     Ok(toml::Value::Table(table).to_string())
 }
 
-fn path_from_member(_member: &Path, target: &Path) -> Result<String, String> {
-    Ok(target.to_string_lossy().into_owned())
+fn path_from_member(member: &Path, target: &Path) -> Result<String, String> {
+    let from = member.components().collect::<Vec<_>>();
+    let to = target.components().collect::<Vec<_>>();
+    let common = from
+        .iter()
+        .zip(&to)
+        .take_while(|(left, right)| left == right)
+        .count();
+    if common == 0 {
+        return Ok(target.to_string_lossy().into_owned());
+    }
+    let mut relative = PathBuf::new();
+    for _ in common..from.len() {
+        relative.push("..");
+    }
+    for component in &to[common..] {
+        relative.push(component.as_os_str());
+    }
+    relative
+        .to_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("path is not UTF-8: {}", target.display()))
 }
 
 fn replace_dir(staging: &Path, destination: &Path) -> Result<(), String> {

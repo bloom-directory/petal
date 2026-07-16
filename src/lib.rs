@@ -11,6 +11,33 @@ pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.1.0";
 pub const PACKAGE_SCHEMA: &str = "bloom.petal.package.v1";
 pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
 pub const BUILD_MANIFEST_SCHEMA: &str = "bloom.petal.build-manifest.v1";
+pub const PACKAGE_DIGEST_PREFIX: &[u8] = b"bloom.petal.package.v1\0";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostInterface {
+    RouteTypes,
+    HttpFetch,
+    StoreKv,
+    SignSigning,
+    TxOutbox,
+    ChainRead,
+    VfsReadwrite,
+    EnvRuntime,
+}
+
+impl HostInterface {
+    pub const fn capabilities(self) -> &'static [&'static str] {
+        match self {
+            Self::RouteTypes | Self::EnvRuntime => &[],
+            Self::HttpFetch => &["bloom:http"],
+            Self::StoreKv => &["bloom:store"],
+            Self::SignSigning => &["bloom:sign"],
+            Self::TxOutbox => &["bloom:tx.outbox"],
+            Self::ChainRead => &["bloom:chain"],
+            Self::VfsReadwrite => &["bloom:vfs.read", "bloom:vfs.write"],
+        }
+    }
+}
 
 pub const WIT_FILES: &[(&str, &[u8])] = &[
     ("route.wit", include_bytes!("../wit/route/route.wit")),
@@ -98,18 +125,26 @@ pub fn write_wit_tree(destination: impl AsRef<Path>) -> io::Result<()> {
     Ok(())
 }
 
-pub fn capability_for_import(import: &str) -> Option<&'static str> {
-    let import = import.split_once('@').map_or(import, |(name, _)| name);
+pub fn host_interface(import: &str) -> Option<HostInterface> {
     match import {
-        "bloom:http/fetch" => Some("bloom:http"),
-        "bloom:store/kv" => Some("bloom:store"),
-        "bloom:sign/signing" => Some("bloom:sign"),
-        "bloom:tx/outbox" => Some("bloom:tx.outbox"),
-        "bloom:chain/read" => Some("bloom:chain"),
-        "bloom:vfs/readwrite" => Some("bloom:vfs.read"),
-        "bloom:env/runtime" | "bloom:route/types" => None,
+        "bloom:route/types@0.1.0" => Some(HostInterface::RouteTypes),
+        "bloom:http/fetch@0.1.0" => Some(HostInterface::HttpFetch),
+        "bloom:store/kv@0.1.0" => Some(HostInterface::StoreKv),
+        "bloom:sign/signing@0.1.0" => Some(HostInterface::SignSigning),
+        "bloom:tx/outbox@0.1.0" => Some(HostInterface::TxOutbox),
+        "bloom:chain/read@0.1.0" => Some(HostInterface::ChainRead),
+        "bloom:vfs/readwrite@0.1.0" => Some(HostInterface::VfsReadwrite),
+        "bloom:env/runtime@0.1.0" => Some(HostInterface::EnvRuntime),
         _ => None,
     }
+}
+
+pub fn capabilities_for_import(import: &str) -> Option<&'static [&'static str]> {
+    host_interface(import).map(HostInterface::capabilities)
+}
+
+pub fn capability_for_import(import: &str) -> Option<&'static str> {
+    capabilities_for_import(import).and_then(|caps| caps.first().copied())
 }
 
 #[cfg(test)]
@@ -139,6 +174,11 @@ mod tests {
             Some("bloom:sign")
         );
         assert_eq!(capability_for_import("bloom:env/runtime@0.1.0"), None);
+        assert_eq!(
+            capabilities_for_import("bloom:vfs/readwrite@0.1.0"),
+            Some(&["bloom:vfs.read", "bloom:vfs.write"][..])
+        );
+        assert_eq!(host_interface("bloom:sign/signing@9.9.9"), None);
         assert_eq!(capability_for_import("unknown:host/api@1.0.0"), None);
     }
 }
