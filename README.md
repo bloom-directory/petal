@@ -14,8 +14,8 @@ interface.
 - `bloom-petal-sdk` is imported as the Rust crate `petal` by route components.
 - `bloom-petal-builder` discovers route files and builds deterministic WebAssembly
   components.
-- `bloom-petal-cli` provides `petal build`, `petal check`, `petal inspect`, and
-  `petal new`.
+- `bloom-petal-cli` provides `petal build`, `petal check`, `petal package`,
+  `petal inspect`, and `petal new`.
 
 ## Development
 
@@ -38,6 +38,28 @@ The conformance build emits the WIT digest
 `2a12e23f13d4f93700a11c6af3e6996a540a4cc9c7ff0e2f9522583404095f7e`.
 Consumer CI must reject a different digest until it intentionally upgrades the
 contract release.
+
+## Packaging a Petal
+
+After building route components, create the platform-neutral archive consumed
+by Bloom:
+
+```sh
+petal package \
+  --root . \
+  --out dist/example-v0.1.0.petal.tar.gz
+```
+
+`petal package` checks every built component before writing the archive. The
+archive uses sorted strict ustar entries, normalized ownership, permissions and
+timestamps, and a gzip header with a zero timestamp. Repeating the command over
+the same clean package tree produces identical bytes. It refuses to overwrite
+an existing output. Generated `.git`, `.jj`, `target`, and `artifacts` trees are
+excluded; route components under the configured Petal output remain canonical.
+
+Petal repositories should publish with the reusable workflow documented in
+[`docs/releasing-petals.md`](docs/releasing-petals.md). The Petal repository
+owns its release assets; Bloom only downloads and verifies them during setup.
 
 ## Distribution
 

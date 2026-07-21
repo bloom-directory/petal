@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use wasmparser::{ComponentExternalKind, Parser, Payload};
 
 const ALL_CAPS: &[&str] = &[
@@ -78,6 +79,32 @@ pub struct BuildReport {
     pub wasm_tools_version: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct PackageReport {
+    pub schema: &'static str,
+    pub petal: String,
+    pub contract: &'static str,
+    pub wit_digest: String,
+    pub routes: usize,
+    pub files: usize,
+    pub bytes: u64,
+    pub package_hash: String,
+    pub archive: PathBuf,
+    pub sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PackageManifest {
+    schema: String,
+    name: String,
+}
+
+#[derive(Debug)]
+struct PackageFile {
+    path: String,
+    bytes: Vec<u8>,
+}
+
 fn default_sdk_package() -> String {
     "bloom-petal-sdk".into()
 }
@@ -110,6 +137,255 @@ pub fn check_caps(root: impl AsRef<Path>, config: &BuildConfig) -> Result<BuildR
     build_inner(root.as_ref(), config, true)
 }
 
+/// Create the strict, deterministic `.petal.tar.gz` consumed by Bloom.
+///
+/// Callers should build and check their routes first. The CLI's `package`
+/// command does that check automatically before calling this function.
+pub fn package(
+    root: impl AsRef<Path>,
+    config: &BuildConfig,
+    out: impl AsRef<Path>,
+) -> Result<PackageReport, String> {
+    let root = root
+        .as_ref()
+        .canonicalize()
+        .map_err(|error| format!("resolve {}: {error}", root.as_ref().display()))?;
+    let out = absolute_from(&root, out.as_ref());
+    let manifest_path = root.join("petal.toml");
+    let manifest_body =
+        fs::read_to_string(&manifest_path).map_err(display_err("read", &manifest_path))?;
+    let manifest: PackageManifest = toml::from_str(&manifest_body)
+        .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
+    if manifest.schema != bloom_petal_contract::PACKAGE_SCHEMA {
+        return Err(format!(
+            "{} must set schema = {:?}",
+            manifest_path.display(),
+            bloom_petal_contract::PACKAGE_SCHEMA
+        ));
+    }
+    if manifest.name != config.name {
+        return Err(format!(
+            "petal.toml name {:?} does not match build name {:?}",
+            manifest.name, config.name
+        ));
+    }
+    for required in ["README.md", "AGENTS.md"] {
+        let path = root.join(required);
+        if !path.is_file() {
+            return Err(format!("Petal package missing required file {required}"));
+        }
+    }
+
+    let routes = discover_wasm_paths(&root.join(&config.output))?;
+    if routes.is_empty() {
+        return Err(format!(
+            "Petal package contains no route components under {}",
+            config.output.display()
+        ));
+    }
+    let mut files = Vec::new();
+    collect_package_files(&root, &root, &out, &mut files)?;
+    files.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
+    let package_hash = package_hash(&files);
+    let bytes = files.iter().map(|file| file.bytes.len() as u64).sum();
+
+    let parent = out
+        .parent()
+        .ok_or_else(|| format!("archive output has no parent: {}", out.display()))?;
+    fs::create_dir_all(parent).map_err(display_err("create", parent))?;
+    if out.exists() {
+        return Err(format!("refusing to overwrite archive: {}", out.display()));
+    }
+    let file_name = out
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| format!("archive output is not UTF-8: {}", out.display()))?;
+    if !file_name.ends_with(".petal.tar.gz") {
+        return Err("archive output must end in .petal.tar.gz".into());
+    }
+    let temporary = parent.join(format!(".{file_name}.tmp.{}", std::process::id()));
+    if temporary.exists() {
+        fs::remove_file(&temporary).map_err(display_err("remove", &temporary))?;
+    }
+    let result = write_package_archive(&temporary, &files);
+    if let Err(error) = result {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    fs::rename(&temporary, &out)
+        .map_err(|error| format!("install archive {}: {error}", out.display()))?;
+    let archive_bytes = fs::read(&out).map_err(display_err("read", &out))?;
+    let sha256 = hex_sha256(&archive_bytes);
+    Ok(PackageReport {
+        schema: "bloom.petal.package-report.v1",
+        petal: config.name.clone(),
+        contract: bloom_petal_contract::ROUTE_PACKAGE,
+        wit_digest: bloom_petal_contract::wit_digest(),
+        routes: routes.len(),
+        files: files.len(),
+        bytes,
+        package_hash,
+        archive: out,
+        sha256,
+    })
+}
+
+fn absolute_from(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_owned()
+    } else {
+        root.join(path)
+    }
+}
+
+fn collect_package_files(
+    root: &Path,
+    dir: &Path,
+    output: &Path,
+    files: &mut Vec<PackageFile>,
+) -> Result<(), String> {
+    let mut entries = fs::read_dir(dir)
+        .map_err(display_err("read", dir))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("read {}: {error}", dir.display()))?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path == output {
+            continue;
+        }
+        let ty = entry
+            .file_type()
+            .map_err(|error| format!("inspect {}: {error}", path.display()))?;
+        if ty.is_dir() {
+            if should_skip_package_dir(root, &path) {
+                continue;
+            }
+            collect_package_files(root, &path, output, files)?;
+        } else if ty.is_file() {
+            if path
+                .file_name()
+                .and_then(OsStr::to_str)
+                .is_some_and(|name| name.ends_with(".petal.tar") || name.ends_with(".petal.tar.gz"))
+            {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|_| format!("package file escaped root: {}", path.display()))?;
+            let relative = package_path(relative)?;
+            validate_ustar_path(&relative)?;
+            files.push(PackageFile {
+                path: relative,
+                bytes: fs::read(&path).map_err(display_err("read", &path))?,
+            });
+        } else {
+            return Err(format!(
+                "Petal package contains non-regular file {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn should_skip_package_dir(root: &Path, path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return false;
+    };
+    matches!(
+        relative
+            .components()
+            .next()
+            .and_then(|component| component.as_os_str().to_str()),
+        Some(".git" | ".jj" | "artifacts" | "target")
+    ) || path.file_name().and_then(OsStr::to_str) == Some("target")
+}
+
+fn package_path(path: &Path) -> Result<String, String> {
+    let parts = path
+        .components()
+        .map(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .ok_or_else(|| format!("package path is not UTF-8: {}", path.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(parts.join("/"))
+}
+
+fn validate_ustar_path(path: &str) -> Result<(), String> {
+    const NAME_LEN: usize = 100;
+    const PREFIX_LEN: usize = 155;
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains('\\')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || matches!(part, "." | ".."))
+    {
+        return Err(format!("invalid Petal package path {path:?}"));
+    }
+    if path.len() <= NAME_LEN
+        || path.rmatch_indices('/').any(|(index, _)| {
+            index <= PREFIX_LEN && path.len().saturating_sub(index + 1) <= NAME_LEN
+        })
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "Petal package path {path:?} is too long for strict .petal.tar archives"
+        ))
+    }
+}
+
+fn package_hash(files: &[PackageFile]) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(bloom_petal_contract::PACKAGE_DIGEST_PREFIX);
+    for file in files {
+        hasher.update(&(file.path.len() as u32).to_le_bytes());
+        hasher.update(file.path.as_bytes());
+        hasher.update(&(file.bytes.len() as u64).to_le_bytes());
+        hasher.update(blake3::hash(&file.bytes).as_bytes());
+    }
+    hasher.finalize().to_hex().to_string()
+}
+
+fn write_package_archive(path: &Path, files: &[PackageFile]) -> Result<(), String> {
+    let file = fs::File::create(path).map_err(display_err("create", path))?;
+    let gzip = flate2::GzBuilder::new()
+        .mtime(0)
+        .write(file, flate2::Compression::best());
+    let mut tar = tar::Builder::new(gzip);
+    for package_file in files {
+        let mut header = tar::Header::new_ustar();
+        header.set_size(package_file.bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_mtime(0);
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_cksum();
+        tar.append_data(
+            &mut header,
+            &package_file.path,
+            package_file.bytes.as_slice(),
+        )
+        .map_err(|error| format!("write archive entry {}: {error}", package_file.path))?;
+    }
+    let gzip = tar
+        .into_inner()
+        .map_err(|error| format!("finish tar: {error}"))?;
+    gzip.finish()
+        .map_err(|error| format!("finish gzip: {error}"))?;
+    Ok(())
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
 fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<BuildReport, String> {
     let root = root
         .canonicalize()
@@ -128,7 +404,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
             })
             .collect::<Vec<_>>();
         if failures.is_empty() {
-            println!(
+            eprintln!(
                 "checked capability metadata for {} route components",
                 routes.len()
             );
@@ -748,6 +1024,88 @@ fn replace_dir(staging: &Path, destination: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn package_config() -> BuildConfig {
+        BuildConfig {
+            schema: "bloom.petal.build.v1".into(),
+            name: "demo".into(),
+            routes: "route/files".into(),
+            output: "petal/demo".into(),
+            route_crate: RouteCrate {
+                package: "demo-route".into(),
+                path: "route".into(),
+                alias: "demo_route".into(),
+            },
+            sdk: SdkDependency {
+                package: "bloom-petal-sdk".into(),
+                version: Some("=0.1.0".into()),
+                path: None,
+                git: None,
+                rev: None,
+            },
+            dependencies: BTreeMap::new(),
+            jobs: None,
+        }
+    }
+
+    fn package_fixture(root: &Path) {
+        fs::create_dir_all(root.join("petal/demo")).unwrap();
+        fs::write(
+            root.join("petal.toml"),
+            "schema = \"bloom.petal.package.v1\"\nname = \"demo\"\n",
+        )
+        .unwrap();
+        fs::write(root.join("README.md"), "demo\n").unwrap();
+        fs::write(root.join("AGENTS.md"), "agent guidance\n").unwrap();
+        fs::write(root.join("petal/demo/status.wasm"), b"component").unwrap();
+    }
+
+    #[test]
+    fn package_archive_is_deterministic_and_strict() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        let first = fixture.path().join("dist/demo-a.petal.tar.gz");
+        let second = fixture.path().join("dist/demo-b.petal.tar.gz");
+        let first_report = package(fixture.path(), &package_config(), &first).unwrap();
+        let second_report = package(fixture.path(), &package_config(), &second).unwrap();
+        assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+        assert_eq!(first_report.package_hash, second_report.package_hash);
+        assert_eq!(first_report.sha256, second_report.sha256);
+        assert_eq!(first_report.routes, 1);
+
+        let decoder = flate2::read::GzDecoder::new(fs::File::open(first).unwrap());
+        let mut archive = tar::Archive::new(decoder);
+        let entries = archive
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                assert_eq!(entry.header().mode().unwrap(), 0o644);
+                assert_eq!(entry.header().uid().unwrap(), 0);
+                assert_eq!(entry.header().gid().unwrap(), 0);
+                assert_eq!(entry.header().mtime().unwrap(), 0);
+                entry.path().unwrap().to_string_lossy().into_owned()
+            })
+            .collect::<Vec<_>>();
+        assert!(entries.contains(&"petal.toml".into()));
+        assert!(entries.contains(&"petal/demo/status.wasm".into()));
+        assert!(!entries.iter().any(|path| path.ends_with(".petal.tar.gz")));
+    }
+
+    #[test]
+    fn package_requires_manifest_identity_and_docs() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        fs::remove_file(fixture.path().join("AGENTS.md")).unwrap();
+        let error = package(
+            fixture.path(),
+            &package_config(),
+            fixture.path().join("demo.petal.tar.gz"),
+        )
+        .unwrap_err();
+        assert!(error.contains("missing required file AGENTS.md"));
+    }
+
     #[test]
     fn canonicalizes_indexes() {
         assert_eq!(canonical_route_path("$index"), "");

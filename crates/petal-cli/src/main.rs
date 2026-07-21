@@ -19,6 +19,15 @@ enum Command {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
+    /// Validate built routes and create a deterministic Bloom-installable archive.
+    Package {
+        #[arg(long, default_value = "petal-build.toml")]
+        config: PathBuf,
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Check generated route capabilities without rebuilding.
     Check {
         #[arg(long, default_value = "petal-build.toml")]
@@ -45,6 +54,16 @@ fn run() -> Result<(), String> {
             let config = resolve_config(&root, &config);
             let config = bloom_petal_builder::load_config(&config)?;
             let report = bloom_petal_builder::build(&root, &config)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+            );
+        }
+        Command::Package { config, root, out } => {
+            let config = resolve_config(&root, &config);
+            let config = bloom_petal_builder::load_config(&config)?;
+            bloom_petal_builder::check_caps(&root, &config)?;
+            let report = bloom_petal_builder::package(&root, &config, &out)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?

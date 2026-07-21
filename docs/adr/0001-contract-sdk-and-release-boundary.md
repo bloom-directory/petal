@@ -18,6 +18,10 @@ Accepted for the initial v0.1.0 release candidate.
 - crates.io is the terminal Rust distribution channel. Git dependencies are
   permitted only during release-candidate bootstrap.
 - GitHub Releases distribute WIT archives, checksums, and optional binaries.
+- This repository's reusable workflow defines canonical Petal release
+  packaging. Individual Petal repositories invoke it at an exact tooling
+  commit and publish their own archives, checksums, and provenance. Bloom
+  downloads those immutable assets but does not build Petal source.
 - Released versions are immutable. A broken crates.io version may be yanked,
   but is never overwritten or reused; a replacement version and explanation
   must be published.
@@ -29,4 +33,3 @@ organization must assign crates.io ownership for every package and configure a
 protected release environment using crates.io trusted publishing or a scoped
 release token. The release workflow must link crate versions, Git tag, source
 commit, WIT digest, and artifact checksums.
-

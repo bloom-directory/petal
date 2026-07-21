@@ -10,11 +10,13 @@ description = "Deterministic route component builder for Bloom Petals"
 [dependencies]
 blake3.workspace = true
 bloom-petal-contract = { path = "../..", version = "=0.1.0" }
+flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
 toml.workspace = true
 wasmparser.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-
