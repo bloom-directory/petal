@@ -1,0 +1,209 @@
+name: Release Petal
+
+on:
+  workflow_call:
+    inputs:
+      petal-name:
+        description: Petal package name from petal.toml.
+        required: true
+        type: string
+      petal-tooling-ref:
+        description: Exact 40-character bloom-directory/petal commit used for packaging.
+        required: true
+        type: string
+      build-command:
+        description: Command that builds the caller's route components.
+        default: scripts/build.sh
+        required: false
+        type: string
+      package-root:
+        description: Package root containing petal.toml, README.md, and AGENTS.md.
+        default: .
+        required: false
+        type: string
+      expected-route-count:
+        description: Optional exact route count asserted after packaging.
+        default: 0
+        required: false
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: petal-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish ${{ inputs['petal-name'] }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Validate immutable release inputs
+        env:
+          PETAL_NAME: ${{ inputs['petal-name'] }}
+          PETAL_TOOLING_REF: ${{ inputs['petal-tooling-ref'] }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF_TYPE" != "tag" ]]; then
+            echo "::error::Petal releases must run from a tag, got ref type: $REF_TYPE"
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::release tag must be a semantic version beginning with v, got: $RELEASE_TAG"
+            exit 1
+          fi
+          if [[ ! "$PETAL_TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::petal-tooling-ref must be an exact lowercase 40-character commit"
+            exit 1
+          fi
+          if [[ ! "$PETAL_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "::error::petal-name contains unsupported characters: $PETAL_NAME"
+            exit 1
+          fi
+
+      - name: Check out Petal source at the tagged commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the tag resolves to the checked-out commit
+        id: source
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          TAG_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [[ "$TAG_SHA" != "$HEAD_SHA" ]]; then
+            echo "::error::tag and checkout commits differ ($TAG_SHA, $HEAD_SHA)"
+            exit 1
+          fi
+          echo "source_commit=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned Petal tooling
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: bloom-directory/petal
+          ref: ${{ inputs['petal-tooling-ref'] }}
+          path: .petal-tooling
+          persist-credentials: false
+
+      - name: Build pinned Petal CLI
+        run: |
+          set -euo pipefail
+          cargo build \
+            --locked \
+            --release \
+            --manifest-path .petal-tooling/Cargo.toml \
+            -p bloom-petal-cli
+          cp .petal-tooling/target/release/petal "$RUNNER_TEMP/petal"
+          rm -rf .petal-tooling
+
+      - name: Build route components with pinned Petal CLI
+        env:
+          BUILD_COMMAND: ${{ inputs['build-command'] }}
+          PETAL_BIN: ${{ runner.temp }}/petal
+        run: bash -euo pipefail -c "$BUILD_COMMAND"
+
+      - name: Package deterministic release archive
+        id: package
+        env:
+          EXPECTED_ROUTE_COUNT: ${{ inputs['expected-route-count'] }}
+          PACKAGE_ROOT: ${{ inputs['package-root'] }}
+          PETAL_NAME: ${{ inputs['petal-name'] }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$PETAL_NAME-$RELEASE_TAG.petal.tar.gz"
+          mkdir -p dist
+          "$RUNNER_TEMP/petal" package \
+            --root "$PACKAGE_ROOT" \
+            --out "$RUNNER_TEMP/$ARCHIVE" \
+            > "$RUNNER_TEMP/package-report.json"
+          ROUTES="$(jq -er '.routes' "$RUNNER_TEMP/package-report.json")"
+          if [[ "$EXPECTED_ROUTE_COUNT" -gt 0 && "$ROUTES" -ne "$EXPECTED_ROUTE_COUNT" ]]; then
+            echo "::error::expected $EXPECTED_ROUTE_COUNT routes, packaged $ROUTES"
+            exit 1
+          fi
+          mv "$RUNNER_TEMP/$ARCHIVE" "dist/$ARCHIVE"
+          {
+            echo "archive=$ARCHIVE"
+            echo "archive_sha256=$(jq -er '.sha256' "$RUNNER_TEMP/package-report.json")"
+            echo "package_hash=$(jq -er '.package_hash' "$RUNNER_TEMP/package-report.json")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write checksums and release provenance
+        env:
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
+          PACKAGE_HASH: ${{ steps.package.outputs.package_hash }}
+          PETAL_NAME: ${{ inputs['petal-name'] }}
+          PETAL_TOOLING_REF: ${{ inputs['petal-tooling-ref'] }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.source_commit }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE" > dist/SHA256SUMS
+          jq -n \
+            --arg schema 'bloom.petal.release.v1' \
+            --arg petal_name "$PETAL_NAME" \
+            --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg source_commit "$SOURCE_COMMIT" \
+            --arg release_tag "$RELEASE_TAG" \
+            --arg archive "$ARCHIVE" \
+            --arg archive_sha256 "$ARCHIVE_SHA256" \
+            --arg package_hash "$PACKAGE_HASH" \
+            --arg tooling_repository 'bloom-directory/petal' \
+            --arg tooling_commit "$PETAL_TOOLING_REF" \
+            '{
+              schema: $schema,
+              petal_name: $petal_name,
+              source_repository: $source_repository,
+              source_commit: $source_commit,
+              release_tag: $release_tag,
+              archive: $archive,
+              archive_sha256: $archive_sha256,
+              package_hash: $package_hash,
+              tooling_repository: $tooling_repository,
+              tooling_commit: $tooling_commit
+            }' > dist/petal-release.json
+          (cd dist && sha256sum --check SHA256SUMS)
+
+      - name: Refuse to replace published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            EXISTING="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+            for asset in "$ARCHIVE" SHA256SUMS petal-release.json; do
+              if grep -Fxq "$asset" <<<"$EXISTING"; then
+                echo "::error::release $RELEASE_TAG already contains $asset; immutable assets are never overwritten"
+                exit 1
+              fi
+            done
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+          fi
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            "dist/$ARCHIVE" \
+            dist/SHA256SUMS \
+            dist/petal-release.json
