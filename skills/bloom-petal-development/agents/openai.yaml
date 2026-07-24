@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bloom Petal Development"
+  short_description: "Build and validate route-based Bloom Petals"
+  default_prompt: "Use $bloom-petal-development to build or review this Bloom Petal."
