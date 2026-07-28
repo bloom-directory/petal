@@ -16,6 +16,11 @@ on:
         default: scripts/build.sh
         required: false
         type: string
+      compile-time-secret-env:
+        description: Optional caller-chosen environment variable for a compilation-only secret.
+        default: ""
+        required: false
+        type: string
       package-root:
         description: Package root containing petal.toml, README.md, and AGENTS.md.
         default: .
@@ -26,6 +31,10 @@ on:
         default: 0
         required: false
         type: number
+    secrets:
+      compile-time-secret:
+        description: Optional secret exposed under compile-time-secret-env during compilation.
+        required: false
 
 permissions: {}
 
@@ -117,8 +126,28 @@ jobs:
       - name: Build route components with pinned Petal CLI
         env:
           BUILD_COMMAND: ${{ inputs['build-command'] }}
+          COMPILE_TIME_SECRET: ${{ secrets['compile-time-secret'] }}
+          COMPILE_TIME_SECRET_ENV: ${{ inputs['compile-time-secret-env'] }}
           PETAL_BIN: ${{ runner.temp }}/petal
-        run: bash -euo pipefail -c "$BUILD_COMMAND"
+        run: |
+          set -euo pipefail
+          if [[ -n "$COMPILE_TIME_SECRET_ENV" ]]; then
+            if [[ ! "$COMPILE_TIME_SECRET_ENV" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+              echo "::error::compile-time-secret-env is not a valid environment variable name"
+              exit 1
+            fi
+            if [[ -z "$COMPILE_TIME_SECRET" ]]; then
+              echo "::error::compile-time-secret is not configured"
+              exit 1
+            fi
+            printf -v "$COMPILE_TIME_SECRET_ENV" '%s' "$COMPILE_TIME_SECRET"
+            export "$COMPILE_TIME_SECRET_ENV"
+          elif [[ -n "$COMPILE_TIME_SECRET" ]]; then
+            echo "::error::compile-time-secret-env is required when compile-time-secret is supplied"
+            exit 1
+          fi
+          unset COMPILE_TIME_SECRET
+          bash -euo pipefail -c "$BUILD_COMMAND"
 
       - name: Package deterministic release archive
         id: package
