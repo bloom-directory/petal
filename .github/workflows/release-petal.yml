@@ -26,6 +26,10 @@ on:
         default: 0
         required: false
         type: number
+    secrets:
+      compile-time-secret:
+        description: Optional secret exposed as PETAL_COMPILE_TIME_SECRET during compilation.
+        required: false
 
 permissions: {}
 
@@ -117,6 +121,7 @@ jobs:
       - name: Build route components with pinned Petal CLI
         env:
           BUILD_COMMAND: ${{ inputs['build-command'] }}
+          PETAL_COMPILE_TIME_SECRET: ${{ secrets['compile-time-secret'] }}
           PETAL_BIN: ${{ runner.temp }}/petal
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
