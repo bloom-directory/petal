@@ -100,6 +100,10 @@ pub const RUST_TEMPLATE_FILES: &[(&str, &str)] = &[
         "route/files/status.json.rs",
         include_str!("../templates/rust-route-petal/route/files/status.json.rs"),
     ),
+    (
+        "scripts/check-route-architecture.sh",
+        include_str!("../templates/rust-route-petal/scripts/check-route-architecture.sh"),
+    ),
 ];
 
 pub fn wit_digest() -> String {

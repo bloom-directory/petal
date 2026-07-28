@@ -117,6 +117,9 @@ fn scaffold(name: &str, destination: &Path) -> Result<(), String> {
         fs::write(&path, body).map_err(|error| format!("write {}: {error}", path.display()))?;
     }
     println!("created {}", destination.display());
+    println!(
+        "development skill: https://github.com/bloom-directory/petal/tree/main/skills/bloom-petal-development"
+    );
     Ok(())
 }
 
