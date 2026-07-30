@@ -1,6 +1,7 @@
 ---
 name: bloom-petal-development
 description: Build, migrate, refactor, review, and validate Bloom Petals that expose domain behavior as route-based virtual files through the Petal SDK and builder. Use when turning an API or workflow into a Petal, creating a Petal, adding or changing route files, designing route and shared-code boundaries, declaring capabilities and manifest policy, investigating oversized route components, or preparing a Petal for packaging and release.
+version: 0.1.0
 ---
 
 # Bloom Petal Development
@@ -184,19 +185,7 @@ component to discard code it does not use.
 ## Share typed infrastructure
 
 Put code in the shared route crate only when it represents substantial,
-reusable behavior rather than endpoint selection. For concrete code patterns
-observed across existing petals — sync HTTP adapters, `BloomHost` trait
-implementation, credential resolution, session lifecycle, store-backed
-directory listing, manifest shapes, and PETAL_REV pinning — see
-`references/petal-scaffolding-patterns.md`. For DeFi/blockchain petals —
-Host trait with chain helpers, ERC-20 allowance flow, eth_call simulation,
-settlement verification via balance deltas, and multi-intent sessions — see
-`references/defi-chain-patterns.md`. For WASM build prerequisites and
-component compilation pitfalls (missing targets, trait import scoping, type
-inference, doc comments, capability mismatches), see
-`references/wasm-build-pitfalls.md`. For integration testing patterns (mock
-Host trait, in-memory store, testing full workflow lifecycles without the SDK),
-see `references/petal-integration-testing.md`. Good shared candidates
+reusable behavior rather than endpoint selection. Good shared candidates
 include:
 
 - protocol types, serialization, hashing, and signing;
@@ -308,169 +297,25 @@ value. Use the pinned SDK or host binding for secret reads; do not assume
 Use the repository's pinned commands and scripts. At minimum:
 
 1. Format and run host-side unit tests.
-2. Run integration tests that exercise the full workflow lifecycle through a
-   mock `Host` implementation (see `references/petal-integration-testing.md`).
-   These catch bugs that unit tests miss — state machine transitions, session
-   serialization roundtrips, address format mismatches, multi-intent ordering.
-3. Run clippy or the repository's equivalent static checks.
-4. Run the repository's route-architecture source check.
-5. Ensure WASM build prerequisites are installed: `rustup target add
-   wasm32-wasip2 wasm32-unknown-unknown` and `cargo install wasm-tools`.
-   These are not installed by default and cause cryptic build failures.
-6. Run `petal build --root <root>` to compile every route component.
-7. Run `petal check --root <root>` against the just-built components.
-8. Inspect changed components' imports and compare all three policy scopes.
-9. Run `petal package --root <root> --out <versioned>.petal.tar.gz` or the
+2. Run clippy or the repository's equivalent static checks.
+3. Run the repository's route-architecture source check.
+4. Run `petal build --root <root>` to compile every route component.
+5. Run `petal check --root <root>` against the just-built components.
+6. Inspect changed components' imports and compare all three policy scopes.
+7. Run `petal package --root <root> --out <versioned>.petal.tar.gz` or the
    repository's release-validation command. Packaging refuses to overwrite an
    existing archive.
-10. Run the pinned Bloom package-validation command, normally
+8. Run the pinned Bloom package-validation command, normally
    `bloom petals build <root>`, and exercise the target repository's VFS smoke
    tests when available.
-11. Confirm the expected route count and inspect unexpected component-size
+9. Confirm the expected route count and inspect unexpected component-size
    changes.
-12. **Install and drive the petal in a live bloom runtime.** After all prior
-    layers pass, install the petal (`bloom petals install <path>`) and test
-    every VFS route against real upstream APIs via `bloom vfs write/cat/ls`.
-    This catches wiring issues that mock tests cannot — capability routing,
-    store/VFS host binding, gas estimation, real API response shapes, and
-    outbox staging. See `references/live-runtime-testing.md` for the full
-    workflow: install → inspect → create intent → confirm/abandon →
-    settlement → security guards → input validation → cross-chain.
 
 Do not use a successful host-crate build as evidence that route sources compile;
-route files are independently generated component crates. Code that passes
-`cargo check` can still fail in WASM component compilation due to trait import
-scoping, type inference differences, inner doc comments before macros, and
-nonexistent spec functions. See `references/wasm-build-pitfalls.md` for the
-prerequisites, specific errors, and fixes. `petal check` does
+route files are independently generated component crates. `petal check` does
 not rebuild, so do not use it against stale artifacts. Packaging checks built
 routes but does not fully validate `petal.toml` policy and does not replace
 route-level tests or a runtime VFS smoke test.
-
-## Migrate native bloom functionality to a standalone petal
-
-When a feature lives natively in the bloom monorepo (as a domain crate +
-VFS handler) and needs to be extracted into its own petal repo, follow this
-sequence. See `references/bloom-architecture.md` for the monorepo layout,
-integration-point checklist, WIT capability map, and petal repo ecosystem.
-
-1. **Inventory the native code.** Identify the domain crate (e.g.
-   `crates/bloom-defi/`) and the VFS handler (e.g.
-   `crates/bloom-vfs/src/handlers/defi.rs`). Map every VFS path the handler
-   serves — these become route files.
-2. **Name the petal after the external service** (`bloom-petal-enso`, not
-   `bloom-petal-defi`). The VFS mount path can differ from the petal name.
-3. **Map integration points to petal capabilities.** The VFS handler's
-   dependencies translate directly: HTTP calls → `bloom:http`, in-memory
-   state → `bloom:store`, `TxEngine::stage` → `bloom:tx.outbox`, chain reads
-   → `bloom:chain`, wallet/address-book reads → `bloom:vfs.read`.
-4. **Scaffold from `petal new`** and study the most complete existing petal
-   (currently `bloom-petal-polymarket`) for the route-file pattern, shared
-   crate organization, and manifest policy.
-5. **Port domain logic** into `route/src/` (protocol types, HTTP adapters,
-   signing helpers). Port VFS path handlers into individual `route/files/`
-   route components — one `.rs` file per virtual path. See
-   `references/petal-scaffolding-patterns.md` for the concrete code shapes
-   (sync HTTP migration, `BloomHost`, credential resolution, session
-   lifecycle, manifest templates). For DeFi/blockchain petals, see
-   `references/defi-chain-patterns.md` (Host trait chain helpers, ERC-20
-   allowance flow, eth_call simulation, settlement via balance deltas,
-   multi-intent sessions).
-6. **Run a gap analysis.** After the initial port compiles and tests pass,
-   do a systematic line-by-line comparison of every VFS handler method in
-   the original code against the petal's route files and shared crate. Then
-   compare the route tree against sibling petals (polymarket, near) for
-   ceremony lifecycle completeness — petals that stage transactions should
-   expose `review_intent.json`, `outbox.json`, `receipt.json`, `abandon`, and
-   `latest` in addition to the original create/confirm/wait/settle paths.
-   See `references/defi-chain-patterns.md` § Ceremony lifecycle routes.
-   Categorize gaps as critical / important / nice-to-have. Write the results
-   to `GAP_ANALYSIS.md` in the petal root. This step has consistently surfaced
-   30+ critical gaps that compile and test fine but represent missing
-   behavior (sequential tx dependencies, confirm-time re-verification,
-   missing route files, incomplete plan output, missing ceremony endpoints).
-   See `references/migration-gap-analysis.md` for the methodology and
-   checklist.
-
-   6a. **Run a code quality audit.** After the gap analysis is closed and all
-   tests pass, do a systematic pass for dead code, duplication, and logic
-   errors that compile clean but waste lines or hide bugs. Common findings:
-   unused API client functions (only one endpoint actually used), unused Host
-   trait methods, dead struct fields, duplicated policy/simulation logic
-   across route files, redundant computations made dead by earlier guards,
-   intermediate saves before error returns. See
-   `references/post-migration-code-audit.md` for the methodology and
-   checklist.
-7. **Wire `petal.toml`** with the capability ceiling, `[[net.allow]]`
-   entries for every upstream host, signing intents, and store namespaces.
-8. **Close gaps in priority order.** Work through the gap analysis:
-   rewrite the domain layer in phases (foundation types → core workflow →
-   route files), then re-run the comparison. Update the gap analysis as
-   items close.
-9. **Remove from bloom**: delete the domain crate, remove the VFS handler,
-   disconnect workspace deps, daemon wiring, and config. Update docs and
-   Docker test profiles. See the integration-point checklist in
-   `references/bloom-architecture.md`.
-10. **Add to bloom's preinstalled petals** in `bloom-proto/src/config.rs`
-   `default_preinstalled_petals()` if the petal should ship by default.
-
-## Pitfall: patch tool lint false positives on Rust async code
-
-The Hermes `patch` tool runs a built-in syntax lint using **Rust 2015
-edition**, which produces massive false-positive error lists for any file
-containing `async fn`, `let chains` (`if let ... && let ...`), or
-`async move` blocks. These errors say things like:
-
-```
-error[E0670]: `async fn` is not permitted in Rust 2015
-  --> file.rs:82:5
-   |
-82 |     async fn resolve_name(...) -> ...
-   |     ^^^^^ to use `async fn`, switch to Rust 2018 or later
-```
-
-This is noise — the actual bloom workspace uses edition 2024 and compiles
-fine. **`cargo check` is the source of truth.** After any `patch` on a Rust
-file with async code, verify with `cargo check` rather than reading the
-lint output. The lint output's own summary line says
-`"Pre-existing lint errors — this edit didn't introduce new ones"` when the
-errors are not new.
-
-This affects all bloom crates (`bloom-tx`, `bloom-evm`, `bloom-daemon`, etc.)
-since they all use async tokio code.
-
-## Pitfall: check-route-architecture.sh route count
-
-The `scripts/check-route-architecture.sh` script hardcodes the expected
-route count. When adding or removing route files, update the count in the
-script or the architecture check will fail. Count all `.rs` files under
-`route/files/` recursively to get the correct number.
-
-## Pitfall: petal SDK strips host error messages
-
-The petal SDK's `host_err()` classifies errors by substring match and returns
-generic `HostStatus` variants (`NotFound`, `Denied`, `Invalid`) instead of the
-original message. Any host error containing the word "invalid" becomes the
-opaque string `"invalid"` with zero diagnostic context. This is the #1 cause
-of mysterious `"error": "invalid"` in simulation results — the route may be
-valid but a parameter formatting issue is hidden by the error pipeline.
-
-To debug, patch `chain_read` in `runtime.rs` to preserve `SdkError::Message`
-text and add params context, and/or verify the `eth_call` independently via
-`curl` against the chain RPC. See
-`references/live-runtime-testing.md` § Debugging: SDK error message stripping
-for the full technique.
-
-## Pitfall: `bloom petals install` fails after partial WASM rebuild
-
-After modifying route source and running `petal build`, `bloom petals install`
-can fail with `"Petal package artifact rXXXXXX does not match its route
-source"`. Treat all three generated layers as stale: the route package,
-Petal CLI component workspace, and Bloom-composed artifacts. Remove or
-preserve `petal/<name>`, `target/petal-routes`, and `artifacts`, then rebuild.
-Cleaning only the route package is insufficient because Bloom validates an
-existing `artifacts/routes/rXXXXXX.wasm` before regenerating it. See
-`references/wasm-build-pitfalls.md` § 7 for details.
 
 ## Review checklist
 
