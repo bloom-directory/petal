@@ -439,6 +439,18 @@ errors are not new.
 This affects all bloom crates (`bloom-tx`, `bloom-evm`, `bloom-daemon`, etc.)
 since they all use async tokio code.
 
+## Pitfall: petal CLI is vendored per-repo, not system-installed
+
+The `petal` binary is not on `$PATH`. Each petal repo vendors it at
+`./target/petal-tool/bin/petal`. The validation steps above that say
+`petal build` / `petal check` should use either:
+
+- the repo's own scripts (`scripts/build.sh` invokes the correct binary
+  automatically), or
+- the explicit vendored path: `./target/petal-tool/bin/petal check --root .`
+
+Running `petal` bare will produce `command not found`.
+
 ## Pitfall: check-route-architecture.sh route count
 
 The `scripts/check-route-architecture.sh` script hardcodes the expected
