@@ -1,6 +1,6 @@
 ---
 name: bloom-petal-development
-description: Build, migrate, refactor, review, and validate Bloom Petals that expose domain behavior as route-based virtual files through the Petal SDK and builder. Use when turning an API or workflow into a Petal, creating a Petal, adding or changing route files, designing route and shared-code boundaries, declaring capabilities and manifest policy, investigating oversized route components, or preparing a Petal for packaging and release.
+description: Build, migrate, refactor, review, and validate Bloom Petals that expose domain behavior as route-based virtual files through the Petal SDK and builder. Use when turning an API or workflow into a Petal, creating a Petal, adding or changing route files, designing route and shared-code boundaries, declaring capabilities and manifest policy, investigating oversized route components, auditing Petal code against the engineering rules, or preparing a Petal for packaging and release.
 ---
 
 # Bloom Petal Development
@@ -8,6 +8,25 @@ description: Build, migrate, refactor, review, and validate Bloom Petals that ex
 Build Petals as explicit virtual files whose behavior is understandable from
 their route source. Keep endpoint policy local and share only substantial,
 typed infrastructure.
+
+## Load the engineering rules
+
+`references/petal-engineering-rules.md` is the line-level rule set for Petal
+code: route-file shape, key and signing discipline, types, errors, comments,
+tests, and the build gate. Read it before writing route or shared-crate code,
+and again when auditing code someone else wrote — it is the standard a review
+is measured against. Where a target repository's own `AGENTS.md` states a
+different rule, that repository wins.
+
+## Orchestrate implementation and audit
+
+Treat non-trivial Petal work as orchestration rather than typing. Delegate
+implementation to a subagent, and the audit of that implementation to a
+different one. Each starts with fresh context and its own budget, which is what
+keeps a migration or a gap-analysis pass from stopping halfway with a summary
+of what remains. Tell each subagent that it is a child so it does not spawn its
+own children, and give it the specific route files, references, and rules it
+needs rather than the whole repository.
 
 ## Establish the local contract
 
@@ -329,8 +348,10 @@ Use the repository's pinned commands and scripts. At minimum:
 11. Confirm the expected route count and inspect unexpected component-size
    changes.
 12. **Install and drive the petal in a live bloom runtime.** After all prior
-    layers pass, install the petal (`bloom petals install <path>`) and test
-    every VFS route against real upstream APIs via `bloom vfs write/cat/ls`.
+    layers pass, install the petal (`bloom petals install <path>`; uninstall
+    first when its capabilities changed, or the daemon rejects the install
+    with `cap mismatch`) and test every VFS route against real upstream APIs
+    via `bloom vfs write/cat/ls`.
     This catches wiring issues that mock tests cannot — capability routing,
     store/VFS host binding, gas estimation, real API response shapes, and
     outbox staging. See `references/live-runtime-testing.md` for the full
@@ -489,12 +510,21 @@ existing `artifacts/routes/rXXXXXX.wasm` before regenerating it. See
 Before handing off, confirm:
 
 - every route's behavior is visible in its route file;
+- each route file is one `route_file!` invocation over a thin parameter
+  extraction, with no hand-written `__PetalRouteIdentity`;
 - shared code contains no filename- or path-driven endpoint dispatcher;
 - every writable file defines safe local read behavior;
 - route capabilities stay within compiled imports and cover successful paths;
 - the package capability ceiling and per-surface policy cover only intended use;
 - network egress is allowlisted to the narrowest host, method, and path set;
+- no key bytes, signer, or secret reach Petal code, and every intent is listed
+  in `[sign].allowed_intents`;
+- signing digests and hand-packed byte layouts are pinned by tests;
 - no secret or signature material is reachable through a read handler;
 - durable state does not overstate external completion;
+- clippy and rustc are clean without an added `#[allow(...)]`;
+- everything the change made obsolete is deleted;
+- no explanatory body comments, prose error strings, or `.unwrap()` on host,
+  network, or parse results survive (`references/petal-engineering-rules.md`);
 - all route components and release packaging validate;
 - no live write was performed without explicit authorization.

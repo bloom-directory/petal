@@ -56,7 +56,9 @@ Look for logic copy-pasted across route files:
 
 - **Policy aggregation** — iterating `policy_checks.as_array()` to compute an
   overall pass/warn/deny appears in both `policy_check.json` and
-  `review_intent.json`. Extract as `Session::policy_overall() -> &str`.
+  `review_intent.json`. Extract as
+  `Session::policy_overall() -> PolicyOutcome` — a tri-state is an enum, not a
+  `&str` that every caller re-compares.
 - **Simulation logic** — `create()` often has inline eth_call logic that
   duplicates `simulate_route()`. Extract a shared helper that takes a
   `RouteResponse` directly (see `defi-chain-patterns.md` § Simulation).
@@ -93,12 +95,14 @@ Check for redundant computations and unnecessary side effects:
 cargo clippy 2>&1 | grep 'warning:'
 ```
 
-Fix mechanical warnings (collapsible if, unnecessary casts, manual `.ok()`,
-`unwrap_or` reimplementations). Leave intentional warnings:
+Fix every warning. Silencing one with `#[allow(...)]` is not a fix — a warning
+is the compiler reporting that the code is wrong.
 
-- **Too many arguments** on a private helper — refactoring to a builder/struct
-  adds complexity for no caller benefit.
-- **Collapsible if guards** that are intentionally layered for readability.
+- **Mechanical warnings** — collapsible if, unnecessary casts, manual `.ok()`,
+  `unwrap_or` reimplementations. Rewrite them.
+- **Too many arguments** — group the arguments into a struct, or take the
+  struct whose fields they already are. Not
+  `#[allow(clippy::too_many_arguments)]`, and not a builder.
 
 ### 6. Verify
 
@@ -107,7 +111,7 @@ After all changes:
 ```sh
 cargo check   # must pass
 cargo test    # test count may decrease (dead code tests removed) but must pass
-cargo clippy  # only intentional warnings remain
+cargo clippy  # zero warnings, with no added #[allow(...)]
 ```
 
 ## Checklist
@@ -119,5 +123,5 @@ cargo clippy  # only intentional warnings remain
 - [ ] No intermediate saves before error returns
 - [ ] No redundant computations where an earlier guard already proved the value
 - [ ] No underscore-prefixed params that are actually used
-- [ ] Clippy: only intentional warnings remain
+- [ ] Clippy and rustc clean, with no `#[allow(...)]` added to get there
 - [ ] `cargo check` + `cargo test` pass
