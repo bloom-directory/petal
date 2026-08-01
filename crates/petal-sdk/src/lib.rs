@@ -168,6 +168,14 @@ impl SdkError {
     }
 }
 
+impl core::fmt::Display for SdkError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+impl core::error::Error for SdkError {}
+
 pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
