@@ -556,7 +556,7 @@ fn generate_workspace(
             .join("\n");
         let source_path = path_from_member(&dir.join("src"), &route.source)?;
         let source = format!(
-            "#![allow(clippy::too_many_arguments)]\n#![allow(dead_code, unused_imports, clippy::upper_case_acronyms)]\n\npub struct __PetalRouteIdentity;\nimpl petal::RouteIdentity for __PetalRouteIdentity {{\n    const PATH: &'static str = {:?};\n    const CANONICAL_PATH: &'static str = {:?};\n    const PARAMS: &'static [(&'static str, usize)] = &[\n{}\n    ];\n}}\n\npub use {}::*;\n\nmod selected_route {{\n    include!({:?});\n}}\n\nuse selected_route::Route;\npetal::bindings::export!(Route);\n",
+            "#[allow(dead_code)]\npub struct __PetalRouteIdentity;\nimpl petal::RouteIdentity for __PetalRouteIdentity {{\n    const PATH: &'static str = {:?};\n    const CANONICAL_PATH: &'static str = {:?};\n    const PARAMS: &'static [(&'static str, usize)] = &[\n{}\n    ];\n}}\n\n#[allow(unused_imports)]\npub use {}::*;\n\nmod selected_route {{\n    include!({:?});\n}}\n\nuse selected_route::Route;\npetal::bindings::export!(Route);\n",
             route.path, route.canonical, params, config.route_crate.alias, source_path,
         );
         write_if_changed(&dir.join("Cargo.toml"), &manifest)?;
