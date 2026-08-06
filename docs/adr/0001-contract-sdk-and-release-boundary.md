@@ -8,9 +8,9 @@ Accepted for the initial v0.1.0 release candidate.
 
 - `bloom-directory/petal` is the sole authority for Petal WIT, SDK bindings,
   builder behavior, templates, and conformance fixtures.
-- The initial WIT contract is `bloom:route@0.1.0` and the sole signing import is
-  `bloom:sign/signing@0.1.0`. Multi-version support is deferred until another
-  WIT version is proposed.
+- The route WIT remains `bloom:route@0.1.0`. Key derivation uses
+  `bloom:key/derive@0.1.0`, and signing uses payload-bearing
+  `bloom:sign/signing@0.3.0`; hash-only signing is not part of the current SDK.
 - The SDK contains contract-level helpers only. Domain-specific route policy
   remains in each Petal.
 - The builder compiles route source. Bloom separately validates, hashes, and

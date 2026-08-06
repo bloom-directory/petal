@@ -7,7 +7,8 @@ use std::path::Path;
 
 pub const ROUTE_PACKAGE: &str = "bloom:route@0.1.0";
 pub const ROUTE_WORLD: &str = "route-file";
-pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.1.0";
+pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.3.0";
+pub const KEY_DERIVE_INTERFACE: &str = "bloom:key/derive@0.1.0";
 pub const PACKAGE_SCHEMA: &str = "bloom.petal.package.v1";
 pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
 pub const BUILD_MANIFEST_SCHEMA: &str = "bloom.petal.build-manifest.v1";
@@ -18,6 +19,7 @@ pub enum HostInterface {
     RouteTypes,
     HttpFetch,
     StoreKv,
+    KeyDerive,
     SignSigning,
     TxOutbox,
     ChainRead,
@@ -31,6 +33,7 @@ impl HostInterface {
             Self::RouteTypes | Self::EnvRuntime => &[],
             Self::HttpFetch => &["bloom:http"],
             Self::StoreKv => &["bloom:store"],
+            Self::KeyDerive => &["bloom:key.derive"],
             Self::SignSigning => &["bloom:sign"],
             Self::TxOutbox => &["bloom:tx.outbox"],
             Self::ChainRead => &["bloom:chain"],
@@ -54,8 +57,12 @@ pub const WIT_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../wit/route/deps/http/http.wit"),
     ),
     (
-        "deps/sign-v0.1/sign.wit",
-        include_bytes!("../wit/route/deps/sign-v0.1/sign.wit"),
+        "deps/key/key.wit",
+        include_bytes!("../wit/route/deps/key/key.wit"),
+    ),
+    (
+        "deps/sign-v0.3/sign.wit",
+        include_bytes!("../wit/route/deps/sign-v0.3/sign.wit"),
     ),
     (
         "deps/store/store.wit",
@@ -134,7 +141,8 @@ pub fn host_interface(import: &str) -> Option<HostInterface> {
         "bloom:route/types@0.1.0" => Some(HostInterface::RouteTypes),
         "bloom:http/fetch@0.1.0" => Some(HostInterface::HttpFetch),
         "bloom:store/kv@0.1.0" => Some(HostInterface::StoreKv),
-        "bloom:sign/signing@0.1.0" => Some(HostInterface::SignSigning),
+        KEY_DERIVE_INTERFACE => Some(HostInterface::KeyDerive),
+        SIGNING_INTERFACE => Some(HostInterface::SignSigning),
         "bloom:tx/outbox@0.1.0" => Some(HostInterface::TxOutbox),
         "bloom:chain/read@0.1.0" => Some(HostInterface::ChainRead),
         "bloom:vfs/readwrite@0.1.0" => Some(HostInterface::VfsReadwrite),
@@ -158,7 +166,7 @@ mod tests {
     #[test]
     fn wit_digest_is_stable_and_complete() {
         assert_eq!(wit_digest().len(), 64);
-        assert_eq!(WIT_FILES.len(), 8);
+        assert_eq!(WIT_FILES.len(), 9);
         assert!(WIT_FILES.iter().all(|(_, bytes)| !bytes.is_empty()));
     }
 
@@ -173,9 +181,10 @@ mod tests {
 
     #[test]
     fn maps_contract_imports_to_capabilities() {
+        assert_eq!(capability_for_import(SIGNING_INTERFACE), Some("bloom:sign"));
         assert_eq!(
-            capability_for_import("bloom:sign/signing@0.1.0"),
-            Some("bloom:sign")
+            capability_for_import(KEY_DERIVE_INTERFACE),
+            Some("bloom:key.derive")
         );
         assert_eq!(capability_for_import("bloom:env/runtime@0.1.0"), None);
         assert_eq!(

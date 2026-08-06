@@ -78,25 +78,30 @@ pub struct HttpResponse {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SignRequest {
+pub enum SignSelector {
+    Exact,
+    Reusable,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PayloadSignRequest {
     pub wallet: String,
-    pub hash32: [u8; 32],
-    pub purpose: String,
+    pub preimage: Vec<u8>,
+    pub claimed_hash: [u8; 32],
+    pub signature_algorithm: String,
+    pub operation_class: String,
+    pub petal_use_claim_jcs: Vec<u8>,
+    pub claim_assurance_evidence: Option<Vec<u8>>,
+    pub approval_hint: Option<String>,
+    pub action: Option<Vec<u8>>,
+    pub advisory: Option<Vec<u8>>,
+    pub selector: SignSelector,
+    pub key_ref_jcs: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SignHashOutcome {
+pub enum SignOutcome {
     Signature(Vec<u8>),
-    ApprovalRequired {
-        action_id: String,
-        ceremony_url: String,
-        expires_ms: u64,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SignBatchOutcome {
-    Signatures(Vec<Vec<u8>>),
     ApprovalRequired {
         action_id: String,
         ceremony_url: String,
@@ -171,12 +176,13 @@ impl SdkError {
 pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
-        OutboxInspection, SdkError, SignBatchOutcome, SignHashOutcome, SignRequest,
+        OutboxInspection, PayloadSignRequest, SdkError, SignOutcome, SignSelector,
         StagedTransaction,
     };
     use crate::bindings::bloom::chain::read as chain;
     use crate::bindings::bloom::env::runtime as env;
     use crate::bindings::bloom::http::fetch as http;
+    use crate::bindings::bloom::key::derive as key;
     use crate::bindings::bloom::sign::signing as sign;
     use crate::bindings::bloom::store::kv as store;
     use crate::bindings::bloom::tx::outbox as tx;
@@ -205,37 +211,35 @@ pub mod sdk {
         })
     }
 
-    pub fn sign_hash(req: &SignRequest) -> Result<SignHashOutcome, SdkError> {
-        match sign::sign_hash(&req.wallet, &req.hash32, &req.purpose).map_err(host_err)? {
-            sign::SignResult::Signature(signature) => Ok(SignHashOutcome::Signature(signature)),
-            sign::SignResult::ApprovalRequired(approval) => Ok(SignHashOutcome::ApprovalRequired {
+    pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
+        key::request(request_jcs).map_err(host_err)
+    }
+
+    pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
+        let request = sign::PayloadSignRequest {
+            wallet: req.wallet.clone(),
+            preimage: req.preimage.clone(),
+            claimed_hash: req.claimed_hash.to_vec(),
+            signature_algorithm: req.signature_algorithm.clone(),
+            operation_class: req.operation_class.clone(),
+            petal_use_claim_jcs: req.petal_use_claim_jcs.clone(),
+            claim_assurance_evidence: req.claim_assurance_evidence.clone(),
+            approval_hint: req.approval_hint.clone(),
+            action: req.action.clone(),
+            advisory: req.advisory.clone(),
+            selector: match req.selector {
+                SignSelector::Exact => sign::Selector::Exact,
+                SignSelector::Reusable => sign::Selector::Reusable,
+            },
+            key_ref_jcs: req.key_ref_jcs.clone(),
+        };
+        match sign::sign_payload(&request).map_err(host_err)? {
+            sign::SignResult::Signature(signature) => Ok(SignOutcome::Signature(signature)),
+            sign::SignResult::ApprovalRequired(approval) => Ok(SignOutcome::ApprovalRequired {
                 action_id: approval.action_id,
                 ceremony_url: approval.ceremony_url,
                 expires_ms: approval.expires_ms,
             }),
-        }
-    }
-
-    pub fn sign_hashes(requests: &[SignRequest]) -> Result<SignBatchOutcome, SdkError> {
-        let requests = requests
-            .iter()
-            .map(|request| sign::SignRequest {
-                wallet: request.wallet.clone(),
-                hash32: request.hash32.to_vec(),
-                intent: request.purpose.clone(),
-            })
-            .collect::<Vec<_>>();
-        match sign::sign_hashes(&requests).map_err(host_err)? {
-            sign::SignBatchResult::Signatures(signatures) => {
-                Ok(SignBatchOutcome::Signatures(signatures))
-            }
-            sign::SignBatchResult::ApprovalRequired(approval) => {
-                Ok(SignBatchOutcome::ApprovalRequired {
-                    action_id: approval.action_id,
-                    ceremony_url: approval.ceremony_url,
-                    expires_ms: approval.expires_ms,
-                })
-            }
         }
     }
 
