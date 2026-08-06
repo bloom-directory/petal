@@ -485,8 +485,36 @@ pub mod sdk {
         }
     }
 
-    fn namespace_for_key(_key: &str, secret: bool) -> &'static str {
-        if secret { SECRET_NS } else { STATE_NS }
+    fn namespace_for_key(key: &str, secret: bool) -> &'static str {
+        if secret || key == "creds" || key.starts_with("creds/") {
+            SECRET_NS
+        } else {
+            STATE_NS
+        }
+    }
+
+    #[cfg(test)]
+    mod namespace_tests {
+        use super::{SECRET_NS, STATE_NS, namespace_for_key};
+
+        #[test]
+        fn credential_keys_round_trip_through_the_secret_namespace() {
+            assert_eq!(namespace_for_key("creds/wallet/clob.json", true), SECRET_NS);
+            assert_eq!(
+                namespace_for_key("creds/wallet/clob.json", false),
+                SECRET_NS
+            );
+            assert_eq!(namespace_for_key("creds", false), SECRET_NS);
+        }
+
+        #[test]
+        fn ordinary_state_keys_remain_in_the_state_namespace() {
+            assert_eq!(
+                namespace_for_key("trade/wallet/draft.json", false),
+                STATE_NS
+            );
+            assert_eq!(namespace_for_key("credentials/lookalike", false), STATE_NS);
+        }
     }
 
     fn host_err(message: String) -> SdkError {
