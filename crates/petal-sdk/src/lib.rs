@@ -100,13 +100,61 @@ pub struct PayloadSignRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PayloadSignItem {
+    pub preimage: Vec<u8>,
+    pub claimed_hash: [u8; 32],
+}
+
+/// One atomic signing operation over an immutable ordered payload list.
+///
+/// The wallet, suite, operation class, approval, selector, and optional
+/// Signer-owned key reference apply to the complete batch. They deliberately
+/// cannot vary between children.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PayloadBatchSignRequest {
+    pub wallet: String,
+    pub payloads: Vec<PayloadSignItem>,
+    pub signature_algorithm: String,
+    pub operation_class: String,
+    pub petal_use_claim_jcs: Vec<u8>,
+    pub claim_assurance_evidence: Option<Vec<u8>>,
+    pub approval_hint: Option<String>,
+    pub action: Option<Vec<u8>>,
+    pub advisory: Option<Vec<u8>>,
+    pub selector: SignSelector,
+    pub key_ref_jcs: Option<Vec<u8>>,
+}
+
+pub const PAYLOAD_BATCH_DIGEST_DOMAIN_V1: &[u8] = b"bloom.petal.payload-batch.v1\0";
+
+pub fn payload_batch_digest(payloads: &[PayloadSignItem]) -> Result<[u8; 32], SdkError> {
+    use sha2::{Digest as _, Sha256};
+
+    if payloads.is_empty() {
+        return Err(SdkError::Message(
+            "payload signing batch must not be empty".into(),
+        ));
+    }
+    let mut digest = Sha256::new();
+    digest.update(PAYLOAD_BATCH_DIGEST_DOMAIN_V1);
+    digest.update((payloads.len() as u64).to_be_bytes());
+    for payload in payloads {
+        digest.update((payload.preimage.len() as u64).to_be_bytes());
+        digest.update(&payload.preimage);
+    }
+    Ok(digest.finalize().into())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SignOutcome {
     Signature(Vec<u8>),
-    ApprovalRequired {
-        action_id: String,
-        ceremony_url: String,
-        expires_ms: u64,
-    },
+    ApprovalPending { action_id: String, expires_ms: u64 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SignBatchOutcome {
+    Signatures(Vec<Vec<u8>>),
+    ApprovalPending { action_id: String, expires_ms: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -176,8 +224,8 @@ impl SdkError {
 pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
-        OutboxInspection, PayloadSignRequest, SdkError, SignOutcome, SignSelector,
-        StagedTransaction,
+        OutboxInspection, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest, SdkError,
+        SignBatchOutcome, SignOutcome, SignSelector, StagedTransaction, payload_batch_digest,
     };
     use crate::bindings::bloom::chain::read as chain;
     use crate::bindings::bloom::env::runtime as env;
@@ -227,19 +275,62 @@ pub mod sdk {
             approval_hint: req.approval_hint.clone(),
             action: req.action.clone(),
             advisory: req.advisory.clone(),
-            selector: match req.selector {
-                SignSelector::Exact => sign::Selector::Exact,
-                SignSelector::Reusable => sign::Selector::Reusable,
-            },
+            selector: selector(&req.selector),
             key_ref_jcs: req.key_ref_jcs.clone(),
         };
         match sign::sign_payload(&request).map_err(host_err)? {
             sign::SignResult::Signature(signature) => Ok(SignOutcome::Signature(signature)),
-            sign::SignResult::ApprovalRequired(approval) => Ok(SignOutcome::ApprovalRequired {
+            sign::SignResult::ApprovalPending(approval) => Ok(SignOutcome::ApprovalPending {
                 action_id: approval.action_id,
-                ceremony_url: approval.ceremony_url,
                 expires_ms: approval.expires_ms,
             }),
+        }
+    }
+
+    pub fn sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<SignBatchOutcome, SdkError> {
+        let _ = payload_batch_digest(&req.payloads)?;
+        let request = sign::PayloadBatchSignRequest {
+            wallet: req.wallet.clone(),
+            payloads: req
+                .payloads
+                .iter()
+                .map(|payload| sign::PayloadSignItem {
+                    preimage: payload.preimage.clone(),
+                    claimed_hash: payload.claimed_hash.to_vec(),
+                })
+                .collect(),
+            signature_algorithm: req.signature_algorithm.clone(),
+            operation_class: req.operation_class.clone(),
+            petal_use_claim_jcs: req.petal_use_claim_jcs.clone(),
+            claim_assurance_evidence: req.claim_assurance_evidence.clone(),
+            approval_hint: req.approval_hint.clone(),
+            action: req.action.clone(),
+            advisory: req.advisory.clone(),
+            selector: selector(&req.selector),
+            key_ref_jcs: req.key_ref_jcs.clone(),
+        };
+        match sign::sign_payload_batch(&request).map_err(host_err)? {
+            sign::SignBatchResult::Signatures(signatures) => {
+                if signatures.len() != req.payloads.len() {
+                    return Err(SdkError::Message(
+                        "host returned the wrong payload batch signature count".into(),
+                    ));
+                }
+                Ok(SignBatchOutcome::Signatures(signatures))
+            }
+            sign::SignBatchResult::ApprovalPending(approval) => {
+                Ok(SignBatchOutcome::ApprovalPending {
+                    action_id: approval.action_id,
+                    expires_ms: approval.expires_ms,
+                })
+            }
+        }
+    }
+
+    fn selector(selector: &SignSelector) -> sign::Selector {
+        match selector {
+            SignSelector::Exact => sign::Selector::Exact,
+            SignSelector::Reusable => sign::Selector::Reusable,
         }
     }
 
@@ -973,6 +1064,47 @@ mod identity_tests {
             param(&ctx, "unknown"),
             Err(DispatchResponse::Error { code: -3, .. })
         ));
+    }
+
+    #[test]
+    fn payload_batch_digest_binds_order_and_boundaries() {
+        let first = PayloadSignItem {
+            preimage: b"a".to_vec(),
+            claimed_hash: [1; 32],
+        };
+        let second = PayloadSignItem {
+            preimage: b"bc".to_vec(),
+            claimed_hash: [2; 32],
+        };
+        assert_ne!(
+            payload_batch_digest(&[first.clone(), second.clone()]).unwrap(),
+            payload_batch_digest(&[second, first]).unwrap()
+        );
+        assert_ne!(
+            payload_batch_digest(&[
+                PayloadSignItem {
+                    preimage: b"a".to_vec(),
+                    claimed_hash: [1; 32],
+                },
+                PayloadSignItem {
+                    preimage: b"bc".to_vec(),
+                    claimed_hash: [2; 32],
+                },
+            ])
+            .unwrap(),
+            payload_batch_digest(&[
+                PayloadSignItem {
+                    preimage: b"ab".to_vec(),
+                    claimed_hash: [1; 32],
+                },
+                PayloadSignItem {
+                    preimage: b"c".to_vec(),
+                    claimed_hash: [2; 32],
+                },
+            ])
+            .unwrap()
+        );
+        assert!(payload_batch_digest(&[]).is_err());
     }
 }
 

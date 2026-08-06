@@ -7,7 +7,7 @@ use std::path::Path;
 
 pub const ROUTE_PACKAGE: &str = "bloom:route@0.1.0";
 pub const ROUTE_WORLD: &str = "route-file";
-pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.3.0";
+pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.4.0";
 pub const KEY_DERIVE_INTERFACE: &str = "bloom:key/derive@0.1.0";
 pub const PACKAGE_SCHEMA: &str = "bloom.petal.package.v1";
 pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
@@ -61,8 +61,8 @@ pub const WIT_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../wit/route/deps/key/key.wit"),
     ),
     (
-        "deps/sign-v0.3/sign.wit",
-        include_bytes!("../wit/route/deps/sign-v0.3/sign.wit"),
+        "deps/sign-v0.4/sign.wit",
+        include_bytes!("../wit/route/deps/sign-v0.4/sign.wit"),
     ),
     (
         "deps/store/store.wit",
@@ -193,5 +193,19 @@ mod tests {
         );
         assert_eq!(host_interface("bloom:sign/signing@9.9.9"), None);
         assert_eq!(capability_for_import("unknown:host/api@1.0.0"), None);
+    }
+
+    #[test]
+    fn signing_contract_exposes_payload_batches_without_browser_launch_secrets() {
+        let signing = WIT_FILES
+            .iter()
+            .find_map(|(path, bytes)| path.ends_with("sign.wit").then_some(*bytes))
+            .expect("signing WIT");
+        let signing = std::str::from_utf8(signing).expect("signing WIT is UTF-8");
+        assert!(signing.contains("sign-payload-batch"));
+        assert!(signing.contains("payloads: list<payload-sign-item>"));
+        assert!(signing.contains("approval-hint: option<string>"));
+        assert!(signing.contains("key-ref-jcs: option<list<u8>>"));
+        assert!(!signing.contains("ceremony-url"));
     }
 }
