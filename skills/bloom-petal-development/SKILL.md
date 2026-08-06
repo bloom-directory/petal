@@ -94,9 +94,11 @@ Directory contents are explicit. Use `list` for a fixed child list,
 does not happen automatically.
 
 Validate parameters for their domain before using them in URLs, storage keys,
-or VFS paths. Use `petal::is_safe_segment` when a value becomes a path segment;
-do not assume supplied context parameters are safe merely because the source
-filename uses brackets.
+or VFS paths. Before interpolating a value into a URL, enforce its strict
+domain grammar or encode it as a URL path segment. Use `petal::is_safe_segment`
+for VFS or storage path segments; it is not sufficient URL validation. Do not
+assume supplied context parameters are safe merely because the source filename
+uses brackets.
 
 ## Select the local handler and spec
 
