@@ -14,7 +14,6 @@ interface outbox {
 
   record approval-required {
     action-id: string,
-    ceremony-url: string,
     expires-ms: u64,
   }
 

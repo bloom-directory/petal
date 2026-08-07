@@ -3,9 +3,9 @@
 This repository is the release authority for the Bloom Petal component
 contract, Rust SDK, route builder, CLI, templates, and conformance fixtures.
 
-The initial contract is `bloom:route@0.1.0`. Its canonical WIT is under
-`wit/route/`; `bloom:sign/signing@0.1.0` is the only supported signing
-interface.
+The route contract is `bloom:route@0.1.0`. Its canonical WIT is under
+`wit/route/`; custody-aware Petals use `bloom:key/derive@0.1.0` and
+payload-bearing `bloom:sign/signing@0.4.0`, including atomic ordered batches.
 
 ## Workspace
 
@@ -35,7 +35,7 @@ The generated SDK bindings are derived output. `wit/route` is the only
 authoritative WIT tree.
 
 The conformance build emits the WIT digest
-`2a12e23f13d4f93700a11c6af3e6996a540a4cc9c7ff0e2f9522583404095f7e`.
+`b1448484d252a4b6cae350df1d28e5102109692acdcd4be9b03bffe097af04f6`.
 Consumer CI must reject a different digest until it intentionally upgrades the
 contract release.
 
