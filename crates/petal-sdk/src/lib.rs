@@ -742,6 +742,11 @@ impl RouteSpec {
         self.side_effecting_read = value;
         self
     }
+
+    const fn write_async(mut self, value: bool) -> Self {
+        self.write_async = value;
+        self
+    }
 }
 
 const CAPS_NONE: &[&str] = &[];
@@ -805,6 +810,7 @@ pub fn write_spec() -> RouteSpec {
     RouteSpec::writable()
         .caps(CAPS_HTTP_STORE_SIGN_VFS)
         .ttl(None)
+        .write_async(true)
 }
 
 pub fn signing_write_spec(intent: &'static str) -> RouteSpec {
