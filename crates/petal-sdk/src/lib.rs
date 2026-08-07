@@ -172,7 +172,6 @@ pub struct EvmTransaction {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutboxApproval {
     pub action_id: String,
-    pub ceremony_url: String,
     pub expires_ms: u64,
 }
 
@@ -479,7 +478,6 @@ pub mod sdk {
             plan_md: staged.plan_md,
             approval: staged.approval.map(|approval| OutboxApproval {
                 action_id: approval.action_id,
-                ceremony_url: approval.ceremony_url,
                 expires_ms: approval.expires_ms,
             }),
         }

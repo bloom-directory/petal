@@ -208,4 +208,16 @@ mod tests {
         assert!(signing.contains("key-ref-jcs: option<list<u8>>"));
         assert!(!signing.contains("ceremony-url"));
     }
+
+    #[test]
+    fn outbox_contract_never_exposes_owner_ceremony_urls() {
+        let outbox = WIT_FILES
+            .iter()
+            .find_map(|(path, bytes)| path.ends_with("outbox.wit").then_some(*bytes))
+            .expect("outbox WIT");
+        let outbox = std::str::from_utf8(outbox).expect("outbox WIT is UTF-8");
+        assert!(outbox.contains("action-id: string"));
+        assert!(outbox.contains("expires-ms: u64"));
+        assert!(!outbox.contains("ceremony-url"));
+    }
 }
