@@ -83,6 +83,32 @@ pub enum SignSelector {
     Reusable,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PetalKeyRequest {
+    pub wallet_id: String,
+    pub key_slot: String,
+    pub allowed_routes: Vec<String>,
+    pub allowed_operation_classes: Vec<String>,
+    pub allowed_crypto_suites: Vec<String>,
+    pub maximum_lifetime_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PetalKeyOutcome {
+    Pending {
+        operation_id: String,
+        scope_digest: String,
+    },
+    Ready {
+        operation_id: String,
+        scope_digest: String,
+        key_ref_jcs: Vec<u8>,
+        addresses: Vec<String>,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PayloadSignRequest {
     pub wallet: String,
@@ -223,8 +249,9 @@ impl SdkError {
 pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
-        OutboxInspection, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest, SdkError,
-        SignBatchOutcome, SignOutcome, SignSelector, StagedTransaction, payload_batch_digest,
+        OutboxInspection, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest,
+        PetalKeyOutcome, PetalKeyRequest, SdkError, SignBatchOutcome, SignOutcome, SignSelector,
+        StagedTransaction, payload_batch_digest,
     };
     use crate::bindings::bloom::chain::read as chain;
     use crate::bindings::bloom::env::runtime as env;
@@ -260,6 +287,14 @@ pub mod sdk {
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
         key::request(request_jcs).map_err(host_err)
+    }
+
+    pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
+        let request_jcs = serde_jcs::to_vec(request)
+            .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))?;
+        let outcome = request_key(&request_jcs)?;
+        serde_json::from_slice(&outcome)
+            .map_err(|error| SdkError::Message(format!("decode Petal key outcome: {error}")))
     }
 
     pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
