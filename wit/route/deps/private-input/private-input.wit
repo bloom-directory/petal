@@ -1,8 +1,29 @@
-package bloom:private-input@0.1.0;
+package bloom:private-input@0.2.0;
 
 interface ceremony {
   enum input-kind {
     evm-address,
+  }
+
+  /// Value-transfer context the host renders with its own labels in the
+  /// ceremony UI and cryptographically binds into the sealed passkey
+  /// approval. A Petal must not be able to get sign-off on a destination
+  /// while hiding how much value moves there. The host does not trust or
+  /// reinterpret these fields beyond displaying and binding them verbatim.
+  record transfer-context {
+    network: string,
+    asset: string,
+    /// Integer string of base units (e.g. wei), never a fractional/display
+    /// amount. Rendered together with `decimals`, never alone: a bare
+    /// integer next to a symbol (e.g. "1000000000000000000 eth") is exactly
+    /// the misleading rendering this field exists to prevent.
+    amount-base-units: string,
+    /// Number of decimal places `amount-base-units` must be divided by to
+    /// get a human display amount in `asset`.
+    decimals: u8,
+    /// The note/account identity the value is drawn from, shown to the
+    /// approver alongside the destination and amount.
+    source: string,
   }
 
   record request {
@@ -17,18 +38,69 @@ interface ceremony {
     title: string,
     prompt: string,
     kind: input-kind,
+    /// The ceremony renders and binds this transfer context alongside the
+    /// requested input. Required, not advisory: the only current `kind`
+    /// (`evm-address`) is always a value-transfer destination, and a Petal
+    /// must not be able to get sign-off on one without disclosing what it
+    /// authorizes moving.
+    transfer: transfer-context,
   }
 
+  /// Non-secret identifier for a pending ceremony, safe to log, display, or
+  /// persist in a Petal's own public state. It carries no authority: it is
+  /// not a bearer credential and cannot be used to complete, inspect, or
+  /// tamper with the ceremony.
+  ///
+  /// Host-generated, not `request.id` echoed back: `id` is caller-chosen and
+  /// explicitly not guaranteed unique (see `consume`), so two concurrent
+  /// requests with different content could share an `id` and would be
+  /// indistinguishable to any owner-facing surface correlating by it. The
+  /// host must instead derive operation-id per distinct request *content*
+  /// (e.g. from the same fingerprint it already uses to decide whether a
+  /// repeated request-input call is an idempotent resume): identical
+  /// retries resolve to the same operation-id; requests that differ in
+  /// content -- even if they reuse the same `id` -- must get different
+  /// operation-ids.
+  type operation-id = string;
+
+  /// Opaque, single-use handle identifying one *completed* ceremony session.
+  /// Returned only in `ready-input`, alongside the released value itself --
+  /// so holding it never grants access to anything the holder doesn't
+  /// already have. Not meaningful to guest code beyond passing it back to
+  /// `consume`; callers must not assume any structure or stability beyond
+  /// equality. Never confuse this with the operation-id: the operation-id is
+  /// safe to make public, this is not.
+  type session-handle = string;
+
   record pending-input {
-    ceremony-url: string,
+    operation-id: operation-id,
     expires-ms: u64,
+  }
+
+  record ready-input {
+    handle: session-handle,
+    value: string,
   }
 
   variant input-result {
     pending(pending-input),
-    ready(string),
+    ready(ready-input),
   }
 
+  /// Requests (or resumes) a private-input ceremony. Never returns a
+  /// browser-openable ceremony URL, or any other bearer credential, to guest
+  /// code: the host is solely responsible for surfacing the ceremony to its
+  /// owner, through whatever owner-facing status/launch surface it
+  /// implements, correlated by `operation-id`. This keeps the host side of
+  /// the ceremony free to change (including which service owns and hosts
+  /// it) without another contract change here.
   request-input: func(request: request) -> result<input-result, string>;
-  consume: func(id: string) -> result<_, string>;
+
+  /// Consumes a completed session by the one-time handle returned in
+  /// `ready-input` -- never by the caller-chosen `request.id` and never by
+  /// `operation-id`. `id` is not guaranteed unique across concurrent or
+  /// retried requests with differing content, so keying consumption off it
+  /// could remove an unrelated session that happened to share the same id.
+  /// The handle is unique per completed session by construction.
+  consume: func(handle: session-handle) -> result<_, string>;
 }
