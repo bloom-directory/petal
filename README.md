@@ -5,7 +5,7 @@ contract, Rust SDK, route builder, CLI, templates, and conformance fixtures.
 
 The route contract is `bloom:route@0.1.0`. Its canonical WIT is under
 `wit/route/`; custody-aware Petals use `bloom:key/derive@0.1.0` and
-payload-bearing `bloom:sign/signing@0.4.0`, including atomic ordered batches.
+payload-bearing `bloom:sign/signing@0.2.0`, including atomic ordered batches.
 
 ## Workspace
 

@@ -1,4 +1,4 @@
-package bloom:sign@0.4.0;
+package bloom:sign@0.2.0;
 
 interface signing {
   record approval-pending {

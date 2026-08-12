@@ -7,7 +7,7 @@ use std::path::Path;
 
 pub const ROUTE_PACKAGE: &str = "bloom:route@0.1.0";
 pub const ROUTE_WORLD: &str = "route-file";
-pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.4.0";
+pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.2.0";
 pub const KEY_DERIVE_INTERFACE: &str = "bloom:key/derive@0.1.0";
 pub const PACKAGE_SCHEMA: &str = "bloom.petal.package.v1";
 pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
@@ -61,8 +61,8 @@ pub const WIT_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../wit/route/deps/key/key.wit"),
     ),
     (
-        "deps/sign-v0.4/sign.wit",
-        include_bytes!("../wit/route/deps/sign-v0.4/sign.wit"),
+        "deps/sign-v0.2/sign.wit",
+        include_bytes!("../wit/route/deps/sign-v0.2/sign.wit"),
     ),
     (
         "deps/store/store.wit",

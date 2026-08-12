@@ -2937,7 +2937,7 @@ pub mod bloom {
                     };
                     let ptr13 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "bloom:sign/signing@0.4.0")]
+                    #[link(wasm_import_module = "bloom:sign/signing@0.2.0")]
                     unsafe extern "C" {
                         #[link_name = "sign-payload"]
                         fn wit_import14(_: *mut u8, _: *mut u8);
@@ -3218,7 +3218,7 @@ pub mod bloom {
                     };
                     let ptr15 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "bloom:sign/signing@0.4.0")]
+                    #[link(wasm_import_module = "bloom:sign/signing@0.2.0")]
                     unsafe extern "C" {
                         #[link_name = "sign-payload-batch"]
                         fn wit_import16(_: *mut u8, _: *mut u8);
@@ -5207,7 +5207,7 @@ tch-sign-request\x03\0\x0e\x01p\x02\x01q\x02\x0asignatures\x01\x10\0\x10approval
 -pending\x01\x01\0\x04\0\x11sign-batch-result\x03\0\x11\x01j\x01\x04\x01s\x01@\x01\
 \x07request\x0a\0\x13\x04\0\x0csign-payload\x01\x14\x01j\x01\x12\x01s\x01@\x01\x07\
 request\x0f\0\x15\x04\0\x12sign-payload-batch\x01\x16\x03\0\x18bloom:sign/signin\
-g@0.4.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09val\
+g@0.2.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09val\
 ue-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-per-g\
 as\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action-ids\x0aexpires-msw\x04\
 \0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07plan-mds\x08\
@@ -5288,7 +5288,7 @@ ad-batch-sign-request\x03\0\x0e\x01p\x02\x01q\x02\x0asignatures\x01\x10\0\x10app
 roval-pending\x01\x01\0\x04\0\x11sign-batch-result\x03\0\x11\x01j\x01\x04\x01s\x01\
 @\x01\x07request\x0a\0\x13\x04\0\x0csign-payload\x01\x14\x01j\x01\x12\x01s\x01@\x01\
 \x07request\x0f\0\x15\x04\0\x12sign-payload-batch\x01\x16\x03\0\x18bloom:sign/si\
-gning@0.4.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09\
+gning@0.2.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09\
 value-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-pe\
 r-gas\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action-ids\x0aexpires-m\
 sw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07plan-\
