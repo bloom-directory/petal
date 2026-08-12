@@ -8,6 +8,7 @@ use std::path::Path;
 pub const ROUTE_PACKAGE: &str = "bloom:route@0.1.0";
 pub const ROUTE_WORLD: &str = "route-file";
 pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.1.0";
+pub const PRIVATE_INPUT_INTERFACE: &str = "bloom:private-input/ceremony@0.1.0";
 pub const PACKAGE_SCHEMA: &str = "bloom.petal.package.v1";
 pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
 pub const BUILD_MANIFEST_SCHEMA: &str = "bloom.petal.build-manifest.v1";
@@ -23,6 +24,7 @@ pub enum HostInterface {
     ChainRead,
     VfsReadwrite,
     EnvRuntime,
+    PrivateInputCeremony,
 }
 
 impl HostInterface {
@@ -35,6 +37,7 @@ impl HostInterface {
             Self::TxOutbox => &["bloom:tx.outbox"],
             Self::ChainRead => &["bloom:chain"],
             Self::VfsReadwrite => &["bloom:vfs.read", "bloom:vfs.write"],
+            Self::PrivateInputCeremony => &["bloom:private-input"],
         }
     }
 }
@@ -68,6 +71,10 @@ pub const WIT_FILES: &[(&str, &[u8])] = &[
     (
         "deps/vfs/vfs.wit",
         include_bytes!("../wit/route/deps/vfs/vfs.wit"),
+    ),
+    (
+        "deps/private-input/private-input.wit",
+        include_bytes!("../wit/route/deps/private-input/private-input.wit"),
     ),
 ];
 
@@ -139,6 +146,7 @@ pub fn host_interface(import: &str) -> Option<HostInterface> {
         "bloom:chain/read@0.1.0" => Some(HostInterface::ChainRead),
         "bloom:vfs/readwrite@0.1.0" => Some(HostInterface::VfsReadwrite),
         "bloom:env/runtime@0.1.0" => Some(HostInterface::EnvRuntime),
+        PRIVATE_INPUT_INTERFACE => Some(HostInterface::PrivateInputCeremony),
         _ => None,
     }
 }
@@ -158,7 +166,7 @@ mod tests {
     #[test]
     fn wit_digest_is_stable_and_complete() {
         assert_eq!(wit_digest().len(), 64);
-        assert_eq!(WIT_FILES.len(), 8);
+        assert_eq!(WIT_FILES.len(), 9);
         assert!(WIT_FILES.iter().all(|(_, bytes)| !bytes.is_empty()));
     }
 
@@ -183,6 +191,10 @@ mod tests {
             Some(&["bloom:vfs.read", "bloom:vfs.write"][..])
         );
         assert_eq!(host_interface("bloom:sign/signing@9.9.9"), None);
+        assert_eq!(
+            capability_for_import(PRIVATE_INPUT_INTERFACE),
+            Some("bloom:private-input")
+        );
         assert_eq!(capability_for_import("unknown:host/api@1.0.0"), None);
     }
 }

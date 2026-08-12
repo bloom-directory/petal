@@ -139,6 +139,34 @@ pub struct OutboxInspection {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrivateInputKind {
+    EvmAddress,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrivateInputRequest {
+    pub id: String,
+    /// Passkey wallet authorizing release of the private value. When omitted,
+    /// Bloom may select the sole passkey wallet on the machine.
+    pub approval_wallet: Option<String>,
+    /// Wallet whose Privacy Pools note is being withdrawn. This is context,
+    /// not necessarily the passkey approval identity.
+    pub wallet: String,
+    pub title: String,
+    pub prompt: String,
+    pub kind: PrivateInputKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrivateInputOutcome {
+    Pending {
+        ceremony_url: String,
+        expires_ms: u64,
+    },
+    Ready(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HostStatus {
     NotFound,
     Denied,
@@ -171,12 +199,13 @@ impl SdkError {
 pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
-        OutboxInspection, SdkError, SignBatchOutcome, SignHashOutcome, SignRequest,
-        StagedTransaction,
+        OutboxInspection, PrivateInputKind, PrivateInputOutcome, PrivateInputRequest, SdkError,
+        SignBatchOutcome, SignHashOutcome, SignRequest, StagedTransaction,
     };
     use crate::bindings::bloom::chain::read as chain;
     use crate::bindings::bloom::env::runtime as env;
     use crate::bindings::bloom::http::fetch as http;
+    use crate::bindings::bloom::private_input::ceremony as private_input;
     use crate::bindings::bloom::sign::signing as sign;
     use crate::bindings::bloom::store::kv as store;
     use crate::bindings::bloom::tx::outbox as tx;
@@ -278,6 +307,34 @@ pub mod sdk {
                 receipt_json: inspection.receipt_json,
             })
             .map_err(host_err)
+    }
+
+    pub fn request_private_input(
+        request: &PrivateInputRequest,
+    ) -> Result<PrivateInputOutcome, SdkError> {
+        let kind = match request.kind {
+            PrivateInputKind::EvmAddress => private_input::InputKind::EvmAddress,
+        };
+        match private_input::request_input(&private_input::Request {
+            id: request.id.clone(),
+            wallet: request.wallet.clone(),
+            approval_wallet: request.approval_wallet.clone(),
+            title: request.title.clone(),
+            prompt: request.prompt.clone(),
+            kind,
+        })
+        .map_err(host_err)?
+        {
+            private_input::InputResult::Pending(pending) => Ok(PrivateInputOutcome::Pending {
+                ceremony_url: pending.ceremony_url,
+                expires_ms: pending.expires_ms,
+            }),
+            private_input::InputResult::Ready(value) => Ok(PrivateInputOutcome::Ready(value)),
+        }
+    }
+
+    pub fn consume_private_input(id: &str) -> Result<(), SdkError> {
+        private_input::consume(id).map_err(host_err)
     }
 
     pub fn chain_read(
