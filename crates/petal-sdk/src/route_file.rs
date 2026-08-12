@@ -2315,6 +2315,336 @@ pub mod bloom {
             }
         }
     }
+    pub mod private_input {
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod ceremony {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum InputKind {
+                EvmAddress,
+            }
+            impl ::core::fmt::Debug for InputKind {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        InputKind::EvmAddress => {
+                            f.debug_tuple("InputKind::EvmAddress").finish()
+                        }
+                    }
+                }
+            }
+            impl InputKind {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> InputKind {
+                    if !cfg!(debug_assertions) {
+                        return unsafe { ::core::mem::transmute(val) };
+                    }
+                    match val {
+                        0 => InputKind::EvmAddress,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub struct Request {
+                pub id: _rt::String,
+                /// Subject wallet used by the petal (for example, the deposited note's
+                /// wallet). This is not implicitly the approval identity.
+                pub wallet: _rt::String,
+                /// Passkey wallet authorizing release. If absent, Bloom uses the subject
+                /// wallet when it is passkey-gated, otherwise the sole passkey wallet. It
+                /// fails closed when no unique passkey choice exists.
+                pub approval_wallet: Option<_rt::String>,
+                pub title: _rt::String,
+                pub prompt: _rt::String,
+                pub kind: InputKind,
+            }
+            impl ::core::fmt::Debug for Request {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("Request")
+                        .field("id", &self.id)
+                        .field("wallet", &self.wallet)
+                        .field("approval-wallet", &self.approval_wallet)
+                        .field("title", &self.title)
+                        .field("prompt", &self.prompt)
+                        .field("kind", &self.kind)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub struct PendingInput {
+                pub ceremony_url: _rt::String,
+                pub expires_ms: u64,
+            }
+            impl ::core::fmt::Debug for PendingInput {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("PendingInput")
+                        .field("ceremony-url", &self.ceremony_url)
+                        .field("expires-ms", &self.expires_ms)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub enum InputResult {
+                Pending(PendingInput),
+                Ready(_rt::String),
+            }
+            impl ::core::fmt::Debug for InputResult {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    match self {
+                        InputResult::Pending(e) => {
+                            f.debug_tuple("InputResult::Pending").field(e).finish()
+                        }
+                        InputResult::Ready(e) => {
+                            f.debug_tuple("InputResult::Ready").field(e).finish()
+                        }
+                    }
+                }
+            }
+            #[allow(unused_unsafe, clippy::all)]
+            #[allow(async_fn_in_trait)]
+            pub fn request_input(request: &Request) -> Result<InputResult, _rt::String> {
+                unsafe {
+                    #[repr(align(8))]
+                    struct RetArea(
+                        [::core::mem::MaybeUninit<
+                            u8,
+                        >; 24 + 2 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let mut ret_area = RetArea(
+                        [::core::mem::MaybeUninit::uninit(); 24
+                            + 2 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let Request {
+                        id: id0,
+                        wallet: wallet0,
+                        approval_wallet: approval_wallet0,
+                        title: title0,
+                        prompt: prompt0,
+                        kind: kind0,
+                    } = request;
+                    let vec1 = id0;
+                    let ptr1 = vec1.as_ptr().cast::<u8>();
+                    let len1 = vec1.len();
+                    let vec2 = wallet0;
+                    let ptr2 = vec2.as_ptr().cast::<u8>();
+                    let len2 = vec2.len();
+                    let (result4_0, result4_1, result4_2) = match approval_wallet0 {
+                        Some(e) => {
+                            let vec3 = e;
+                            let ptr3 = vec3.as_ptr().cast::<u8>();
+                            let len3 = vec3.len();
+                            (1i32, ptr3.cast_mut(), len3)
+                        }
+                        None => (0i32, ::core::ptr::null_mut(), 0usize),
+                    };
+                    let vec5 = title0;
+                    let ptr5 = vec5.as_ptr().cast::<u8>();
+                    let len5 = vec5.len();
+                    let vec6 = prompt0;
+                    let ptr6 = vec6.as_ptr().cast::<u8>();
+                    let len6 = vec6.len();
+                    let ptr7 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    #[cfg(target_arch = "wasm32")]
+                    #[link(wasm_import_module = "bloom:private-input/ceremony@0.1.0")]
+                    unsafe extern "C" {
+                        #[link_name = "request-input"]
+                        fn wit_import8(
+                            _: *mut u8,
+                            _: usize,
+                            _: *mut u8,
+                            _: usize,
+                            _: i32,
+                            _: *mut u8,
+                            _: usize,
+                            _: *mut u8,
+                            _: usize,
+                            _: *mut u8,
+                            _: usize,
+                            _: i32,
+                            _: *mut u8,
+                        );
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    unsafe extern "C" fn wit_import8(
+                        _: *mut u8,
+                        _: usize,
+                        _: *mut u8,
+                        _: usize,
+                        _: i32,
+                        _: *mut u8,
+                        _: usize,
+                        _: *mut u8,
+                        _: usize,
+                        _: *mut u8,
+                        _: usize,
+                        _: i32,
+                        _: *mut u8,
+                    ) {
+                        unreachable!()
+                    }
+                    wit_import8(
+                        ptr1.cast_mut(),
+                        len1,
+                        ptr2.cast_mut(),
+                        len2,
+                        result4_0,
+                        result4_1,
+                        result4_2,
+                        ptr5.cast_mut(),
+                        len5,
+                        ptr6.cast_mut(),
+                        len6,
+                        kind0.clone() as i32,
+                        ptr7,
+                    );
+                    let l9 = i32::from(*ptr7.add(0).cast::<u8>());
+                    let result22 = match l9 {
+                        0 => {
+                            let e = {
+                                let l10 = i32::from(*ptr7.add(8).cast::<u8>());
+                                let v18 = match l10 {
+                                    0 => {
+                                        let e18 = {
+                                            let l11 = *ptr7.add(16).cast::<*mut u8>();
+                                            let l12 = *ptr7
+                                                .add(16 + 1 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<usize>();
+                                            let len13 = l12;
+                                            let bytes13 = _rt::Vec::from_raw_parts(
+                                                l11.cast(),
+                                                len13,
+                                                len13,
+                                            );
+                                            let l14 = *ptr7
+                                                .add(16 + 2 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<i64>();
+                                            PendingInput {
+                                                ceremony_url: _rt::string_lift(bytes13),
+                                                expires_ms: l14 as u64,
+                                            }
+                                        };
+                                        InputResult::Pending(e18)
+                                    }
+                                    n => {
+                                        debug_assert_eq!(n, 1, "invalid enum discriminant");
+                                        let e18 = {
+                                            let l15 = *ptr7.add(16).cast::<*mut u8>();
+                                            let l16 = *ptr7
+                                                .add(16 + 1 * ::core::mem::size_of::<*const u8>())
+                                                .cast::<usize>();
+                                            let len17 = l16;
+                                            let bytes17 = _rt::Vec::from_raw_parts(
+                                                l15.cast(),
+                                                len17,
+                                                len17,
+                                            );
+                                            _rt::string_lift(bytes17)
+                                        };
+                                        InputResult::Ready(e18)
+                                    }
+                                };
+                                v18
+                            };
+                            Ok(e)
+                        }
+                        1 => {
+                            let e = {
+                                let l19 = *ptr7.add(8).cast::<*mut u8>();
+                                let l20 = *ptr7
+                                    .add(8 + 1 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len21 = l20;
+                                let bytes21 = _rt::Vec::from_raw_parts(
+                                    l19.cast(),
+                                    len21,
+                                    len21,
+                                );
+                                _rt::string_lift(bytes21)
+                            };
+                            Err(e)
+                        }
+                        _ => _rt::invalid_enum_discriminant(),
+                    };
+                    result22
+                }
+            }
+            #[allow(unused_unsafe, clippy::all)]
+            #[allow(async_fn_in_trait)]
+            pub fn consume(id: &str) -> Result<(), _rt::String> {
+                unsafe {
+                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+                    struct RetArea(
+                        [::core::mem::MaybeUninit<
+                            u8,
+                        >; 3 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let mut ret_area = RetArea(
+                        [::core::mem::MaybeUninit::uninit(); 3
+                            * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let vec0 = id;
+                    let ptr0 = vec0.as_ptr().cast::<u8>();
+                    let len0 = vec0.len();
+                    let ptr1 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    #[cfg(target_arch = "wasm32")]
+                    #[link(wasm_import_module = "bloom:private-input/ceremony@0.1.0")]
+                    unsafe extern "C" {
+                        #[link_name = "consume"]
+                        fn wit_import2(_: *mut u8, _: usize, _: *mut u8);
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    unsafe extern "C" fn wit_import2(_: *mut u8, _: usize, _: *mut u8) {
+                        unreachable!()
+                    }
+                    wit_import2(ptr0.cast_mut(), len0, ptr1);
+                    let l3 = i32::from(*ptr1.add(0).cast::<u8>());
+                    let result7 = match l3 {
+                        0 => {
+                            let e = ();
+                            Ok(e)
+                        }
+                        1 => {
+                            let e = {
+                                let l4 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l5 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len6 = l5;
+                                let bytes6 = _rt::Vec::from_raw_parts(
+                                    l4.cast(),
+                                    len6,
+                                    len6,
+                                );
+                                _rt::string_lift(bytes6)
+                            };
+                            Err(e)
+                        }
+                        _ => _rt::invalid_enum_discriminant(),
+                    };
+                    result7
+                }
+            }
+        }
+    }
     pub mod route {
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod types {
@@ -4776,10 +5106,10 @@ macro_rules! __export_route_file_impl {
         "wasm32")] #[unsafe (link_section =
         "component-type:wit-bindgen:0.57.1:bloom:route@0.1.0:route-file:imports and exports")]
         #[doc(hidden)] #[allow(clippy::octal_escapes)] pub static
-        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 2569] = *
+        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 2864] = *
         b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x88\x13\x01A\x02\x01\
-A)\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xaf\x15\x01A\x02\x01\
+A+\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
 body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04body\x02\
 \x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\0\x05\
 fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01j\x01\
@@ -4818,25 +5148,31 @@ s\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01@\x01
 j\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03\
 leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03key\
 s\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x06\x01B\x0f\
-\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06pa\
-rams\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\
-\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\
-\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\
-\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescriptio\
-n\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutab\
-le\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01\
-s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\
-\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x07\x02\x03\0\x07\
-\x03ctx\x03\0\x03ctx\x03\0\x08\x02\x03\0\x07\x05entry\x03\0\x05entry\x03\0\x0a\x02\
-\x03\0\x07\x0broute-error\x03\0\x0broute-error\x03\0\x0c\x02\x03\0\x07\x0aroute-\
-meta\x03\0\x0aroute-meta\x03\0\x0e\x01j\x01\x0f\x01\x0d\x01@\x01\x03ctx\x09\0\x10\
-\x04\0\x08metadata\x01\x11\x01j\x01\x0b\x01\x0d\x01@\x01\x03ctx\x09\0\x12\x04\0\x06\
-lookup\x01\x13\x01p\x0b\x01j\x01\x14\x01\x0d\x01@\x01\x03ctx\x09\0\x15\x04\0\x04\
-list\x01\x16\x01p}\x01j\x01\x17\x01\x0d\x01@\x01\x03ctx\x09\0\x18\x04\0\x04read\x01\
-\x19\x01j\0\x01\x0d\x01@\x02\x03ctx\x09\x04body\x17\0\x1a\x04\0\x05write\x01\x1b\
-\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\x0b\x10\x01\0\x0aroute-file\x03\0\0\
-\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.247.0\x10wit-bind\
-gen-rust\x060.57.1";
+\x01m\x01\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01ks\x01r\x06\x02ids\x06wa\
+llets\x0fapproval-wallet\x02\x05titles\x06prompts\x04kind\x01\x04\0\x07request\x03\
+\0\x03\x01r\x02\x0cceremony-urls\x0aexpires-msw\x04\0\x0dpending-input\x03\0\x05\
+\x01q\x02\x07pending\x01\x06\0\x05ready\x01s\0\x04\0\x0cinput-result\x03\0\x07\x01\
+j\x01\x08\x01s\x01@\x01\x07request\x04\0\x09\x04\0\x0drequest-input\x01\x0a\x01j\
+\0\x01s\x01@\x01\x02ids\0\x0b\x04\0\x07consume\x01\x0c\x03\0\"bloom:private-inpu\
+t/ceremony@0.1.0\x05\x07\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-root\
+s\x0cpackage-hashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01\
+m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04\
+names\x04kind\x06\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\
+\x01ps\x01r\x0a\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\
+\x0bwrite-async\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\
+\x0bsign-intent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09\
+not-found\x01s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backe\
+nd\x01s\0\x0bunsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:ro\
+ute/types@0.1.0\x05\x08\x02\x03\0\x08\x03ctx\x03\0\x03ctx\x03\0\x09\x02\x03\0\x08\
+\x05entry\x03\0\x05entry\x03\0\x0b\x02\x03\0\x08\x0broute-error\x03\0\x0broute-e\
+rror\x03\0\x0d\x02\x03\0\x08\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x0f\x01j\x01\
+\x10\x01\x0e\x01@\x01\x03ctx\x0a\0\x11\x04\0\x08metadata\x01\x12\x01j\x01\x0c\x01\
+\x0e\x01@\x01\x03ctx\x0a\0\x13\x04\0\x06lookup\x01\x14\x01p\x0c\x01j\x01\x15\x01\
+\x0e\x01@\x01\x03ctx\x0a\0\x16\x04\0\x04list\x01\x17\x01p}\x01j\x01\x18\x01\x0e\x01\
+@\x01\x03ctx\x0a\0\x19\x04\0\x04read\x01\x1a\x01j\0\x01\x0e\x01@\x02\x03ctx\x0a\x04\
+body\x18\0\x1b\x04\0\x05write\x01\x1c\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\
+\x0b\x10\x01\0\x0aroute-file\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0d\
+wit-component\x070.247.0\x10wit-bindgen-rust\x060.57.1";
         };
     };
 }
@@ -4849,9 +5185,9 @@ pub use __export_route_file_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2490] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x99\x12\x01A\x02\x01\
-A\x18\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2785] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xc0\x14\x01A\x02\x01\
+A\x1a\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
 \x04body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04bo\
 dy\x02\x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\
 \0\x05fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01\
@@ -4890,21 +5226,27 @@ s\x04body\x0b\0\x0e\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x0
 \x05\x01B\x0b\x01j\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\
 \x01s\x01@\x01\x03leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01\
 s\x01@\x01\x03keys\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1\
-.0\x05\x06\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-h\
-ashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04\
-file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\
-\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\
-\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-as\
-ync\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-i\
-ntent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01\
-s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0b\
-unsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1\
-.0\x05\x07\x02\x03\0\x07\x03ctx\x03\0\x03ctx\x03\0\x08\x02\x03\0\x07\x05entry\x03\
-\0\x05entry\x03\0\x0a\x02\x03\0\x07\x0broute-error\x03\0\x0broute-error\x03\0\x0c\
-\x02\x03\0\x07\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x0e\x04\0<bloom:route/rou\
-te-file-with-all-of-its-exports-removed@0.1.0\x04\0\x0b0\x01\0*route-file-with-a\
-ll-of-its-exports-removed\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit\
--component\x070.247.0\x10wit-bindgen-rust\x060.57.1";
+.0\x05\x06\x01B\x0f\x01m\x01\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01ks\x01\
+r\x06\x02ids\x06wallets\x0fapproval-wallet\x02\x05titles\x06prompts\x04kind\x01\x04\
+\0\x07request\x03\0\x03\x01r\x02\x0cceremony-urls\x0aexpires-msw\x04\0\x0dpendin\
+g-input\x03\0\x05\x01q\x02\x07pending\x01\x06\0\x05ready\x01s\0\x04\0\x0cinput-r\
+esult\x03\0\x07\x01j\x01\x08\x01s\x01@\x01\x07request\x04\0\x09\x04\0\x0drequest\
+-input\x01\x0a\x01j\0\x01s\x01@\x01\x02ids\0\x0b\x04\0\x07consume\x01\x0c\x03\0\"\
+bloom:private-input/ceremony@0.1.0\x05\x07\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\
+\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03\
+ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01\
+kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05\
+entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-\
+effecting-read\x7f\x0bwrite-async\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0d\
+required-caps\x0a\x0bsign-intent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\
+\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invali\
+d\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\
+\0\x17bloom:route/types@0.1.0\x05\x08\x02\x03\0\x08\x03ctx\x03\0\x03ctx\x03\0\x09\
+\x02\x03\0\x08\x05entry\x03\0\x05entry\x03\0\x0b\x02\x03\0\x08\x0broute-error\x03\
+\0\x0broute-error\x03\0\x0d\x02\x03\0\x08\x0aroute-meta\x03\0\x0aroute-meta\x03\0\
+\x0f\x04\0<bloom:route/route-file-with-all-of-its-exports-removed@0.1.0\x04\0\x0b\
+0\x01\0*route-file-with-all-of-its-exports-removed\x03\0\0\0G\x09producers\x01\x0c\
+processed-by\x02\x0dwit-component\x070.247.0\x10wit-bindgen-rust\x060.57.1";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {
