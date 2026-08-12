@@ -2354,7 +2354,12 @@ pub mod bloom {
             #[derive(Clone)]
             pub struct Request {
                 pub id: _rt::String,
+                /// Subject wallet used by the petal (for example, the deposited note's
+                /// wallet). This is not implicitly the approval identity.
                 pub wallet: _rt::String,
+                /// Passkey wallet authorizing release. If absent, Bloom uses the subject
+                /// wallet when it is passkey-gated, otherwise the sole passkey wallet. It
+                /// fails closed when no unique passkey choice exists.
                 pub approval_wallet: Option<_rt::String>,
                 pub title: _rt::String,
                 pub prompt: _rt::String,
