@@ -2315,6 +2315,85 @@ pub mod bloom {
             }
         }
     }
+    pub mod key {
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod derive {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[allow(unused_unsafe, clippy::all)]
+            #[allow(async_fn_in_trait)]
+            pub fn request(request: &[u8]) -> Result<_rt::Vec<u8>, _rt::String> {
+                unsafe {
+                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+                    struct RetArea(
+                        [::core::mem::MaybeUninit<
+                            u8,
+                        >; 3 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let mut ret_area = RetArea(
+                        [::core::mem::MaybeUninit::uninit(); 3
+                            * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let vec0 = request;
+                    let ptr0 = vec0.as_ptr().cast::<u8>();
+                    let len0 = vec0.len();
+                    let ptr1 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    #[cfg(target_arch = "wasm32")]
+                    #[link(wasm_import_module = "bloom:key/derive@0.1.0")]
+                    unsafe extern "C" {
+                        #[link_name = "request"]
+                        fn wit_import2(_: *mut u8, _: usize, _: *mut u8);
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    unsafe extern "C" fn wit_import2(_: *mut u8, _: usize, _: *mut u8) {
+                        unreachable!()
+                    }
+                    wit_import2(ptr0.cast_mut(), len0, ptr1);
+                    let l3 = i32::from(*ptr1.add(0).cast::<u8>());
+                    let result10 = match l3 {
+                        0 => {
+                            let e = {
+                                let l4 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l5 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len6 = l5;
+                                <_ as From<
+                                    _rt::Vec<_>,
+                                >>::from(_rt::Vec::from_raw_parts(l4.cast(), len6, len6))
+                            };
+                            Ok(e)
+                        }
+                        1 => {
+                            let e = {
+                                let l7 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l8 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len9 = l8;
+                                let bytes9 = _rt::Vec::from_raw_parts(
+                                    l7.cast(),
+                                    len9,
+                                    len9,
+                                );
+                                _rt::string_lift(bytes9)
+                            };
+                            Err(e)
+                        }
+                        _ => _rt::invalid_enum_discriminant(),
+                    };
+                    result10
+                }
+            }
+        }
+    }
     pub mod private_input {
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod ceremony {
@@ -2818,19 +2897,17 @@ pub mod bloom {
             static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
             use super::super::super::_rt;
             #[derive(Clone)]
-            pub struct ApprovalRequired {
+            pub struct ApprovalPending {
                 pub action_id: _rt::String,
-                pub ceremony_url: _rt::String,
                 pub expires_ms: u64,
             }
-            impl ::core::fmt::Debug for ApprovalRequired {
+            impl ::core::fmt::Debug for ApprovalPending {
                 fn fmt(
                     &self,
                     f: &mut ::core::fmt::Formatter<'_>,
                 ) -> ::core::fmt::Result {
-                    f.debug_struct("ApprovalRequired")
+                    f.debug_struct("ApprovalPending")
                         .field("action-id", &self.action_id)
-                        .field("ceremony-url", &self.ceremony_url)
                         .field("expires-ms", &self.expires_ms)
                         .finish()
                 }
@@ -2838,7 +2915,7 @@ pub mod bloom {
             #[derive(Clone)]
             pub enum SignResult {
                 Signature(_rt::Vec<u8>),
-                ApprovalRequired(ApprovalRequired),
+                ApprovalPending(ApprovalPending),
             }
             impl ::core::fmt::Debug for SignResult {
                 fn fmt(
@@ -2849,36 +2926,145 @@ pub mod bloom {
                         SignResult::Signature(e) => {
                             f.debug_tuple("SignResult::Signature").field(e).finish()
                         }
-                        SignResult::ApprovalRequired(e) => {
-                            f.debug_tuple("SignResult::ApprovalRequired")
+                        SignResult::ApprovalPending(e) => {
+                            f.debug_tuple("SignResult::ApprovalPending")
                                 .field(e)
                                 .finish()
                         }
                     }
                 }
             }
-            #[derive(Clone)]
-            pub struct SignRequest {
-                pub wallet: _rt::String,
-                pub hash32: _rt::Vec<u8>,
-                pub intent: _rt::String,
+            #[repr(u8)]
+            #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+            pub enum Selector {
+                Exact,
+                Reusable,
             }
-            impl ::core::fmt::Debug for SignRequest {
+            impl ::core::fmt::Debug for Selector {
                 fn fmt(
                     &self,
                     f: &mut ::core::fmt::Formatter<'_>,
                 ) -> ::core::fmt::Result {
-                    f.debug_struct("SignRequest")
+                    match self {
+                        Selector::Exact => f.debug_tuple("Selector::Exact").finish(),
+                        Selector::Reusable => {
+                            f.debug_tuple("Selector::Reusable").finish()
+                        }
+                    }
+                }
+            }
+            impl Selector {
+                #[doc(hidden)]
+                pub unsafe fn _lift(val: u8) -> Selector {
+                    if !cfg!(debug_assertions) {
+                        return unsafe { ::core::mem::transmute(val) };
+                    }
+                    match val {
+                        0 => Selector::Exact,
+                        1 => Selector::Reusable,
+                        _ => panic!("invalid enum discriminant"),
+                    }
+                }
+            }
+            #[derive(Clone)]
+            pub struct PayloadSignRequest {
+                pub wallet: _rt::String,
+                pub preimage: _rt::Vec<u8>,
+                pub claimed_hash: _rt::Vec<u8>,
+                pub signature_algorithm: _rt::String,
+                pub operation_class: _rt::String,
+                pub petal_use_claim_jcs: _rt::Vec<u8>,
+                pub claim_assurance_evidence: Option<_rt::Vec<u8>>,
+                pub approval_hint: Option<_rt::String>,
+                pub action: Option<_rt::Vec<u8>>,
+                pub advisory: Option<_rt::Vec<u8>>,
+                pub selector: Selector,
+                pub key_ref_jcs: Option<_rt::Vec<u8>>,
+            }
+            impl ::core::fmt::Debug for PayloadSignRequest {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("PayloadSignRequest")
                         .field("wallet", &self.wallet)
-                        .field("hash32", &self.hash32)
-                        .field("intent", &self.intent)
+                        .field("preimage", &self.preimage)
+                        .field("claimed-hash", &self.claimed_hash)
+                        .field("signature-algorithm", &self.signature_algorithm)
+                        .field("operation-class", &self.operation_class)
+                        .field("petal-use-claim-jcs", &self.petal_use_claim_jcs)
+                        .field(
+                            "claim-assurance-evidence",
+                            &self.claim_assurance_evidence,
+                        )
+                        .field("approval-hint", &self.approval_hint)
+                        .field("action", &self.action)
+                        .field("advisory", &self.advisory)
+                        .field("selector", &self.selector)
+                        .field("key-ref-jcs", &self.key_ref_jcs)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub struct PayloadSignItem {
+                pub preimage: _rt::Vec<u8>,
+                pub claimed_hash: _rt::Vec<u8>,
+            }
+            impl ::core::fmt::Debug for PayloadSignItem {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("PayloadSignItem")
+                        .field("preimage", &self.preimage)
+                        .field("claimed-hash", &self.claimed_hash)
+                        .finish()
+                }
+            }
+            #[derive(Clone)]
+            pub struct PayloadBatchSignRequest {
+                pub wallet: _rt::String,
+                /// Ordered and atomic. The claim payload digest is SHA-256 over
+                /// "bloom.petal.payload-batch.v1\0", the u64-BE item count, then each
+                /// u64-BE preimage length and exact preimage bytes in this order.
+                pub payloads: _rt::Vec<PayloadSignItem>,
+                pub signature_algorithm: _rt::String,
+                pub operation_class: _rt::String,
+                pub petal_use_claim_jcs: _rt::Vec<u8>,
+                pub claim_assurance_evidence: Option<_rt::Vec<u8>>,
+                pub approval_hint: Option<_rt::String>,
+                pub action: Option<_rt::Vec<u8>>,
+                pub advisory: Option<_rt::Vec<u8>>,
+                pub selector: Selector,
+                pub key_ref_jcs: Option<_rt::Vec<u8>>,
+            }
+            impl ::core::fmt::Debug for PayloadBatchSignRequest {
+                fn fmt(
+                    &self,
+                    f: &mut ::core::fmt::Formatter<'_>,
+                ) -> ::core::fmt::Result {
+                    f.debug_struct("PayloadBatchSignRequest")
+                        .field("wallet", &self.wallet)
+                        .field("payloads", &self.payloads)
+                        .field("signature-algorithm", &self.signature_algorithm)
+                        .field("operation-class", &self.operation_class)
+                        .field("petal-use-claim-jcs", &self.petal_use_claim_jcs)
+                        .field(
+                            "claim-assurance-evidence",
+                            &self.claim_assurance_evidence,
+                        )
+                        .field("approval-hint", &self.approval_hint)
+                        .field("action", &self.action)
+                        .field("advisory", &self.advisory)
+                        .field("selector", &self.selector)
+                        .field("key-ref-jcs", &self.key_ref_jcs)
                         .finish()
                 }
             }
             #[derive(Clone)]
             pub enum SignBatchResult {
                 Signatures(_rt::Vec<_rt::Vec<u8>>),
-                ApprovalRequired(ApprovalRequired),
+                ApprovalPending(ApprovalPending),
             }
             impl ::core::fmt::Debug for SignBatchResult {
                 fn fmt(
@@ -2891,8 +3077,8 @@ pub mod bloom {
                                 .field(e)
                                 .finish()
                         }
-                        SignBatchResult::ApprovalRequired(e) => {
-                            f.debug_tuple("SignBatchResult::ApprovalRequired")
+                        SignBatchResult::ApprovalPending(e) => {
+                            f.debug_tuple("SignBatchResult::ApprovalPending")
                                 .field(e)
                                 .finish()
                         }
@@ -2901,319 +3087,563 @@ pub mod bloom {
             }
             #[allow(unused_unsafe, clippy::all)]
             #[allow(async_fn_in_trait)]
-            pub fn sign_hash(
-                wallet: &str,
-                hash32: &[u8],
-                intent: &str,
+            pub fn sign_payload(
+                request: &PayloadSignRequest,
             ) -> Result<SignResult, _rt::String> {
                 unsafe {
                     #[repr(align(8))]
                     struct RetArea(
                         [::core::mem::MaybeUninit<
                             u8,
-                        >; 24 + 4 * ::core::mem::size_of::<*const u8>()],
+                        >; 28 * ::core::mem::size_of::<*const u8>()],
                     );
                     let mut ret_area = RetArea(
-                        [::core::mem::MaybeUninit::uninit(); 24
-                            + 4 * ::core::mem::size_of::<*const u8>()],
+                        [::core::mem::MaybeUninit::uninit(); 28
+                            * ::core::mem::size_of::<*const u8>()],
                     );
-                    let vec0 = wallet;
-                    let ptr0 = vec0.as_ptr().cast::<u8>();
-                    let len0 = vec0.len();
-                    let vec1 = hash32;
-                    let ptr1 = vec1.as_ptr().cast::<u8>();
-                    let len1 = vec1.len();
-                    let vec2 = intent;
+                    let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    let PayloadSignRequest {
+                        wallet: wallet1,
+                        preimage: preimage1,
+                        claimed_hash: claimed_hash1,
+                        signature_algorithm: signature_algorithm1,
+                        operation_class: operation_class1,
+                        petal_use_claim_jcs: petal_use_claim_jcs1,
+                        claim_assurance_evidence: claim_assurance_evidence1,
+                        approval_hint: approval_hint1,
+                        action: action1,
+                        advisory: advisory1,
+                        selector: selector1,
+                        key_ref_jcs: key_ref_jcs1,
+                    } = request;
+                    let vec2 = wallet1;
                     let ptr2 = vec2.as_ptr().cast::<u8>();
                     let len2 = vec2.len();
-                    let ptr3 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    *ptr0.add(::core::mem::size_of::<*const u8>()).cast::<usize>() = len2;
+                    *ptr0.add(0).cast::<*mut u8>() = ptr2.cast_mut();
+                    let vec3 = preimage1;
+                    let ptr3 = vec3.as_ptr().cast::<u8>();
+                    let len3 = vec3.len();
+                    *ptr0.add(3 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len3;
+                    *ptr0
+                        .add(2 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr3.cast_mut();
+                    let vec4 = claimed_hash1;
+                    let ptr4 = vec4.as_ptr().cast::<u8>();
+                    let len4 = vec4.len();
+                    *ptr0.add(5 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len4;
+                    *ptr0
+                        .add(4 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr4.cast_mut();
+                    let vec5 = signature_algorithm1;
+                    let ptr5 = vec5.as_ptr().cast::<u8>();
+                    let len5 = vec5.len();
+                    *ptr0.add(7 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len5;
+                    *ptr0
+                        .add(6 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr5.cast_mut();
+                    let vec6 = operation_class1;
+                    let ptr6 = vec6.as_ptr().cast::<u8>();
+                    let len6 = vec6.len();
+                    *ptr0.add(9 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len6;
+                    *ptr0
+                        .add(8 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr6.cast_mut();
+                    let vec7 = petal_use_claim_jcs1;
+                    let ptr7 = vec7.as_ptr().cast::<u8>();
+                    let len7 = vec7.len();
+                    *ptr0
+                        .add(11 * ::core::mem::size_of::<*const u8>())
+                        .cast::<usize>() = len7;
+                    *ptr0
+                        .add(10 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr7.cast_mut();
+                    match claim_assurance_evidence1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(12 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec8 = e;
+                            let ptr8 = vec8.as_ptr().cast::<u8>();
+                            let len8 = vec8.len();
+                            *ptr0
+                                .add(14 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len8;
+                            *ptr0
+                                .add(13 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr8.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(12 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    match approval_hint1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(15 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec9 = e;
+                            let ptr9 = vec9.as_ptr().cast::<u8>();
+                            let len9 = vec9.len();
+                            *ptr0
+                                .add(17 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len9;
+                            *ptr0
+                                .add(16 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr9.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(15 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    match action1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(18 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec10 = e;
+                            let ptr10 = vec10.as_ptr().cast::<u8>();
+                            let len10 = vec10.len();
+                            *ptr0
+                                .add(20 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len10;
+                            *ptr0
+                                .add(19 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr10.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(18 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    match advisory1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(21 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec11 = e;
+                            let ptr11 = vec11.as_ptr().cast::<u8>();
+                            let len11 = vec11.len();
+                            *ptr0
+                                .add(23 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len11;
+                            *ptr0
+                                .add(22 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr11.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(21 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    *ptr0.add(24 * ::core::mem::size_of::<*const u8>()).cast::<u8>() = (selector1
+                        .clone() as i32) as u8;
+                    match key_ref_jcs1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(25 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec12 = e;
+                            let ptr12 = vec12.as_ptr().cast::<u8>();
+                            let len12 = vec12.len();
+                            *ptr0
+                                .add(27 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len12;
+                            *ptr0
+                                .add(26 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr12.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(25 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    let ptr13 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "bloom:sign/signing@0.1.0")]
+                    #[link(wasm_import_module = "bloom:sign/signing@0.2.0")]
                     unsafe extern "C" {
-                        #[link_name = "sign-hash"]
-                        fn wit_import4(
-                            _: *mut u8,
-                            _: usize,
-                            _: *mut u8,
-                            _: usize,
-                            _: *mut u8,
-                            _: usize,
-                            _: *mut u8,
-                        );
+                        #[link_name = "sign-payload"]
+                        fn wit_import14(_: *mut u8, _: *mut u8);
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import4(
-                        _: *mut u8,
-                        _: usize,
-                        _: *mut u8,
-                        _: usize,
-                        _: *mut u8,
-                        _: usize,
-                        _: *mut u8,
-                    ) {
+                    unsafe extern "C" fn wit_import14(_: *mut u8, _: *mut u8) {
                         unreachable!()
                     }
-                    wit_import4(
-                        ptr0.cast_mut(),
-                        len0,
-                        ptr1.cast_mut(),
-                        len1,
-                        ptr2.cast_mut(),
-                        len2,
-                        ptr3,
-                    );
-                    let l5 = i32::from(*ptr3.add(0).cast::<u8>());
-                    let result21 = match l5 {
+                    wit_import14(ptr0, ptr13);
+                    let l15 = i32::from(*ptr13.add(0).cast::<u8>());
+                    let result28 = match l15 {
                         0 => {
                             let e = {
-                                let l6 = i32::from(*ptr3.add(8).cast::<u8>());
-                                let v17 = match l6 {
+                                let l16 = i32::from(*ptr13.add(8).cast::<u8>());
+                                let v24 = match l16 {
                                     0 => {
-                                        let e17 = {
-                                            let l7 = *ptr3.add(16).cast::<*mut u8>();
-                                            let l8 = *ptr3
+                                        let e24 = {
+                                            let l17 = *ptr13.add(16).cast::<*mut u8>();
+                                            let l18 = *ptr13
                                                 .add(16 + 1 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<usize>();
-                                            let len9 = l8;
+                                            let len19 = l18;
                                             <_ as From<
                                                 _rt::Vec<_>,
-                                            >>::from(_rt::Vec::from_raw_parts(l7.cast(), len9, len9))
+                                            >>::from(_rt::Vec::from_raw_parts(l17.cast(), len19, len19))
                                         };
-                                        SignResult::Signature(e17)
+                                        SignResult::Signature(e24)
                                     }
                                     n => {
                                         debug_assert_eq!(n, 1, "invalid enum discriminant");
-                                        let e17 = {
-                                            let l10 = *ptr3.add(16).cast::<*mut u8>();
-                                            let l11 = *ptr3
+                                        let e24 = {
+                                            let l20 = *ptr13.add(16).cast::<*mut u8>();
+                                            let l21 = *ptr13
                                                 .add(16 + 1 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<usize>();
-                                            let len12 = l11;
-                                            let bytes12 = _rt::Vec::from_raw_parts(
-                                                l10.cast(),
-                                                len12,
-                                                len12,
+                                            let len22 = l21;
+                                            let bytes22 = _rt::Vec::from_raw_parts(
+                                                l20.cast(),
+                                                len22,
+                                                len22,
                                             );
-                                            let l13 = *ptr3
+                                            let l23 = *ptr13
                                                 .add(16 + 2 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>();
-                                            let l14 = *ptr3
-                                                .add(16 + 3 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>();
-                                            let len15 = l14;
-                                            let bytes15 = _rt::Vec::from_raw_parts(
-                                                l13.cast(),
-                                                len15,
-                                                len15,
-                                            );
-                                            let l16 = *ptr3
-                                                .add(16 + 4 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<i64>();
-                                            ApprovalRequired {
-                                                action_id: _rt::string_lift(bytes12),
-                                                ceremony_url: _rt::string_lift(bytes15),
-                                                expires_ms: l16 as u64,
+                                            ApprovalPending {
+                                                action_id: _rt::string_lift(bytes22),
+                                                expires_ms: l23 as u64,
                                             }
                                         };
-                                        SignResult::ApprovalRequired(e17)
+                                        SignResult::ApprovalPending(e24)
                                     }
                                 };
-                                v17
+                                v24
                             };
                             Ok(e)
                         }
                         1 => {
                             let e = {
-                                let l18 = *ptr3.add(8).cast::<*mut u8>();
-                                let l19 = *ptr3
+                                let l25 = *ptr13.add(8).cast::<*mut u8>();
+                                let l26 = *ptr13
                                     .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len20 = l19;
-                                let bytes20 = _rt::Vec::from_raw_parts(
-                                    l18.cast(),
-                                    len20,
-                                    len20,
+                                let len27 = l26;
+                                let bytes27 = _rt::Vec::from_raw_parts(
+                                    l25.cast(),
+                                    len27,
+                                    len27,
                                 );
-                                _rt::string_lift(bytes20)
+                                _rt::string_lift(bytes27)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result21
+                    result28
                 }
             }
             #[allow(unused_unsafe, clippy::all)]
             #[allow(async_fn_in_trait)]
-            pub fn sign_hashes(
-                requests: &[SignRequest],
+            pub fn sign_payload_batch(
+                request: &PayloadBatchSignRequest,
             ) -> Result<SignBatchResult, _rt::String> {
                 unsafe {
                     #[repr(align(8))]
                     struct RetArea(
                         [::core::mem::MaybeUninit<
                             u8,
-                        >; 24 + 4 * ::core::mem::size_of::<*const u8>()],
+                        >; 26 * ::core::mem::size_of::<*const u8>()],
                     );
                     let mut ret_area = RetArea(
-                        [::core::mem::MaybeUninit::uninit(); 24
-                            + 4 * ::core::mem::size_of::<*const u8>()],
+                        [::core::mem::MaybeUninit::uninit(); 26
+                            * ::core::mem::size_of::<*const u8>()],
                     );
-                    let vec4 = requests;
-                    let len4 = vec4.len();
-                    let layout4 = _rt::alloc::Layout::from_size_align(
-                            vec4.len() * (6 * ::core::mem::size_of::<*const u8>()),
+                    let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    let PayloadBatchSignRequest {
+                        wallet: wallet1,
+                        payloads: payloads1,
+                        signature_algorithm: signature_algorithm1,
+                        operation_class: operation_class1,
+                        petal_use_claim_jcs: petal_use_claim_jcs1,
+                        claim_assurance_evidence: claim_assurance_evidence1,
+                        approval_hint: approval_hint1,
+                        action: action1,
+                        advisory: advisory1,
+                        selector: selector1,
+                        key_ref_jcs: key_ref_jcs1,
+                    } = request;
+                    let vec2 = wallet1;
+                    let ptr2 = vec2.as_ptr().cast::<u8>();
+                    let len2 = vec2.len();
+                    *ptr0.add(::core::mem::size_of::<*const u8>()).cast::<usize>() = len2;
+                    *ptr0.add(0).cast::<*mut u8>() = ptr2.cast_mut();
+                    let vec6 = payloads1;
+                    let len6 = vec6.len();
+                    let layout6 = _rt::alloc::Layout::from_size_align(
+                            vec6.len() * (4 * ::core::mem::size_of::<*const u8>()),
                             ::core::mem::size_of::<*const u8>(),
                         )
                         .unwrap();
-                    let (result4, _cleanup4) = wit_bindgen::rt::Cleanup::new(layout4);
-                    for (i, e) in vec4.into_iter().enumerate() {
-                        let base = result4
-                            .add(i * (6 * ::core::mem::size_of::<*const u8>()));
+                    let (result6, _cleanup6) = wit_bindgen::rt::Cleanup::new(layout6);
+                    for (i, e) in vec6.into_iter().enumerate() {
+                        let base = result6
+                            .add(i * (4 * ::core::mem::size_of::<*const u8>()));
                         {
-                            let SignRequest {
-                                wallet: wallet0,
-                                hash32: hash320,
-                                intent: intent0,
+                            let PayloadSignItem {
+                                preimage: preimage3,
+                                claimed_hash: claimed_hash3,
                             } = e;
-                            let vec1 = wallet0;
-                            let ptr1 = vec1.as_ptr().cast::<u8>();
-                            let len1 = vec1.len();
+                            let vec4 = preimage3;
+                            let ptr4 = vec4.as_ptr().cast::<u8>();
+                            let len4 = vec4.len();
                             *base
                                 .add(::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len1;
-                            *base.add(0).cast::<*mut u8>() = ptr1.cast_mut();
-                            let vec2 = hash320;
-                            let ptr2 = vec2.as_ptr().cast::<u8>();
-                            let len2 = vec2.len();
+                                .cast::<usize>() = len4;
+                            *base.add(0).cast::<*mut u8>() = ptr4.cast_mut();
+                            let vec5 = claimed_hash3;
+                            let ptr5 = vec5.as_ptr().cast::<u8>();
+                            let len5 = vec5.len();
                             *base
                                 .add(3 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len2;
+                                .cast::<usize>() = len5;
                             *base
                                 .add(2 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr2.cast_mut();
-                            let vec3 = intent0;
-                            let ptr3 = vec3.as_ptr().cast::<u8>();
-                            let len3 = vec3.len();
-                            *base
-                                .add(5 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len3;
-                            *base
-                                .add(4 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr3.cast_mut();
+                                .cast::<*mut u8>() = ptr5.cast_mut();
                         }
                     }
-                    let ptr5 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    *ptr0.add(3 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len6;
+                    *ptr0
+                        .add(2 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = result6;
+                    let vec7 = signature_algorithm1;
+                    let ptr7 = vec7.as_ptr().cast::<u8>();
+                    let len7 = vec7.len();
+                    *ptr0.add(5 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len7;
+                    *ptr0
+                        .add(4 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr7.cast_mut();
+                    let vec8 = operation_class1;
+                    let ptr8 = vec8.as_ptr().cast::<u8>();
+                    let len8 = vec8.len();
+                    *ptr0.add(7 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len8;
+                    *ptr0
+                        .add(6 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr8.cast_mut();
+                    let vec9 = petal_use_claim_jcs1;
+                    let ptr9 = vec9.as_ptr().cast::<u8>();
+                    let len9 = vec9.len();
+                    *ptr0.add(9 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len9;
+                    *ptr0
+                        .add(8 * ::core::mem::size_of::<*const u8>())
+                        .cast::<*mut u8>() = ptr9.cast_mut();
+                    match claim_assurance_evidence1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(10 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec10 = e;
+                            let ptr10 = vec10.as_ptr().cast::<u8>();
+                            let len10 = vec10.len();
+                            *ptr0
+                                .add(12 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len10;
+                            *ptr0
+                                .add(11 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr10.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(10 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    match approval_hint1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(13 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec11 = e;
+                            let ptr11 = vec11.as_ptr().cast::<u8>();
+                            let len11 = vec11.len();
+                            *ptr0
+                                .add(15 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len11;
+                            *ptr0
+                                .add(14 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr11.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(13 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    match action1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(16 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec12 = e;
+                            let ptr12 = vec12.as_ptr().cast::<u8>();
+                            let len12 = vec12.len();
+                            *ptr0
+                                .add(18 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len12;
+                            *ptr0
+                                .add(17 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr12.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(16 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    match advisory1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(19 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec13 = e;
+                            let ptr13 = vec13.as_ptr().cast::<u8>();
+                            let len13 = vec13.len();
+                            *ptr0
+                                .add(21 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len13;
+                            *ptr0
+                                .add(20 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr13.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(19 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    *ptr0.add(22 * ::core::mem::size_of::<*const u8>()).cast::<u8>() = (selector1
+                        .clone() as i32) as u8;
+                    match key_ref_jcs1 {
+                        Some(e) => {
+                            *ptr0
+                                .add(23 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (1i32) as u8;
+                            let vec14 = e;
+                            let ptr14 = vec14.as_ptr().cast::<u8>();
+                            let len14 = vec14.len();
+                            *ptr0
+                                .add(25 * ::core::mem::size_of::<*const u8>())
+                                .cast::<usize>() = len14;
+                            *ptr0
+                                .add(24 * ::core::mem::size_of::<*const u8>())
+                                .cast::<*mut u8>() = ptr14.cast_mut();
+                        }
+                        None => {
+                            *ptr0
+                                .add(23 * ::core::mem::size_of::<*const u8>())
+                                .cast::<u8>() = (0i32) as u8;
+                        }
+                    };
+                    let ptr15 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "bloom:sign/signing@0.1.0")]
+                    #[link(wasm_import_module = "bloom:sign/signing@0.2.0")]
                     unsafe extern "C" {
-                        #[link_name = "sign-hashes"]
-                        fn wit_import6(_: *mut u8, _: usize, _: *mut u8);
+                        #[link_name = "sign-payload-batch"]
+                        fn wit_import16(_: *mut u8, _: *mut u8);
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import6(_: *mut u8, _: usize, _: *mut u8) {
+                    unsafe extern "C" fn wit_import16(_: *mut u8, _: *mut u8) {
                         unreachable!()
                     }
-                    wit_import6(result4, len4, ptr5);
-                    let l7 = i32::from(*ptr5.add(0).cast::<u8>());
-                    let result26 = match l7 {
+                    wit_import16(ptr0, ptr15);
+                    let l17 = i32::from(*ptr15.add(0).cast::<u8>());
+                    let result33 = match l17 {
                         0 => {
                             let e = {
-                                let l8 = i32::from(*ptr5.add(8).cast::<u8>());
-                                let v22 = match l8 {
+                                let l18 = i32::from(*ptr15.add(8).cast::<u8>());
+                                let v29 = match l18 {
                                     0 => {
-                                        let e22 = {
-                                            let l9 = *ptr5.add(16).cast::<*mut u8>();
-                                            let l10 = *ptr5
+                                        let e29 = {
+                                            let l19 = *ptr15.add(16).cast::<*mut u8>();
+                                            let l20 = *ptr15
                                                 .add(16 + 1 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<usize>();
-                                            let base14 = l9;
-                                            let len14 = l10;
-                                            let mut result14 = _rt::Vec::with_capacity(len14);
-                                            for i in 0..len14 {
-                                                let base = base14
+                                            let base24 = l19;
+                                            let len24 = l20;
+                                            let mut result24 = _rt::Vec::with_capacity(len24);
+                                            for i in 0..len24 {
+                                                let base = base24
                                                     .add(i * (2 * ::core::mem::size_of::<*const u8>()));
-                                                let e14 = {
-                                                    let l11 = *base.add(0).cast::<*mut u8>();
-                                                    let l12 = *base
+                                                let e24 = {
+                                                    let l21 = *base.add(0).cast::<*mut u8>();
+                                                    let l22 = *base
                                                         .add(::core::mem::size_of::<*const u8>())
                                                         .cast::<usize>();
-                                                    let len13 = l12;
+                                                    let len23 = l22;
                                                     <_ as From<
                                                         _rt::Vec<_>,
-                                                    >>::from(_rt::Vec::from_raw_parts(l11.cast(), len13, len13))
+                                                    >>::from(_rt::Vec::from_raw_parts(l21.cast(), len23, len23))
                                                 };
-                                                result14.push(e14);
+                                                result24.push(e24);
                                             }
                                             _rt::cabi_dealloc(
-                                                base14,
-                                                len14 * (2 * ::core::mem::size_of::<*const u8>()),
+                                                base24,
+                                                len24 * (2 * ::core::mem::size_of::<*const u8>()),
                                                 ::core::mem::size_of::<*const u8>(),
                                             );
-                                            result14
+                                            result24
                                         };
-                                        SignBatchResult::Signatures(e22)
+                                        SignBatchResult::Signatures(e29)
                                     }
                                     n => {
                                         debug_assert_eq!(n, 1, "invalid enum discriminant");
-                                        let e22 = {
-                                            let l15 = *ptr5.add(16).cast::<*mut u8>();
-                                            let l16 = *ptr5
+                                        let e29 = {
+                                            let l25 = *ptr15.add(16).cast::<*mut u8>();
+                                            let l26 = *ptr15
                                                 .add(16 + 1 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<usize>();
-                                            let len17 = l16;
-                                            let bytes17 = _rt::Vec::from_raw_parts(
-                                                l15.cast(),
-                                                len17,
-                                                len17,
+                                            let len27 = l26;
+                                            let bytes27 = _rt::Vec::from_raw_parts(
+                                                l25.cast(),
+                                                len27,
+                                                len27,
                                             );
-                                            let l18 = *ptr5
+                                            let l28 = *ptr15
                                                 .add(16 + 2 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>();
-                                            let l19 = *ptr5
-                                                .add(16 + 3 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>();
-                                            let len20 = l19;
-                                            let bytes20 = _rt::Vec::from_raw_parts(
-                                                l18.cast(),
-                                                len20,
-                                                len20,
-                                            );
-                                            let l21 = *ptr5
-                                                .add(16 + 4 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<i64>();
-                                            ApprovalRequired {
-                                                action_id: _rt::string_lift(bytes17),
-                                                ceremony_url: _rt::string_lift(bytes20),
-                                                expires_ms: l21 as u64,
+                                            ApprovalPending {
+                                                action_id: _rt::string_lift(bytes27),
+                                                expires_ms: l28 as u64,
                                             }
                                         };
-                                        SignBatchResult::ApprovalRequired(e22)
+                                        SignBatchResult::ApprovalPending(e29)
                                     }
                                 };
-                                v22
+                                v29
                             };
                             Ok(e)
                         }
                         1 => {
                             let e = {
-                                let l23 = *ptr5.add(8).cast::<*mut u8>();
-                                let l24 = *ptr5
+                                let l30 = *ptr15.add(8).cast::<*mut u8>();
+                                let l31 = *ptr15
                                     .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len25 = l24;
-                                let bytes25 = _rt::Vec::from_raw_parts(
-                                    l23.cast(),
-                                    len25,
-                                    len25,
+                                let len32 = l31;
+                                let bytes32 = _rt::Vec::from_raw_parts(
+                                    l30.cast(),
+                                    len32,
+                                    len32,
                                 );
-                                _rt::string_lift(bytes25)
+                                _rt::string_lift(bytes32)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result26
+                    result33
                 }
             }
         }
@@ -3846,7 +4276,6 @@ pub mod bloom {
             #[derive(Clone)]
             pub struct ApprovalRequired {
                 pub action_id: _rt::String,
-                pub ceremony_url: _rt::String,
                 pub expires_ms: u64,
             }
             impl ::core::fmt::Debug for ApprovalRequired {
@@ -3856,7 +4285,6 @@ pub mod bloom {
                 ) -> ::core::fmt::Result {
                     f.debug_struct("ApprovalRequired")
                         .field("action-id", &self.action_id)
-                        .field("ceremony-url", &self.ceremony_url)
                         .field("expires-ms", &self.expires_ms)
                         .finish()
                 }
@@ -4027,7 +4455,7 @@ pub mod bloom {
                     }
                     wit_import10(ptr0, ptr9);
                     let l11 = i32::from(*ptr9.add(0).cast::<u8>());
-                    let result29 = match l11 {
+                    let result26 = match l11 {
                         0 => {
                             let e = {
                                 let l12 = *ptr9.add(8).cast::<*mut u8>();
@@ -4078,23 +4506,10 @@ pub mod bloom {
                                                 );
                                                 let l22 = *ptr9
                                                     .add(16 + 6 * ::core::mem::size_of::<*const u8>())
-                                                    .cast::<*mut u8>();
-                                                let l23 = *ptr9
-                                                    .add(16 + 7 * ::core::mem::size_of::<*const u8>())
-                                                    .cast::<usize>();
-                                                let len24 = l23;
-                                                let bytes24 = _rt::Vec::from_raw_parts(
-                                                    l22.cast(),
-                                                    len24,
-                                                    len24,
-                                                );
-                                                let l25 = *ptr9
-                                                    .add(16 + 8 * ::core::mem::size_of::<*const u8>())
                                                     .cast::<i64>();
                                                 ApprovalRequired {
                                                     action_id: _rt::string_lift(bytes21),
-                                                    ceremony_url: _rt::string_lift(bytes24),
-                                                    expires_ms: l25 as u64,
+                                                    expires_ms: l22 as u64,
                                                 }
                                             };
                                             Some(e)
@@ -4107,23 +4522,23 @@ pub mod bloom {
                         }
                         1 => {
                             let e = {
-                                let l26 = *ptr9.add(8).cast::<*mut u8>();
-                                let l27 = *ptr9
+                                let l23 = *ptr9.add(8).cast::<*mut u8>();
+                                let l24 = *ptr9
                                     .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len28 = l27;
-                                let bytes28 = _rt::Vec::from_raw_parts(
-                                    l26.cast(),
-                                    len28,
-                                    len28,
+                                let len25 = l24;
+                                let bytes25 = _rt::Vec::from_raw_parts(
+                                    l23.cast(),
+                                    len25,
+                                    len25,
                                 );
-                                _rt::string_lift(bytes28)
+                                _rt::string_lift(bytes25)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result29
+                    result26
                 }
             }
             #[allow(unused_unsafe, clippy::all)]
@@ -4139,11 +4554,11 @@ pub mod bloom {
                     struct RetArea(
                         [::core::mem::MaybeUninit<
                             u8,
-                        >; 24 + 8 * ::core::mem::size_of::<*const u8>()],
+                        >; 24 + 6 * ::core::mem::size_of::<*const u8>()],
                     );
                     let mut ret_area = RetArea(
                         [::core::mem::MaybeUninit::uninit(); 24
-                            + 8 * ::core::mem::size_of::<*const u8>()],
+                            + 6 * ::core::mem::size_of::<*const u8>()],
                     );
                     let vec0 = wallet;
                     let ptr0 = vec0.as_ptr().cast::<u8>();
@@ -4197,7 +4612,7 @@ pub mod bloom {
                         ptr3,
                     );
                     let l5 = i32::from(*ptr3.add(0).cast::<u8>());
-                    let result23 = match l5 {
+                    let result20 = match l5 {
                         0 => {
                             let e = {
                                 let l6 = *ptr3.add(8).cast::<*mut u8>();
@@ -4248,23 +4663,10 @@ pub mod bloom {
                                                 );
                                                 let l16 = *ptr3
                                                     .add(16 + 6 * ::core::mem::size_of::<*const u8>())
-                                                    .cast::<*mut u8>();
-                                                let l17 = *ptr3
-                                                    .add(16 + 7 * ::core::mem::size_of::<*const u8>())
-                                                    .cast::<usize>();
-                                                let len18 = l17;
-                                                let bytes18 = _rt::Vec::from_raw_parts(
-                                                    l16.cast(),
-                                                    len18,
-                                                    len18,
-                                                );
-                                                let l19 = *ptr3
-                                                    .add(16 + 8 * ::core::mem::size_of::<*const u8>())
                                                     .cast::<i64>();
                                                 ApprovalRequired {
                                                     action_id: _rt::string_lift(bytes15),
-                                                    ceremony_url: _rt::string_lift(bytes18),
-                                                    expires_ms: l19 as u64,
+                                                    expires_ms: l16 as u64,
                                                 }
                                             };
                                             Some(e)
@@ -4277,23 +4679,23 @@ pub mod bloom {
                         }
                         1 => {
                             let e = {
-                                let l20 = *ptr3.add(8).cast::<*mut u8>();
-                                let l21 = *ptr3
+                                let l17 = *ptr3.add(8).cast::<*mut u8>();
+                                let l18 = *ptr3
                                     .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len22 = l21;
-                                let bytes22 = _rt::Vec::from_raw_parts(
-                                    l20.cast(),
-                                    len22,
-                                    len22,
+                                let len19 = l18;
+                                let bytes19 = _rt::Vec::from_raw_parts(
+                                    l17.cast(),
+                                    len19,
+                                    len19,
                                 );
-                                _rt::string_lift(bytes22)
+                                _rt::string_lift(bytes19)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result23
+                    result20
                 }
             }
             #[allow(unused_unsafe, clippy::all)]
@@ -5106,10 +5508,10 @@ macro_rules! __export_route_file_impl {
         "wasm32")] #[unsafe (link_section =
         "component-type:wit-bindgen:0.57.1:bloom:route@0.1.0:route-file:imports and exports")]
         #[doc(hidden)] #[allow(clippy::octal_escapes)] pub static
-        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 2864] = *
+        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 3331] = *
         b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xaf\x15\x01A\x02\x01\
-A+\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x82\x19\x01A\x02\x01\
+A-\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
 body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04body\x02\
 \x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\0\x05\
 fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01j\x01\
@@ -5118,61 +5520,70 @@ fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01j\x
 \0\x07put-new\x01\x05\x01ps\x01j\x01\x06\x01s\x01@\x02\x09namespaces\x06prefixs\0\
 \x07\x04\0\x04list\x01\x08\x01@\x02\x09namespaces\x03keys\0\x04\x04\0\x06delete\x01\
 \x09\x01@\x03\x09namespaces\x03keys\x08expected\0\0\x04\x04\0\x0fdelete-if-value\
-\x01\x0a\x03\0\x14bloom:store/kv@0.1.0\x05\x01\x01B\x11\x01r\x03\x09action-ids\x0c\
-ceremony-urls\x0aexpires-msw\x04\0\x11approval-required\x03\0\0\x01p}\x01q\x02\x09\
-signature\x01\x02\0\x11approval-required\x01\x01\0\x04\0\x0bsign-result\x03\0\x03\
-\x01r\x03\x06wallets\x06hash32\x02\x06intents\x04\0\x0csign-request\x03\0\x05\x01\
-p\x02\x01q\x02\x0asignatures\x01\x07\0\x11approval-required\x01\x01\0\x04\0\x11s\
-ign-batch-result\x03\0\x08\x01j\x01\x04\x01s\x01@\x03\x06wallets\x06hash32\x02\x06\
-intents\0\x0a\x04\0\x09sign-hash\x01\x0b\x01p\x06\x01j\x01\x09\x01s\x01@\x01\x08\
-requests\x0c\0\x0d\x04\0\x0bsign-hashes\x01\x0e\x03\0\x18bloom:sign/signing@0.1.\
-0\x05\x02\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09value-wei\
-s\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-per-gas\x01\
-\x04\0\x0fevm-transaction\x03\0\x02\x01r\x03\x09action-ids\x0cceremony-urls\x0ae\
-xpires-msw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07\
-plan-mds\x08approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01r\x04\x09outbo\
-x-ids\x05states\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspection\x03\0\x09\
-\x01j\x01\x08\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\x01@\x04\x06w\
-allets\x05chains\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\0\x07confir\
-m\x01\x0d\x01j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-ids\0\x0e\x04\
-\0\x07inspect\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x03\x01B\x07\x01r\x03\x05\
-chains\x06methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\x0bresult-js\
-ons\x04\0\x08response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\0\x04\x04\0\
-\x04call\x01\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x04\x01B\x14\x01m\x03\x03di\
-r\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\x04names\x04\
-kind\x01\x04modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01j\x01\
-\x05\x01s\x01@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\x01j\x01\x08\x01\
-s\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01@\x01\
-\x04paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\x0b\0\
-\x0e\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x05\x01B\x0b\x01\
-j\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03\
-leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03key\
-s\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x06\x01B\x0f\
-\x01m\x01\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01ks\x01r\x06\x02ids\x06wa\
-llets\x0fapproval-wallet\x02\x05titles\x06prompts\x04kind\x01\x04\0\x07request\x03\
-\0\x03\x01r\x02\x0cceremony-urls\x0aexpires-msw\x04\0\x0dpending-input\x03\0\x05\
-\x01q\x02\x07pending\x01\x06\0\x05ready\x01s\0\x04\0\x0cinput-result\x03\0\x07\x01\
-j\x01\x08\x01s\x01@\x01\x07request\x04\0\x09\x04\0\x0drequest-input\x01\x0a\x01j\
-\0\x01s\x01@\x01\x02ids\0\x0b\x04\0\x07consume\x01\x0c\x03\0\"bloom:private-inpu\
-t/ceremony@0.1.0\x05\x07\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-root\
-s\x0cpackage-hashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01\
-m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04\
-names\x04kind\x06\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\
-\x01ps\x01r\x0a\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\
-\x0bwrite-async\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\
-\x0bsign-intent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09\
-not-found\x01s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backe\
-nd\x01s\0\x0bunsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:ro\
-ute/types@0.1.0\x05\x08\x02\x03\0\x08\x03ctx\x03\0\x03ctx\x03\0\x09\x02\x03\0\x08\
-\x05entry\x03\0\x05entry\x03\0\x0b\x02\x03\0\x08\x0broute-error\x03\0\x0broute-e\
-rror\x03\0\x0d\x02\x03\0\x08\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x0f\x01j\x01\
-\x10\x01\x0e\x01@\x01\x03ctx\x0a\0\x11\x04\0\x08metadata\x01\x12\x01j\x01\x0c\x01\
-\x0e\x01@\x01\x03ctx\x0a\0\x13\x04\0\x06lookup\x01\x14\x01p\x0c\x01j\x01\x15\x01\
-\x0e\x01@\x01\x03ctx\x0a\0\x16\x04\0\x04list\x01\x17\x01p}\x01j\x01\x18\x01\x0e\x01\
-@\x01\x03ctx\x0a\0\x19\x04\0\x04read\x01\x1a\x01j\0\x01\x0e\x01@\x02\x03ctx\x0a\x04\
-body\x18\0\x1b\x04\0\x05write\x01\x1c\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\
-\x0b\x10\x01\0\x0aroute-file\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0d\
-wit-component\x070.247.0\x10wit-bindgen-rust\x060.57.1";
+\x01\x0a\x03\0\x14bloom:store/kv@0.1.0\x05\x01\x01B\x04\x01p}\x01j\x01\0\x01s\x01\
+@\x01\x07request\0\0\x01\x04\0\x07request\x01\x02\x03\0\x16bloom:key/derive@0.1.\
+0\x05\x02\x01B\x19\x01r\x02\x09action-ids\x0aexpires-msw\x04\0\x10approval-pendi\
+ng\x03\0\0\x01p}\x01q\x02\x09signature\x01\x02\0\x10approval-pending\x01\x01\0\x04\
+\0\x0bsign-result\x03\0\x03\x01m\x02\x05exact\x08reusable\x04\0\x08selector\x03\0\
+\x05\x01k\x02\x01ks\x01r\x0c\x06wallets\x08preimage\x02\x0cclaimed-hash\x02\x13s\
+ignature-algorithms\x0foperation-classs\x13petal-use-claim-jcs\x02\x18claim-assu\
+rance-evidence\x07\x0dapproval-hint\x08\x06action\x07\x08advisory\x07\x08selecto\
+r\x06\x0bkey-ref-jcs\x07\x04\0\x14payload-sign-request\x03\0\x09\x01r\x02\x08pre\
+image\x02\x0cclaimed-hash\x02\x04\0\x11payload-sign-item\x03\0\x0b\x01p\x0c\x01r\
+\x0b\x06wallets\x08payloads\x0d\x13signature-algorithms\x0foperation-classs\x13p\
+etal-use-claim-jcs\x02\x18claim-assurance-evidence\x07\x0dapproval-hint\x08\x06a\
+ction\x07\x08advisory\x07\x08selector\x06\x0bkey-ref-jcs\x07\x04\0\x1apayload-ba\
+tch-sign-request\x03\0\x0e\x01p\x02\x01q\x02\x0asignatures\x01\x10\0\x10approval\
+-pending\x01\x01\0\x04\0\x11sign-batch-result\x03\0\x11\x01j\x01\x04\x01s\x01@\x01\
+\x07request\x0a\0\x13\x04\0\x0csign-payload\x01\x14\x01j\x01\x12\x01s\x01@\x01\x07\
+request\x0f\0\x15\x04\0\x12sign-payload-batch\x01\x16\x03\0\x18bloom:sign/signin\
+g@0.2.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09val\
+ue-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-per-g\
+as\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action-ids\x0aexpires-msw\x04\
+\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07plan-mds\x08\
+approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01r\x04\x09outbox-ids\x05sta\
+tes\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspection\x03\0\x09\x01j\x01\x08\
+\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\x01@\x04\x06wallets\x05cha\
+ins\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\0\x07confirm\x01\x0d\x01\
+j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-ids\0\x0e\x04\0\x07inspec\
+t\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x04\x01B\x07\x01r\x03\x05chains\x06\
+methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\x0bresult-jsons\x04\0\x08\
+response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\0\x04\x04\0\x04call\x01\
+\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x05\x01B\x14\x01m\x03\x03dir\x04file\x07\
+symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\x04names\x04kind\x01\x04\
+modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01j\x01\x05\x01s\x01\
+@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\x01j\x01\x08\x01s\x01@\x01\
+\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01@\x01\x04paths\0\
+\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\x0b\0\x0e\x04\0\
+\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x06\x01B\x0b\x01j\x01w\x01\
+s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03leny\0\x03\
+\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03keys\0\x06\x04\
+\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x0f\x01m\x01\
+\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01ks\x01r\x06\x02ids\x06wallets\x0f\
+approval-wallet\x02\x05titles\x06prompts\x04kind\x01\x04\0\x07request\x03\0\x03\x01\
+r\x02\x0cceremony-urls\x0aexpires-msw\x04\0\x0dpending-input\x03\0\x05\x01q\x02\x07\
+pending\x01\x06\0\x05ready\x01s\0\x04\0\x0cinput-result\x03\0\x07\x01j\x01\x08\x01\
+s\x01@\x01\x07request\x04\0\x09\x04\0\x0drequest-input\x01\x0a\x01j\0\x01s\x01@\x01\
+\x02ids\0\x0b\x04\0\x07consume\x01\x0c\x03\0\"bloom:private-input/ceremony@0.1.0\
+\x05\x08\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-has\
+hs\x04paths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04\
+file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\
+\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\
+\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-as\
+ync\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-i\
+ntent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01\
+s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0b\
+unsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1\
+.0\x05\x09\x02\x03\0\x09\x03ctx\x03\0\x03ctx\x03\0\x0a\x02\x03\0\x09\x05entry\x03\
+\0\x05entry\x03\0\x0c\x02\x03\0\x09\x0broute-error\x03\0\x0broute-error\x03\0\x0e\
+\x02\x03\0\x09\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x10\x01j\x01\x11\x01\x0f\x01\
+@\x01\x03ctx\x0b\0\x12\x04\0\x08metadata\x01\x13\x01j\x01\x0d\x01\x0f\x01@\x01\x03\
+ctx\x0b\0\x14\x04\0\x06lookup\x01\x15\x01p\x0d\x01j\x01\x16\x01\x0f\x01@\x01\x03\
+ctx\x0b\0\x17\x04\0\x04list\x01\x18\x01p}\x01j\x01\x19\x01\x0f\x01@\x01\x03ctx\x0b\
+\0\x1a\x04\0\x04read\x01\x1b\x01j\0\x01\x0f\x01@\x02\x03ctx\x0b\x04body\x19\0\x1c\
+\x04\0\x05write\x01\x1d\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\x0b\x10\x01\0\
+\x0aroute-file\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x07\
+0.247.0\x10wit-bindgen-rust\x060.57.1";
         };
     };
 }
@@ -5185,9 +5596,9 @@ pub use __export_route_file_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2785] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xc0\x14\x01A\x02\x01\
-A\x1a\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 3252] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x93\x18\x01A\x02\x01\
+A\x1c\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
 \x04body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04bo\
 dy\x02\x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\
 \0\x05fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01\
@@ -5196,57 +5607,66 @@ s\x01@\x04\x09namespaces\x03keys\x05value\0\x06secret\x7f\0\x04\x04\0\x03put\x01
 \x05\x04\0\x07put-new\x01\x05\x01ps\x01j\x01\x06\x01s\x01@\x02\x09namespaces\x06\
 prefixs\0\x07\x04\0\x04list\x01\x08\x01@\x02\x09namespaces\x03keys\0\x04\x04\0\x06\
 delete\x01\x09\x01@\x03\x09namespaces\x03keys\x08expected\0\0\x04\x04\0\x0fdelet\
-e-if-value\x01\x0a\x03\0\x14bloom:store/kv@0.1.0\x05\x01\x01B\x11\x01r\x03\x09ac\
-tion-ids\x0cceremony-urls\x0aexpires-msw\x04\0\x11approval-required\x03\0\0\x01p\
-}\x01q\x02\x09signature\x01\x02\0\x11approval-required\x01\x01\0\x04\0\x0bsign-r\
-esult\x03\0\x03\x01r\x03\x06wallets\x06hash32\x02\x06intents\x04\0\x0csign-reque\
-st\x03\0\x05\x01p\x02\x01q\x02\x0asignatures\x01\x07\0\x11approval-required\x01\x01\
-\0\x04\0\x11sign-batch-result\x03\0\x08\x01j\x01\x04\x01s\x01@\x03\x06wallets\x06\
-hash32\x02\x06intents\0\x0a\x04\0\x09sign-hash\x01\x0b\x01p\x06\x01j\x01\x09\x01\
-s\x01@\x01\x08requests\x0c\0\x0d\x04\0\x0bsign-hashes\x01\x0e\x03\0\x18bloom:sig\
-n/signing@0.1.0\x05\x02\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02to\
-s\x09value-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-f\
-ee-per-gas\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x03\x09action-ids\x0ccere\
-mony-urls\x0aexpires-msw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09\
-outbox-ids\x07plan-mds\x08approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01\
-r\x04\x09outbox-ids\x05states\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspec\
-tion\x03\0\x09\x01j\x01\x08\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\
-\x01@\x04\x06wallets\x05chains\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\
-\0\x07confirm\x01\x0d\x01j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-\
-ids\0\x0e\x04\0\x07inspect\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x03\x01B\x07\
-\x01r\x03\x05chains\x06methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\
-\x0bresult-jsons\x04\0\x08response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\
-\0\x04\x04\0\x04call\x01\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x04\x01B\x14\x01\
-m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\
-\x04names\x04kind\x01\x04modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\
-\0\x04\x01j\x01\x05\x01s\x01@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\
-\x01j\x01\x08\x01s\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\
-\x01s\x01@\x01\x04paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04path\
-s\x04body\x0b\0\x0e\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\
-\x05\x01B\x0b\x01j\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\
-\x01s\x01@\x01\x03leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01\
-s\x01@\x01\x03keys\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1\
-.0\x05\x06\x01B\x0f\x01m\x01\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01ks\x01\
-r\x06\x02ids\x06wallets\x0fapproval-wallet\x02\x05titles\x06prompts\x04kind\x01\x04\
-\0\x07request\x03\0\x03\x01r\x02\x0cceremony-urls\x0aexpires-msw\x04\0\x0dpendin\
-g-input\x03\0\x05\x01q\x02\x07pending\x01\x06\0\x05ready\x01s\0\x04\0\x0cinput-r\
-esult\x03\0\x07\x01j\x01\x08\x01s\x01@\x01\x07request\x04\0\x09\x04\0\x0drequest\
--input\x01\x0a\x01j\0\x01s\x01@\x01\x02ids\0\x0b\x04\0\x07consume\x01\x0c\x03\0\"\
-bloom:private-input/ceremony@0.1.0\x05\x07\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\
-\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03\
-ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01\
-kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05\
-entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-\
-effecting-read\x7f\x0bwrite-async\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0d\
-required-caps\x0a\x0bsign-intent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\
-\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invali\
-d\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\
-\0\x17bloom:route/types@0.1.0\x05\x08\x02\x03\0\x08\x03ctx\x03\0\x03ctx\x03\0\x09\
-\x02\x03\0\x08\x05entry\x03\0\x05entry\x03\0\x0b\x02\x03\0\x08\x0broute-error\x03\
-\0\x0broute-error\x03\0\x0d\x02\x03\0\x08\x0aroute-meta\x03\0\x0aroute-meta\x03\0\
-\x0f\x04\0<bloom:route/route-file-with-all-of-its-exports-removed@0.1.0\x04\0\x0b\
-0\x01\0*route-file-with-all-of-its-exports-removed\x03\0\0\0G\x09producers\x01\x0c\
-processed-by\x02\x0dwit-component\x070.247.0\x10wit-bindgen-rust\x060.57.1";
+e-if-value\x01\x0a\x03\0\x14bloom:store/kv@0.1.0\x05\x01\x01B\x04\x01p}\x01j\x01\
+\0\x01s\x01@\x01\x07request\0\0\x01\x04\0\x07request\x01\x02\x03\0\x16bloom:key/\
+derive@0.1.0\x05\x02\x01B\x19\x01r\x02\x09action-ids\x0aexpires-msw\x04\0\x10app\
+roval-pending\x03\0\0\x01p}\x01q\x02\x09signature\x01\x02\0\x10approval-pending\x01\
+\x01\0\x04\0\x0bsign-result\x03\0\x03\x01m\x02\x05exact\x08reusable\x04\0\x08sel\
+ector\x03\0\x05\x01k\x02\x01ks\x01r\x0c\x06wallets\x08preimage\x02\x0cclaimed-ha\
+sh\x02\x13signature-algorithms\x0foperation-classs\x13petal-use-claim-jcs\x02\x18\
+claim-assurance-evidence\x07\x0dapproval-hint\x08\x06action\x07\x08advisory\x07\x08\
+selector\x06\x0bkey-ref-jcs\x07\x04\0\x14payload-sign-request\x03\0\x09\x01r\x02\
+\x08preimage\x02\x0cclaimed-hash\x02\x04\0\x11payload-sign-item\x03\0\x0b\x01p\x0c\
+\x01r\x0b\x06wallets\x08payloads\x0d\x13signature-algorithms\x0foperation-classs\
+\x13petal-use-claim-jcs\x02\x18claim-assurance-evidence\x07\x0dapproval-hint\x08\
+\x06action\x07\x08advisory\x07\x08selector\x06\x0bkey-ref-jcs\x07\x04\0\x1apaylo\
+ad-batch-sign-request\x03\0\x0e\x01p\x02\x01q\x02\x0asignatures\x01\x10\0\x10app\
+roval-pending\x01\x01\0\x04\0\x11sign-batch-result\x03\0\x11\x01j\x01\x04\x01s\x01\
+@\x01\x07request\x0a\0\x13\x04\0\x0csign-payload\x01\x14\x01j\x01\x12\x01s\x01@\x01\
+\x07request\x0f\0\x15\x04\0\x12sign-payload-batch\x01\x16\x03\0\x18bloom:sign/si\
+gning@0.2.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09\
+value-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-pe\
+r-gas\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action-ids\x0aexpires-m\
+sw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07plan-\
+mds\x08approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01r\x04\x09outbox-ids\
+\x05states\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspection\x03\0\x09\x01j\
+\x01\x08\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\x01@\x04\x06wallet\
+s\x05chains\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\0\x07confirm\x01\
+\x0d\x01j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-ids\0\x0e\x04\0\x07\
+inspect\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x04\x01B\x07\x01r\x03\x05chai\
+ns\x06methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\x0bresult-jsons\x04\
+\0\x08response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\0\x04\x04\0\x04ca\
+ll\x01\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x05\x01B\x14\x01m\x03\x03dir\x04f\
+ile\x07symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\x04names\x04kind\
+\x01\x04modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01j\x01\x05\
+\x01s\x01@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\x01j\x01\x08\x01s\
+\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01@\x01\x04\
+paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\x0b\0\x0e\
+\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x06\x01B\x0b\x01j\
+\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03\
+leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03key\
+s\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x0f\
+\x01m\x01\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01ks\x01r\x06\x02ids\x06wa\
+llets\x0fapproval-wallet\x02\x05titles\x06prompts\x04kind\x01\x04\0\x07request\x03\
+\0\x03\x01r\x02\x0cceremony-urls\x0aexpires-msw\x04\0\x0dpending-input\x03\0\x05\
+\x01q\x02\x07pending\x01\x06\0\x05ready\x01s\0\x04\0\x0cinput-result\x03\0\x07\x01\
+j\x01\x08\x01s\x01@\x01\x07request\x04\0\x09\x04\0\x0drequest-input\x01\x0a\x01j\
+\0\x01s\x01@\x01\x02ids\0\x0b\x04\0\x07consume\x01\x0c\x03\0\"bloom:private-inpu\
+t/ceremony@0.1.0\x05\x08\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-root\
+s\x0cpackage-hashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01\
+m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04\
+names\x04kind\x06\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\
+\x01ps\x01r\x0a\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\
+\x0bwrite-async\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\
+\x0bsign-intent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09\
+not-found\x01s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backe\
+nd\x01s\0\x0bunsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:ro\
+ute/types@0.1.0\x05\x09\x02\x03\0\x09\x03ctx\x03\0\x03ctx\x03\0\x0a\x02\x03\0\x09\
+\x05entry\x03\0\x05entry\x03\0\x0c\x02\x03\0\x09\x0broute-error\x03\0\x0broute-e\
+rror\x03\0\x0e\x02\x03\0\x09\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x10\x04\0<b\
+loom:route/route-file-with-all-of-its-exports-removed@0.1.0\x04\0\x0b0\x01\0*rou\
+te-file-with-all-of-its-exports-removed\x03\0\0\0G\x09producers\x01\x0cprocessed\
+-by\x02\x0dwit-component\x070.247.0\x10wit-bindgen-rust\x060.57.1";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {
