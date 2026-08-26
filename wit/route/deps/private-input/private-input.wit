@@ -1,0 +1,34 @@
+package bloom:private-input@0.1.0;
+
+interface ceremony {
+  enum input-kind {
+    evm-address,
+  }
+
+  record request {
+    id: string,
+    /// Subject wallet used by the petal (for example, the deposited note's
+    /// wallet). This is not implicitly the approval identity.
+    wallet: string,
+    /// Passkey wallet authorizing release. If absent, Bloom uses the subject
+    /// wallet when it is passkey-gated, otherwise the sole passkey wallet. It
+    /// fails closed when no unique passkey choice exists.
+    approval-wallet: option<string>,
+    title: string,
+    prompt: string,
+    kind: input-kind,
+  }
+
+  record pending-input {
+    ceremony-url: string,
+    expires-ms: u64,
+  }
+
+  variant input-result {
+    pending(pending-input),
+    ready(string),
+  }
+
+  request-input: func(request: request) -> result<input-result, string>;
+  consume: func(id: string) -> result<_, string>;
+}
