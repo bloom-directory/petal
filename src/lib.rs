@@ -1,5 +1,31 @@
 //! Canonical contract identifiers and WIT sources for Bloom Petals.
 
+pub mod evidence;
+pub mod manifest;
+pub mod paths;
+
+pub use evidence::{
+    CheckedPackageRequest, FileDigestEntry, PackageEvidence, RequestedRoutePermission,
+    check_package_request, package_hash_from_entries,
+};
+pub use manifest::{ManifestBounds, parse_manifest_bounds};
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PackageCheckError {
+    #[error("package request limit: {0}")]
+    Limit(String),
+    #[error("package path: {0}")]
+    Path(String),
+    #[error("package hash: {0}")]
+    Hash(String),
+    #[error("package manifest: {0}")]
+    Manifest(String),
+    #[error("package route: {0}")]
+    Route(String),
+    #[error("package permission scope: {0}")]
+    Scope(String),
+}
+
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
