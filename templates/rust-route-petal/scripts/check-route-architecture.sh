@@ -41,12 +41,6 @@ if search_lines \
   failed=1
 fi
 
-# Shared crate code must not inspect route identity to pick behavior.
-if search_lines 'current_route_(canonical_)?path[[:space:]]*\(' route/src; then
-  echo "route architecture check: shared code must not inspect route identity" >&2
-  failed=1
-fi
-
 # The canonical published Petal SDK must be used; a vendored copy hides the
 # pinned contract from the toolchain.
 if search_lines 'petal[[:space:]]*=[[:space:]]*\{[^}]*path[[:space:]]*=[[:space:]]*"\.\./sdk"' route/Cargo.toml \

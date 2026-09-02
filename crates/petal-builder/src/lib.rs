@@ -390,6 +390,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     let root = root
         .canonicalize()
         .map_err(|error| format!("resolve {}: {error}", root.display()))?;
+    check_shared_route_architecture(&root, config)?;
     let routes = discover_routes(&root.join(&config.routes))?;
     if routes.is_empty() {
         return Err("no route controllers found".into());
@@ -776,6 +777,29 @@ fn check_route_caps(route: &Route, artifact: &Path) -> Result<(), String> {
     }
 }
 
+fn check_shared_route_architecture(root: &Path, config: &BuildConfig) -> Result<(), String> {
+    let source_root = root.join(&config.route_crate.path).join("src");
+    let mut sources = Vec::new();
+    discover_at(&source_root, &source_root, &mut sources)?;
+    let mut violations = Vec::new();
+    for source in sources {
+        let body = fs::read_to_string(&source).map_err(display_err("read", &source))?;
+        for accessor in ["current_route_path", "current_route_canonical_path"] {
+            if body.contains(accessor) {
+                violations.push(format!(
+                    "{} uses forbidden route-identity accessor {accessor}; keep dispatch behavior in route files",
+                    source.display()
+                ));
+            }
+        }
+    }
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(violations.join("\n"))
+    }
+}
+
 fn required_caps(source: &Path) -> Result<BTreeSet<&'static str>, String> {
     let source = fs::read_to_string(source).map_err(display_err("read", source))?;
     if let Some(start) = source.find(".caps(&[") {
@@ -1122,5 +1146,23 @@ mod tests {
     fn package_names_are_stable_and_collision_safe() {
         assert_eq!(package_name("a[b]"), package_name("a[b]"));
         assert_ne!(package_name("a[b]"), package_name("a-b"));
+    }
+
+    #[test]
+    fn shared_route_code_cannot_dispatch_on_route_identity() {
+        let fixture = tempfile::tempdir().unwrap();
+        let source = fixture.path().join("route/src");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("lib.rs"), "pub fn shared() {}\n").unwrap();
+        check_shared_route_architecture(fixture.path(), &package_config()).unwrap();
+
+        fs::write(
+            source.join("lib.rs"),
+            "pub fn shared(ctx: &petal::Ctx) { let _ = petal::current_route_path(ctx); }\n",
+        )
+        .unwrap();
+        let error = check_shared_route_architecture(fixture.path(), &package_config()).unwrap_err();
+        assert!(error.contains("forbidden route-identity accessor current_route_path"));
+        assert!(error.contains("route/src/lib.rs"));
     }
 }

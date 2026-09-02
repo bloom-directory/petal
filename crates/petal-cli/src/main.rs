@@ -28,7 +28,7 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Check generated route capabilities without rebuilding.
+    /// Check route architecture and generated capabilities without rebuilding.
     Check {
         #[arg(long, default_value = "petal-build.toml")]
         config: PathBuf,
