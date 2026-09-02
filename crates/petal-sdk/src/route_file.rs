@@ -2430,13 +2430,11 @@ pub mod bloom {
                     }
                 }
             }
-            /// Value-transfer context the host renders with its own labels in the
-            /// ceremony UI and cryptographically binds into the sealed passkey
-            /// approval. A Petal must not be able to get sign-off on a destination
-            /// while hiding how much value moves there. The host does not trust or
-            /// reinterpret these fields beyond displaying and binding them verbatim.
+            /// Display-only context rendered by the host next to the input field. It is
+            /// supplied by the requesting Petal and is not an approval, authorization,
+            /// or cryptographic statement about eventual execution.
             #[derive(Clone)]
-            pub struct TransferContext {
+            pub struct DisplayContext {
                 pub network: _rt::String,
                 pub asset: _rt::String,
                 /// Integer string of base units (e.g. wei), never a fractional/display
@@ -2447,16 +2445,15 @@ pub mod bloom {
                 /// Number of decimal places `amount-base-units` must be divided by to
                 /// get a human display amount in `asset`.
                 pub decimals: u8,
-                /// The note/account identity the value is drawn from, shown to the
-                /// approver alongside the destination and amount.
+                /// The Petal-local source identity shown to the owner.
                 pub source: _rt::String,
             }
-            impl ::core::fmt::Debug for TransferContext {
+            impl ::core::fmt::Debug for DisplayContext {
                 fn fmt(
                     &self,
                     f: &mut ::core::fmt::Formatter<'_>,
                 ) -> ::core::fmt::Result {
-                    f.debug_struct("TransferContext")
+                    f.debug_struct("DisplayContext")
                         .field("network", &self.network)
                         .field("asset", &self.asset)
                         .field("amount-base-units", &self.amount_base_units)
@@ -2468,22 +2465,8 @@ pub mod bloom {
             #[derive(Clone)]
             pub struct Request {
                 pub id: _rt::String,
-                /// Subject wallet used by the petal (for example, the deposited note's
-                /// wallet). This is not implicitly the approval identity.
-                pub wallet: _rt::String,
-                /// Passkey wallet authorizing release. If absent, Bloom uses the subject
-                /// wallet when it is passkey-gated, otherwise the sole passkey wallet. It
-                /// fails closed when no unique passkey choice exists.
-                pub approval_wallet: Option<_rt::String>,
-                pub title: _rt::String,
-                pub prompt: _rt::String,
                 pub kind: InputKind,
-                /// The ceremony renders and binds this transfer context alongside the
-                /// requested input. Required, not advisory: the only current `kind`
-                /// (`evm-address`) is always a value-transfer destination, and a Petal
-                /// must not be able to get sign-off on one without disclosing what it
-                /// authorizes moving.
-                pub transfer: TransferContext,
+                pub context: DisplayContext,
             }
             impl ::core::fmt::Debug for Request {
                 fn fmt(
@@ -2492,12 +2475,8 @@ pub mod bloom {
                 ) -> ::core::fmt::Result {
                     f.debug_struct("Request")
                         .field("id", &self.id)
-                        .field("wallet", &self.wallet)
-                        .field("approval-wallet", &self.approval_wallet)
-                        .field("title", &self.title)
-                        .field("prompt", &self.prompt)
                         .field("kind", &self.kind)
-                        .field("transfer", &self.transfer)
+                        .field("context", &self.context)
                         .finish()
                 }
             }
@@ -2507,24 +2486,16 @@ pub mod bloom {
             /// tamper with the ceremony.
             ///
             /// Host-generated, not `request.id` echoed back: `id` is caller-chosen and
-            /// explicitly not guaranteed unique (see `consume`), so two concurrent
+            /// explicitly not guaranteed unique, so two concurrent
             /// requests with different content could share an `id` and would be
             /// indistinguishable to any owner-facing surface correlating by it. The
             /// host must instead derive operation-id per distinct request *content*
             /// (e.g. from the same fingerprint it already uses to decide whether a
             /// repeated request-input call is an idempotent resume): identical
-            /// retries resolve to the same operation-id; requests that differ in
-            /// content -- even if they reuse the same `id` -- must get different
-            /// operation-ids.
+            /// retries resolve to the same operation-id while it is active; requests
+            /// that differ in content -- even if they reuse the same `id` -- must get
+            /// different operation-ids.
             pub type OperationId = _rt::String;
-            /// Opaque, single-use handle identifying one *completed* ceremony session.
-            /// Returned only in `ready-input`, alongside the released value itself --
-            /// so holding it never grants access to anything the holder doesn't
-            /// already have. Not meaningful to guest code beyond passing it back to
-            /// `consume`; callers must not assume any structure or stability beyond
-            /// equality. Never confuse this with the operation-id: the operation-id is
-            /// safe to make public, this is not.
-            pub type SessionHandle = _rt::String;
             #[derive(Clone)]
             pub struct PendingInput {
                 pub operation_id: OperationId,
@@ -2542,25 +2513,12 @@ pub mod bloom {
                 }
             }
             #[derive(Clone)]
-            pub struct ReadyInput {
-                pub handle: SessionHandle,
-                pub value: _rt::String,
-            }
-            impl ::core::fmt::Debug for ReadyInput {
-                fn fmt(
-                    &self,
-                    f: &mut ::core::fmt::Formatter<'_>,
-                ) -> ::core::fmt::Result {
-                    f.debug_struct("ReadyInput")
-                        .field("handle", &self.handle)
-                        .field("value", &self.value)
-                        .finish()
-                }
-            }
-            #[derive(Clone)]
             pub enum InputResult {
                 Pending(PendingInput),
-                Ready(ReadyInput),
+                /// The host releases the value once and forgets it before returning. If
+                /// the guest fails before persisting it, a later identical request starts
+                /// a fresh ceremony and the owner enters it again.
+                Ready(_rt::String),
             }
             impl ::core::fmt::Debug for InputResult {
                 fn fmt(
@@ -2580,11 +2538,9 @@ pub mod bloom {
             #[allow(unused_unsafe, clippy::all)]
             /// Requests (or resumes) a private-input ceremony. Never returns a
             /// browser-openable ceremony URL, or any other bearer credential, to guest
-            /// code: the host is solely responsible for surfacing the ceremony to its
-            /// owner, through whatever owner-facing status/launch surface it
-            /// implements, correlated by `operation-id`. This keeps the host side of
-            /// the ceremony free to change (including which service owns and hosts
-            /// it) without another contract change here.
+            /// code. The host is solely responsible for launching its browser-owned
+            /// input form, correlated by `operation-id`. The browser value must not
+            /// enter agent-visible VFS state, command output, logs, or request data.
             #[allow(async_fn_in_trait)]
             pub fn request_input(request: &Request) -> Result<InputResult, _rt::String> {
                 unsafe {
@@ -2592,280 +2548,158 @@ pub mod bloom {
                     struct RetArea(
                         [::core::mem::MaybeUninit<
                             u8,
-                        >; 21 * ::core::mem::size_of::<*const u8>()],
+                        >; 24 + 2 * ::core::mem::size_of::<*const u8>()],
                     );
                     let mut ret_area = RetArea(
-                        [::core::mem::MaybeUninit::uninit(); 21
-                            * ::core::mem::size_of::<*const u8>()],
+                        [::core::mem::MaybeUninit::uninit(); 24
+                            + 2 * ::core::mem::size_of::<*const u8>()],
                     );
-                    let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
-                    let Request {
-                        id: id1,
-                        wallet: wallet1,
-                        approval_wallet: approval_wallet1,
-                        title: title1,
-                        prompt: prompt1,
-                        kind: kind1,
-                        transfer: transfer1,
-                    } = request;
-                    let vec2 = id1;
-                    let ptr2 = vec2.as_ptr().cast::<u8>();
-                    let len2 = vec2.len();
-                    *ptr0.add(::core::mem::size_of::<*const u8>()).cast::<usize>() = len2;
-                    *ptr0.add(0).cast::<*mut u8>() = ptr2.cast_mut();
-                    let vec3 = wallet1;
+                    let Request { id: id0, kind: kind0, context: context0 } = request;
+                    let vec1 = id0;
+                    let ptr1 = vec1.as_ptr().cast::<u8>();
+                    let len1 = vec1.len();
+                    let DisplayContext {
+                        network: network2,
+                        asset: asset2,
+                        amount_base_units: amount_base_units2,
+                        decimals: decimals2,
+                        source: source2,
+                    } = context0;
+                    let vec3 = network2;
                     let ptr3 = vec3.as_ptr().cast::<u8>();
                     let len3 = vec3.len();
-                    *ptr0.add(3 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len3;
-                    *ptr0
-                        .add(2 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr3.cast_mut();
-                    match approval_wallet1 {
-                        Some(e) => {
-                            *ptr0
-                                .add(4 * ::core::mem::size_of::<*const u8>())
-                                .cast::<u8>() = (1i32) as u8;
-                            let vec4 = e;
-                            let ptr4 = vec4.as_ptr().cast::<u8>();
-                            let len4 = vec4.len();
-                            *ptr0
-                                .add(6 * ::core::mem::size_of::<*const u8>())
-                                .cast::<usize>() = len4;
-                            *ptr0
-                                .add(5 * ::core::mem::size_of::<*const u8>())
-                                .cast::<*mut u8>() = ptr4.cast_mut();
-                        }
-                        None => {
-                            *ptr0
-                                .add(4 * ::core::mem::size_of::<*const u8>())
-                                .cast::<u8>() = (0i32) as u8;
-                        }
-                    };
-                    let vec5 = title1;
+                    let vec4 = asset2;
+                    let ptr4 = vec4.as_ptr().cast::<u8>();
+                    let len4 = vec4.len();
+                    let vec5 = amount_base_units2;
                     let ptr5 = vec5.as_ptr().cast::<u8>();
                     let len5 = vec5.len();
-                    *ptr0.add(8 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len5;
-                    *ptr0
-                        .add(7 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr5.cast_mut();
-                    let vec6 = prompt1;
+                    let vec6 = source2;
                     let ptr6 = vec6.as_ptr().cast::<u8>();
                     let len6 = vec6.len();
-                    *ptr0
-                        .add(10 * ::core::mem::size_of::<*const u8>())
-                        .cast::<usize>() = len6;
-                    *ptr0
-                        .add(9 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr6.cast_mut();
-                    *ptr0.add(11 * ::core::mem::size_of::<*const u8>()).cast::<u8>() = (kind1
-                        .clone() as i32) as u8;
-                    let TransferContext {
-                        network: network7,
-                        asset: asset7,
-                        amount_base_units: amount_base_units7,
-                        decimals: decimals7,
-                        source: source7,
-                    } = transfer1;
-                    let vec8 = network7;
-                    let ptr8 = vec8.as_ptr().cast::<u8>();
-                    let len8 = vec8.len();
-                    *ptr0
-                        .add(13 * ::core::mem::size_of::<*const u8>())
-                        .cast::<usize>() = len8;
-                    *ptr0
-                        .add(12 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr8.cast_mut();
-                    let vec9 = asset7;
-                    let ptr9 = vec9.as_ptr().cast::<u8>();
-                    let len9 = vec9.len();
-                    *ptr0
-                        .add(15 * ::core::mem::size_of::<*const u8>())
-                        .cast::<usize>() = len9;
-                    *ptr0
-                        .add(14 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr9.cast_mut();
-                    let vec10 = amount_base_units7;
-                    let ptr10 = vec10.as_ptr().cast::<u8>();
-                    let len10 = vec10.len();
-                    *ptr0
-                        .add(17 * ::core::mem::size_of::<*const u8>())
-                        .cast::<usize>() = len10;
-                    *ptr0
-                        .add(16 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr10.cast_mut();
-                    *ptr0.add(18 * ::core::mem::size_of::<*const u8>()).cast::<u8>() = (_rt::as_i32(
-                        decimals7,
-                    )) as u8;
-                    let vec11 = source7;
-                    let ptr11 = vec11.as_ptr().cast::<u8>();
-                    let len11 = vec11.len();
-                    *ptr0
-                        .add(20 * ::core::mem::size_of::<*const u8>())
-                        .cast::<usize>() = len11;
-                    *ptr0
-                        .add(19 * ::core::mem::size_of::<*const u8>())
-                        .cast::<*mut u8>() = ptr11.cast_mut();
-                    let ptr12 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    let ptr7 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
                     #[link(wasm_import_module = "bloom:private-input/ceremony@0.2.0")]
                     unsafe extern "C" {
                         #[link_name = "request-input"]
-                        fn wit_import13(_: *mut u8, _: *mut u8);
+                        fn wit_import8(
+                            _: *mut u8,
+                            _: usize,
+                            _: i32,
+                            _: *mut u8,
+                            _: usize,
+                            _: *mut u8,
+                            _: usize,
+                            _: *mut u8,
+                            _: usize,
+                            _: i32,
+                            _: *mut u8,
+                            _: usize,
+                            _: *mut u8,
+                        );
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import13(_: *mut u8, _: *mut u8) {
+                    unsafe extern "C" fn wit_import8(
+                        _: *mut u8,
+                        _: usize,
+                        _: i32,
+                        _: *mut u8,
+                        _: usize,
+                        _: *mut u8,
+                        _: usize,
+                        _: *mut u8,
+                        _: usize,
+                        _: i32,
+                        _: *mut u8,
+                        _: usize,
+                        _: *mut u8,
+                    ) {
                         unreachable!()
                     }
-                    wit_import13(ptr0, ptr12);
-                    let l14 = i32::from(*ptr12.add(0).cast::<u8>());
-                    let result30 = match l14 {
+                    wit_import8(
+                        ptr1.cast_mut(),
+                        len1,
+                        kind0.clone() as i32,
+                        ptr3.cast_mut(),
+                        len3,
+                        ptr4.cast_mut(),
+                        len4,
+                        ptr5.cast_mut(),
+                        len5,
+                        _rt::as_i32(decimals2),
+                        ptr6.cast_mut(),
+                        len6,
+                        ptr7,
+                    );
+                    let l9 = i32::from(*ptr7.add(0).cast::<u8>());
+                    let result22 = match l9 {
                         0 => {
                             let e = {
-                                let l15 = i32::from(*ptr12.add(8).cast::<u8>());
-                                let v26 = match l15 {
+                                let l10 = i32::from(*ptr7.add(8).cast::<u8>());
+                                let v18 = match l10 {
                                     0 => {
-                                        let e26 = {
-                                            let l16 = *ptr12.add(16).cast::<*mut u8>();
-                                            let l17 = *ptr12
+                                        let e18 = {
+                                            let l11 = *ptr7.add(16).cast::<*mut u8>();
+                                            let l12 = *ptr7
                                                 .add(16 + 1 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<usize>();
-                                            let len18 = l17;
-                                            let bytes18 = _rt::Vec::from_raw_parts(
-                                                l16.cast(),
-                                                len18,
-                                                len18,
+                                            let len13 = l12;
+                                            let bytes13 = _rt::Vec::from_raw_parts(
+                                                l11.cast(),
+                                                len13,
+                                                len13,
                                             );
-                                            let l19 = *ptr12
+                                            let l14 = *ptr7
                                                 .add(16 + 2 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<i64>();
                                             PendingInput {
-                                                operation_id: _rt::string_lift(bytes18),
-                                                expires_ms: l19 as u64,
+                                                operation_id: _rt::string_lift(bytes13),
+                                                expires_ms: l14 as u64,
                                             }
                                         };
-                                        InputResult::Pending(e26)
+                                        InputResult::Pending(e18)
                                     }
                                     n => {
                                         debug_assert_eq!(n, 1, "invalid enum discriminant");
-                                        let e26 = {
-                                            let l20 = *ptr12.add(16).cast::<*mut u8>();
-                                            let l21 = *ptr12
+                                        let e18 = {
+                                            let l15 = *ptr7.add(16).cast::<*mut u8>();
+                                            let l16 = *ptr7
                                                 .add(16 + 1 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<usize>();
-                                            let len22 = l21;
-                                            let bytes22 = _rt::Vec::from_raw_parts(
-                                                l20.cast(),
-                                                len22,
-                                                len22,
+                                            let len17 = l16;
+                                            let bytes17 = _rt::Vec::from_raw_parts(
+                                                l15.cast(),
+                                                len17,
+                                                len17,
                                             );
-                                            let l23 = *ptr12
-                                                .add(16 + 2 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<*mut u8>();
-                                            let l24 = *ptr12
-                                                .add(16 + 3 * ::core::mem::size_of::<*const u8>())
-                                                .cast::<usize>();
-                                            let len25 = l24;
-                                            let bytes25 = _rt::Vec::from_raw_parts(
-                                                l23.cast(),
-                                                len25,
-                                                len25,
-                                            );
-                                            ReadyInput {
-                                                handle: _rt::string_lift(bytes22),
-                                                value: _rt::string_lift(bytes25),
-                                            }
+                                            _rt::string_lift(bytes17)
                                         };
-                                        InputResult::Ready(e26)
+                                        InputResult::Ready(e18)
                                     }
                                 };
-                                v26
+                                v18
                             };
                             Ok(e)
                         }
                         1 => {
                             let e = {
-                                let l27 = *ptr12.add(8).cast::<*mut u8>();
-                                let l28 = *ptr12
+                                let l19 = *ptr7.add(8).cast::<*mut u8>();
+                                let l20 = *ptr7
                                     .add(8 + 1 * ::core::mem::size_of::<*const u8>())
                                     .cast::<usize>();
-                                let len29 = l28;
-                                let bytes29 = _rt::Vec::from_raw_parts(
-                                    l27.cast(),
-                                    len29,
-                                    len29,
+                                let len21 = l20;
+                                let bytes21 = _rt::Vec::from_raw_parts(
+                                    l19.cast(),
+                                    len21,
+                                    len21,
                                 );
-                                _rt::string_lift(bytes29)
+                                _rt::string_lift(bytes21)
                             };
                             Err(e)
                         }
                         _ => _rt::invalid_enum_discriminant(),
                     };
-                    result30
-                }
-            }
-            #[allow(unused_unsafe, clippy::all)]
-            /// Consumes a completed session by the one-time handle returned in
-            /// `ready-input` -- never by the caller-chosen `request.id` and never by
-            /// `operation-id`. `id` is not guaranteed unique across concurrent or
-            /// retried requests with differing content, so keying consumption off it
-            /// could remove an unrelated session that happened to share the same id.
-            /// The handle is unique per completed session by construction.
-            #[allow(async_fn_in_trait)]
-            pub fn consume(handle: &str) -> Result<(), _rt::String> {
-                unsafe {
-                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
-                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
-                    struct RetArea(
-                        [::core::mem::MaybeUninit<
-                            u8,
-                        >; 3 * ::core::mem::size_of::<*const u8>()],
-                    );
-                    let mut ret_area = RetArea(
-                        [::core::mem::MaybeUninit::uninit(); 3
-                            * ::core::mem::size_of::<*const u8>()],
-                    );
-                    let vec0 = handle;
-                    let ptr0 = vec0.as_ptr().cast::<u8>();
-                    let len0 = vec0.len();
-                    let ptr1 = ret_area.0.as_mut_ptr().cast::<u8>();
-                    #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "bloom:private-input/ceremony@0.2.0")]
-                    unsafe extern "C" {
-                        #[link_name = "consume"]
-                        fn wit_import2(_: *mut u8, _: usize, _: *mut u8);
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import2(_: *mut u8, _: usize, _: *mut u8) {
-                        unreachable!()
-                    }
-                    wit_import2(ptr0.cast_mut(), len0, ptr1);
-                    let l3 = i32::from(*ptr1.add(0).cast::<u8>());
-                    let result7 = match l3 {
-                        0 => {
-                            let e = ();
-                            Ok(e)
-                        }
-                        1 => {
-                            let e = {
-                                let l4 = *ptr1
-                                    .add(::core::mem::size_of::<*const u8>())
-                                    .cast::<*mut u8>();
-                                let l5 = *ptr1
-                                    .add(2 * ::core::mem::size_of::<*const u8>())
-                                    .cast::<usize>();
-                                let len6 = l5;
-                                let bytes6 = _rt::Vec::from_raw_parts(
-                                    l4.cast(),
-                                    len6,
-                                    len6,
-                                );
-                                _rt::string_lift(bytes6)
-                            };
-                            Err(e)
-                        }
-                        _ => _rt::invalid_enum_discriminant(),
-                    };
-                    result7
+                    result22
                 }
             }
         }
@@ -5654,9 +5488,9 @@ macro_rules! __export_route_file_impl {
         "wasm32")] #[unsafe (link_section =
         "component-type:wit-bindgen:0.57.1:bloom:route@0.1.0:route-file:imports and exports")]
         #[doc(hidden)] #[allow(clippy::octal_escapes)] pub static
-        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 3500] = *
+        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 3368] = *
         b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xab\x1a\x01A\x02\x01\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa7\x19\x01A\x02\x01\
 A-\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
 body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04body\x02\
 \x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\0\x05\
@@ -5704,36 +5538,33 @@ modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01j\x01\x05\x01s\
 \x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x06\x01B\x0b\x01j\x01w\x01\
 s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03leny\0\x03\
 \x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03keys\0\x06\x04\
-\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x17\x01m\x01\
+\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x0f\x01m\x01\
 \x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01r\x05\x07networks\x05assets\x11am\
-ount-base-unitss\x08decimals}\x06sources\x04\0\x10transfer-context\x03\0\x02\x01\
-ks\x01r\x07\x02ids\x06wallets\x0fapproval-wallet\x04\x05titles\x06prompts\x04kin\
-d\x01\x08transfer\x03\x04\0\x07request\x03\0\x05\x01s\x04\0\x0coperation-id\x03\0\
-\x07\x01s\x04\0\x0esession-handle\x03\0\x09\x01r\x02\x0coperation-id\x08\x0aexpi\
-res-msw\x04\0\x0dpending-input\x03\0\x0b\x01r\x02\x06handle\x0a\x05values\x04\0\x0b\
-ready-input\x03\0\x0d\x01q\x02\x07pending\x01\x0c\0\x05ready\x01\x0e\0\x04\0\x0c\
-input-result\x03\0\x0f\x01j\x01\x10\x01s\x01@\x01\x07request\x06\0\x11\x04\0\x0d\
-request-input\x01\x12\x01j\0\x01s\x01@\x01\x06handle\x0a\0\x13\x04\0\x07consume\x01\
-\x14\x03\0\"bloom:private-input/ceremony@0.2.0\x05\x08\x01B\x0f\x01o\x02ss\x01p\0\
-\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\x01\x05actor\x02\
-\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\
-\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\x0blink-target\x02\
-\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\
-\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescription\x02\x0fconsent-sum\
-mary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutable\x7f\x04\0\x0arout\
-e-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01s\0\x06denied\x01s\
-\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\0\x0broute-erro\
-r\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x09\x02\x03\0\x09\x03ctx\x03\0\x03\
-ctx\x03\0\x0a\x02\x03\0\x09\x05entry\x03\0\x05entry\x03\0\x0c\x02\x03\0\x09\x0br\
-oute-error\x03\0\x0broute-error\x03\0\x0e\x02\x03\0\x09\x0aroute-meta\x03\0\x0ar\
-oute-meta\x03\0\x10\x01j\x01\x11\x01\x0f\x01@\x01\x03ctx\x0b\0\x12\x04\0\x08meta\
-data\x01\x13\x01j\x01\x0d\x01\x0f\x01@\x01\x03ctx\x0b\0\x14\x04\0\x06lookup\x01\x15\
-\x01p\x0d\x01j\x01\x16\x01\x0f\x01@\x01\x03ctx\x0b\0\x17\x04\0\x04list\x01\x18\x01\
-p}\x01j\x01\x19\x01\x0f\x01@\x01\x03ctx\x0b\0\x1a\x04\0\x04read\x01\x1b\x01j\0\x01\
-\x0f\x01@\x02\x03ctx\x0b\x04body\x19\0\x1c\x04\0\x05write\x01\x1d\x04\0\x1cbloom\
-:route/route-file@0.1.0\x04\0\x0b\x10\x01\0\x0aroute-file\x03\0\0\0G\x09producer\
-s\x01\x0cprocessed-by\x02\x0dwit-component\x070.247.0\x10wit-bindgen-rust\x060.5\
-7.1";
+ount-base-unitss\x08decimals}\x06sources\x04\0\x0fdisplay-context\x03\0\x02\x01r\
+\x03\x02ids\x04kind\x01\x07context\x03\x04\0\x07request\x03\0\x04\x01s\x04\0\x0c\
+operation-id\x03\0\x06\x01r\x02\x0coperation-id\x07\x0aexpires-msw\x04\0\x0dpend\
+ing-input\x03\0\x08\x01q\x02\x07pending\x01\x09\0\x05ready\x01s\0\x04\0\x0cinput\
+-result\x03\0\x0a\x01j\x01\x0b\x01s\x01@\x01\x07request\x05\0\x0c\x04\0\x0dreque\
+st-input\x01\x0d\x03\0\"bloom:private-input/ceremony@0.2.0\x05\x08\x01B\x0f\x01o\
+\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\x01\
+\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\x0a\
+entry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\x0b\
+link-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\x0c\
+cache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescription\x02\
+\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutable\x7f\
+\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01s\0\x06\
+denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\0\x0b\
+route-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x09\x02\x03\0\x09\x03\
+ctx\x03\0\x03ctx\x03\0\x0a\x02\x03\0\x09\x05entry\x03\0\x05entry\x03\0\x0c\x02\x03\
+\0\x09\x0broute-error\x03\0\x0broute-error\x03\0\x0e\x02\x03\0\x09\x0aroute-meta\
+\x03\0\x0aroute-meta\x03\0\x10\x01j\x01\x11\x01\x0f\x01@\x01\x03ctx\x0b\0\x12\x04\
+\0\x08metadata\x01\x13\x01j\x01\x0d\x01\x0f\x01@\x01\x03ctx\x0b\0\x14\x04\0\x06l\
+ookup\x01\x15\x01p\x0d\x01j\x01\x16\x01\x0f\x01@\x01\x03ctx\x0b\0\x17\x04\0\x04l\
+ist\x01\x18\x01p}\x01j\x01\x19\x01\x0f\x01@\x01\x03ctx\x0b\0\x1a\x04\0\x04read\x01\
+\x1b\x01j\0\x01\x0f\x01@\x02\x03ctx\x0b\x04body\x19\0\x1c\x04\0\x05write\x01\x1d\
+\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\x0b\x10\x01\0\x0aroute-file\x03\0\0\
+\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.247.0\x10wit-bind\
+gen-rust\x060.57.1";
         };
     };
 }
@@ -5746,8 +5577,8 @@ pub use __export_route_file_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 3421] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xbc\x19\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 3289] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xb8\x18\x01A\x02\x01\
 A\x1c\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
 \x04body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04bo\
 dy\x02\x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\
@@ -5795,32 +5626,29 @@ paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\x0b\0\x0
 \x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x06\x01B\x0b\x01j\
 \x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03\
 leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03key\
-s\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x17\
+s\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x0f\
 \x01m\x01\x0bevm-address\x04\0\x0ainput-kind\x03\0\0\x01r\x05\x07networks\x05ass\
-ets\x11amount-base-unitss\x08decimals}\x06sources\x04\0\x10transfer-context\x03\0\
-\x02\x01ks\x01r\x07\x02ids\x06wallets\x0fapproval-wallet\x04\x05titles\x06prompt\
-s\x04kind\x01\x08transfer\x03\x04\0\x07request\x03\0\x05\x01s\x04\0\x0coperation\
--id\x03\0\x07\x01s\x04\0\x0esession-handle\x03\0\x09\x01r\x02\x0coperation-id\x08\
-\x0aexpires-msw\x04\0\x0dpending-input\x03\0\x0b\x01r\x02\x06handle\x0a\x05value\
-s\x04\0\x0bready-input\x03\0\x0d\x01q\x02\x07pending\x01\x0c\0\x05ready\x01\x0e\0\
-\x04\0\x0cinput-result\x03\0\x0f\x01j\x01\x10\x01s\x01@\x01\x07request\x06\0\x11\
-\x04\0\x0drequest-input\x01\x12\x01j\0\x01s\x01@\x01\x06handle\x0a\0\x13\x04\0\x07\
-consume\x01\x14\x03\0\"bloom:private-input/ceremony@0.2.0\x05\x08\x01B\x0f\x01o\x02\
-ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\x01\x05\
-actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\x0aent\
-ry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\x0bli\
-nk-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\x0cca\
-che-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescription\x02\x0f\
-consent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutable\x7f\x04\
-\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01s\0\x06d\
-enied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\0\x0b\
-route-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x09\x02\x03\0\x09\x03\
-ctx\x03\0\x03ctx\x03\0\x0a\x02\x03\0\x09\x05entry\x03\0\x05entry\x03\0\x0c\x02\x03\
-\0\x09\x0broute-error\x03\0\x0broute-error\x03\0\x0e\x02\x03\0\x09\x0aroute-meta\
-\x03\0\x0aroute-meta\x03\0\x10\x04\0<bloom:route/route-file-with-all-of-its-expo\
-rts-removed@0.1.0\x04\0\x0b0\x01\0*route-file-with-all-of-its-exports-removed\x03\
-\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.247.0\x10wit-\
-bindgen-rust\x060.57.1";
+ets\x11amount-base-unitss\x08decimals}\x06sources\x04\0\x0fdisplay-context\x03\0\
+\x02\x01r\x03\x02ids\x04kind\x01\x07context\x03\x04\0\x07request\x03\0\x04\x01s\x04\
+\0\x0coperation-id\x03\0\x06\x01r\x02\x0coperation-id\x07\x0aexpires-msw\x04\0\x0d\
+pending-input\x03\0\x08\x01q\x02\x07pending\x01\x09\0\x05ready\x01s\0\x04\0\x0ci\
+nput-result\x03\0\x0a\x01j\x01\x0b\x01s\x01@\x01\x07request\x05\0\x0c\x04\0\x0dr\
+equest-input\x01\x0d\x03\0\"bloom:private-input/ceremony@0.2.0\x05\x08\x01B\x0f\x01\
+o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\
+\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\
+\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\
+\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\
+\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescriptio\
+n\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutab\
+le\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01\
+s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\
+\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x09\x02\x03\0\x09\
+\x03ctx\x03\0\x03ctx\x03\0\x0a\x02\x03\0\x09\x05entry\x03\0\x05entry\x03\0\x0c\x02\
+\x03\0\x09\x0broute-error\x03\0\x0broute-error\x03\0\x0e\x02\x03\0\x09\x0aroute-\
+meta\x03\0\x0aroute-meta\x03\0\x10\x04\0<bloom:route/route-file-with-all-of-its-\
+exports-removed@0.1.0\x04\0\x0b0\x01\0*route-file-with-all-of-its-exports-remove\
+d\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.247.0\x10\
+wit-bindgen-rust\x060.57.1";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

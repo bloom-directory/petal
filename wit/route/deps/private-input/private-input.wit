@@ -5,12 +5,10 @@ interface ceremony {
     evm-address,
   }
 
-  /// Value-transfer context the host renders with its own labels in the
-  /// ceremony UI and cryptographically binds into the sealed passkey
-  /// approval. A Petal must not be able to get sign-off on a destination
-  /// while hiding how much value moves there. The host does not trust or
-  /// reinterpret these fields beyond displaying and binding them verbatim.
-  record transfer-context {
+  /// Display-only context rendered by the host next to the input field. It is
+  /// supplied by the requesting Petal and is not an approval, authorization,
+  /// or cryptographic statement about eventual execution.
+  record display-context {
     network: string,
     asset: string,
     /// Integer string of base units (e.g. wei), never a fractional/display
@@ -21,29 +19,14 @@ interface ceremony {
     /// Number of decimal places `amount-base-units` must be divided by to
     /// get a human display amount in `asset`.
     decimals: u8,
-    /// The note/account identity the value is drawn from, shown to the
-    /// approver alongside the destination and amount.
+    /// The Petal-local source identity shown to the owner.
     source: string,
   }
 
   record request {
     id: string,
-    /// Subject wallet used by the petal (for example, the deposited note's
-    /// wallet). This is not implicitly the approval identity.
-    wallet: string,
-    /// Passkey wallet authorizing release. If absent, Bloom uses the subject
-    /// wallet when it is passkey-gated, otherwise the sole passkey wallet. It
-    /// fails closed when no unique passkey choice exists.
-    approval-wallet: option<string>,
-    title: string,
-    prompt: string,
     kind: input-kind,
-    /// The ceremony renders and binds this transfer context alongside the
-    /// requested input. Required, not advisory: the only current `kind`
-    /// (`evm-address`) is always a value-transfer destination, and a Petal
-    /// must not be able to get sign-off on one without disclosing what it
-    /// authorizes moving.
-    transfer: transfer-context,
+    context: display-context,
   }
 
   /// Non-secret identifier for a pending ceremony, safe to log, display, or
@@ -52,55 +35,34 @@ interface ceremony {
   /// tamper with the ceremony.
   ///
   /// Host-generated, not `request.id` echoed back: `id` is caller-chosen and
-  /// explicitly not guaranteed unique (see `consume`), so two concurrent
+  /// explicitly not guaranteed unique, so two concurrent
   /// requests with different content could share an `id` and would be
   /// indistinguishable to any owner-facing surface correlating by it. The
   /// host must instead derive operation-id per distinct request *content*
   /// (e.g. from the same fingerprint it already uses to decide whether a
   /// repeated request-input call is an idempotent resume): identical
-  /// retries resolve to the same operation-id; requests that differ in
-  /// content -- even if they reuse the same `id` -- must get different
-  /// operation-ids.
+  /// retries resolve to the same operation-id while it is active; requests
+  /// that differ in content -- even if they reuse the same `id` -- must get
+  /// different operation-ids.
   type operation-id = string;
-
-  /// Opaque, single-use handle identifying one *completed* ceremony session.
-  /// Returned only in `ready-input`, alongside the released value itself --
-  /// so holding it never grants access to anything the holder doesn't
-  /// already have. Not meaningful to guest code beyond passing it back to
-  /// `consume`; callers must not assume any structure or stability beyond
-  /// equality. Never confuse this with the operation-id: the operation-id is
-  /// safe to make public, this is not.
-  type session-handle = string;
 
   record pending-input {
     operation-id: operation-id,
     expires-ms: u64,
   }
 
-  record ready-input {
-    handle: session-handle,
-    value: string,
-  }
-
   variant input-result {
     pending(pending-input),
-    ready(ready-input),
+    /// The host releases the value once and forgets it before returning. If
+    /// the guest fails before persisting it, a later identical request starts
+    /// a fresh ceremony and the owner enters it again.
+    ready(string),
   }
 
   /// Requests (or resumes) a private-input ceremony. Never returns a
   /// browser-openable ceremony URL, or any other bearer credential, to guest
-  /// code: the host is solely responsible for surfacing the ceremony to its
-  /// owner, through whatever owner-facing status/launch surface it
-  /// implements, correlated by `operation-id`. This keeps the host side of
-  /// the ceremony free to change (including which service owns and hosts
-  /// it) without another contract change here.
+  /// code. The host is solely responsible for launching its browser-owned
+  /// input form, correlated by `operation-id`. The browser value must not
+  /// enter agent-visible VFS state, command output, logs, or request data.
   request-input: func(request: request) -> result<input-result, string>;
-
-  /// Consumes a completed session by the one-time handle returned in
-  /// `ready-input` -- never by the caller-chosen `request.id` and never by
-  /// `operation-id`. `id` is not guaranteed unique across concurrent or
-  /// retried requests with differing content, so keying consumption off it
-  /// could remove an unrelated session that happened to share the same id.
-  /// The handle is unique per completed session by construction.
-  consume: func(handle: session-handle) -> result<_, string>;
 }

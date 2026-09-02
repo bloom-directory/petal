@@ -221,12 +221,10 @@ pub enum PrivateInputKind {
     EvmAddress,
 }
 
-/// Value-transfer context the host renders with its own labels in the
-/// ceremony UI and cryptographically binds into the sealed passkey approval.
-/// Required on every request: a Petal must not be able to get sign-off on a
-/// destination while hiding how much value moves there.
+/// Display-only context rendered by the host next to the input field. This is
+/// not an approval, authorization, or claim about eventual execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PrivateInputTransferContext {
+pub struct PrivateInputDisplayContext {
     pub network: String,
     pub asset: String,
     /// Integer string of base units (e.g. wei), never a fractional/display
@@ -244,16 +242,8 @@ pub struct PrivateInputTransferContext {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrivateInputRequest {
     pub id: String,
-    /// Passkey wallet authorizing release of the private value. When omitted,
-    /// Bloom may select the sole passkey wallet on the machine.
-    pub approval_wallet: Option<String>,
-    /// Wallet whose Privacy Pools note is being withdrawn. This is context,
-    /// not necessarily the passkey approval identity.
-    pub wallet: String,
-    pub title: String,
-    pub prompt: String,
     pub kind: PrivateInputKind,
-    pub transfer: PrivateInputTransferContext,
+    pub context: PrivateInputDisplayContext,
 }
 
 /// Non-secret identifier for a pending ceremony, safe to log, display, or
@@ -266,17 +256,8 @@ pub struct PrivateInputRequest {
 /// any owner-facing surface correlating by this value. The host derives it
 /// per distinct request content instead -- identical retries resolve to the
 /// same operation id; requests that differ in content get different ones,
-/// even if they reuse the same `id`. Never confuse this with
-/// [`PrivateInputHandle`], which is a bearer credential.
+/// even if they reuse the same `id`.
 pub type PrivateInputOperationId = String;
-
-/// Opaque, single-use handle identifying one *completed* ceremony session.
-/// Only ever available via [`PrivateInputOutcome::Ready`], alongside the
-/// released value itself -- holding it never grants access to anything the
-/// holder doesn't already have. Pass it to [`sdk::consume_private_input`] --
-/// never the request `id` or the operation id, neither of which is a unique
-/// per-session credential.
-pub type PrivateInputHandle = String;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrivateInputOutcome {
@@ -284,10 +265,7 @@ pub enum PrivateInputOutcome {
         operation_id: PrivateInputOperationId,
         expires_ms: u64,
     },
-    Ready {
-        handle: PrivateInputHandle,
-        value: String,
-    },
+    Ready(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -332,10 +310,9 @@ pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
         OutboxInspection, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest,
-        PetalKeyOutcome, PetalKeyRequest, PrivateInputHandle, PrivateInputKind,
-        PrivateInputOperationId, PrivateInputOutcome, PrivateInputRequest,
-        PrivateInputTransferContext, SdkError, SignBatchOutcome, SignOutcome, SignSelector,
-        StagedTransaction, payload_batch_digest,
+        PetalKeyOutcome, PetalKeyRequest, PrivateInputDisplayContext, PrivateInputKind,
+        PrivateInputOperationId, PrivateInputOutcome, PrivateInputRequest, SdkError,
+        SignBatchOutcome, SignOutcome, SignSelector, StagedTransaction, payload_batch_digest,
     };
     use crate::bindings::bloom::chain::read as chain;
     use crate::bindings::bloom::env::runtime as env;
@@ -500,21 +477,17 @@ pub mod sdk {
         let kind = match request.kind {
             PrivateInputKind::EvmAddress => private_input::InputKind::EvmAddress,
         };
-        let transfer = private_input::TransferContext {
-            network: request.transfer.network.clone(),
-            asset: request.transfer.asset.clone(),
-            amount_base_units: request.transfer.amount_base_units.clone(),
-            decimals: request.transfer.decimals,
-            source: request.transfer.source.clone(),
+        let context = private_input::DisplayContext {
+            network: request.context.network.clone(),
+            asset: request.context.asset.clone(),
+            amount_base_units: request.context.amount_base_units.clone(),
+            decimals: request.context.decimals,
+            source: request.context.source.clone(),
         };
         match private_input::request_input(&private_input::Request {
             id: request.id.clone(),
-            wallet: request.wallet.clone(),
-            approval_wallet: request.approval_wallet.clone(),
-            title: request.title.clone(),
-            prompt: request.prompt.clone(),
             kind,
-            transfer,
+            context,
         })
         .map_err(host_err)?
         {
@@ -522,21 +495,8 @@ pub mod sdk {
                 operation_id: pending.operation_id,
                 expires_ms: pending.expires_ms,
             }),
-            private_input::InputResult::Ready(ready) => Ok(PrivateInputOutcome::Ready {
-                handle: ready.handle,
-                value: ready.value,
-            }),
+            private_input::InputResult::Ready(value) => Ok(PrivateInputOutcome::Ready(value)),
         }
-    }
-
-    /// Consumes a completed session by the one-time handle returned in
-    /// [`PrivateInputOutcome::Ready`] -- never by the request `id` or by
-    /// [`PrivateInputOperationId`], neither of which is a unique per-session
-    /// credential. [`PrivateInputOutcome::Pending`] carries no handle at
-    /// all, precisely so guest code can't mistake the non-secret operation
-    /// id for something consumable.
-    pub fn consume_private_input(handle: &PrivateInputHandle) -> Result<(), SdkError> {
-        private_input::consume(handle).map_err(host_err)
     }
 
     pub fn chain_read(
