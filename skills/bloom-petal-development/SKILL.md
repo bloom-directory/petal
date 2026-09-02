@@ -85,6 +85,9 @@ module tree. Every `.rs` file below it becomes a separately compiled component:
   `markets/<slug>/book.json`;
 - a bracketed segment such as `[slug]` is available through
   `petal::param(ctx, "slug")`;
+- `[wallet]` is reserved for a Bloom wallet id under `/bloom/wallets/<id>`;
+  read it with `petal::wallet_param(ctx)`, and use a distinct parameter such as
+  `[account]` for an on-chain address;
 - `$list.rs` is unsupported; use `$index.rs`.
 
 Directory contents are explicit. Use `list` for a fixed child list,

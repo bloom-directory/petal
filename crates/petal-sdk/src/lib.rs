@@ -466,6 +466,7 @@ pub mod sdk {
         outbox_id: &str,
         acknowledge_warnings: bool,
     ) -> Result<StagedTransaction, SdkError> {
+        super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::confirm(wallet, chain_name, outbox_id, acknowledge_warnings)
             .map(staged_transaction)
             .map_err(host_err)
@@ -476,6 +477,7 @@ pub mod sdk {
         chain_name: &str,
         outbox_id: &str,
     ) -> Result<OutboxInspection, SdkError> {
+        super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::inspect(wallet, chain_name, outbox_id)
             .map(|inspection| OutboxInspection {
                 outbox_id: inspection.outbox_id,
@@ -489,6 +491,9 @@ pub mod sdk {
     pub fn request_private_input(
         request: &PrivateInputRequest,
     ) -> Result<PrivateInputOutcome, SdkError> {
+        if let Some(wallet) = request.approval_wallet.as_deref() {
+            super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
+        }
         let kind = match request.kind {
             PrivateInputKind::EvmAddress => private_input::InputKind::EvmAddress,
         };
@@ -970,6 +975,18 @@ pub fn current_route_canonical_path(ctx: &Ctx) -> &'static str {
 }
 
 pub fn framework_metadata(ctx: &Ctx, spec: RouteSpec) -> Result<RouteMeta, RouteError> {
+    let description = if ctx
+        .identity_params
+        .iter()
+        .any(|(name, _)| *name == "wallet")
+    {
+        format!(
+            "Petal route {}. Path parameter [wallet] is a Bloom wallet id under /bloom/wallets/<id>, not an on-chain address.",
+            current_route_path(ctx)
+        )
+    } else {
+        format!("Petal route {}", current_route_path(ctx))
+    };
     Ok(RouteMeta {
         kind: match spec.kind {
             RouteFileKind::Dir => EntryKind::Dir,
@@ -983,7 +1000,7 @@ pub fn framework_metadata(ctx: &Ctx, spec: RouteSpec) -> Result<RouteMeta, Route
         cache_ttl_ms: spec.cache_ttl_ms,
         side_effecting_read: spec.side_effecting_read,
         write_async: spec.write_async,
-        description: Some(format!("Petal route {}", current_route_path(ctx))),
+        description: Some(description),
         consent_summary: None,
         required_caps: spec
             .required_caps
@@ -1236,6 +1253,10 @@ mod identity_tests {
     fn wallet_params_use_bloom_wallet_ids() {
         let valid = Ctx::bind::<Nested>(raw("trade/alice-1/drafts/42/plan.md", &[]));
         assert_eq!(wallet_param(&valid).unwrap(), "alice-1");
+        let metadata = framework_metadata(&valid, RouteSpec::file()).unwrap();
+        let description = metadata.description.unwrap();
+        assert!(description.contains("[wallet] is a Bloom wallet id"));
+        assert!(description.contains("not an on-chain address"));
 
         let address = Ctx::bind::<Nested>(raw(
             "trade/0x0000000000000000000000000000000000000001/drafts/42/plan.md",
