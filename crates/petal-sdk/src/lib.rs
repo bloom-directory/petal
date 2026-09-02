@@ -359,6 +359,9 @@ pub mod sdk {
     }
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
+        let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
+            .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
+        super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
         key::request(request_jcs).map_err(host_err)
     }
 
@@ -1271,6 +1274,23 @@ mod identity_tests {
         assert!(validate_wallet_id("Alice").is_err());
         assert!(validate_wallet_id("alice:1").is_err());
         assert!(validate_wallet_id(&format!("a{}", "1".repeat(64))).is_err());
+    }
+
+    #[test]
+    fn raw_key_requests_cannot_bypass_wallet_validation() {
+        let request = PetalKeyRequest {
+            wallet_id: "0x0000000000000000000000000000000000000001".into(),
+            key_slot: "session".into(),
+            allowed_routes: vec!["r000001".into()],
+            allowed_operation_classes: vec!["example.action".into()],
+            allowed_crypto_suites: vec!["secp256k1-keccak256-recoverable".into()],
+            maximum_lifetime_ms: 60_000,
+        };
+        let request_jcs = serde_jcs::to_vec(&request).unwrap();
+        let Err(SdkError::Message(message)) = sdk::request_key(&request_jcs) else {
+            panic!("raw request must reject an address-shaped wallet before the host call");
+        };
+        assert!(message.contains("on-chain address"));
     }
 
     #[test]
