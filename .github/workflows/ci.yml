@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   test:
@@ -20,24 +20,24 @@ jobs:
           cargo install wit-bindgen-cli --version 0.57.1 --locked
       - run: scripts/check.sh
 
-  well-known-petals:
-    name: Well-known Petal (${{ matrix.name }})
+  first-party-consumers:
+    name: First-party consumer (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Pin reviewed source revisions that compile against this checkout.
+          # Pin reviewed source revisions for Bloom's first-party consumers.
           # Bloom's release catalog advances separately after package publication.
           - name: polymarket
             repository: bloom-directory/bloom-petal-polymarket
-            ref: 8b2a5f69af86d822654143a31aa54f518955e616
+            ref: c057e6d82f06626e2143213a9dc0c057e4812f89
+          - name: hyperliquid
+            repository: bloom-directory/bloom-petal-hyperliquid
+            ref: f19e1b10ab2dbeb145704e76b1189bb257622c60
           - name: near-intents
             repository: bloom-directory/bloom-petal-near
-            ref: 6acfa383c3b81f136313884426f1641afe144bd3
-          - name: enso
-            repository: bloom-directory/bloom-petal-enso
-            ref: 4f1573af94d4155a44439354bca3ccbec6ae5fc8
+            ref: ccabb93214f1f18cf9b36946425e60035763f193
     steps:
       - name: Checkout Petal
         uses: actions/checkout@v4
