@@ -282,6 +282,41 @@ impl core::fmt::Display for SdkError {
 
 impl core::error::Error for SdkError {}
 
+/// Validate the identifier used to address a Bloom wallet.
+///
+/// Wallet identifiers are Broker protocol tokens, not on-chain addresses.
+/// Keeping this check in the SDK makes malformed route parameters fail before
+/// a signing or custody request crosses the host boundary.
+pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
+    if value.len() == 42
+        && value.starts_with("0x")
+        && value[2..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(
+            "wallet must be a Bloom wallet id, not an on-chain address; use the id under /bloom/wallets/<id>"
+                .into(),
+        );
+    }
+    if value.is_empty() || value.len() > 64 {
+        return Err("wallet must be a Bloom wallet id containing 1-64 bytes".into());
+    }
+    if !value.as_bytes()[0].is_ascii_lowercase() {
+        return Err(
+            "wallet must be a Bloom wallet id starting with a lowercase ASCII letter".into(),
+        );
+    }
+    if !value
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._/-".contains(&byte))
+    {
+        return Err(
+            "wallet must be a Bloom wallet id using only lowercase ASCII letters, digits, '.', '_', '/', or '-'"
+                .into(),
+        );
+    }
+    Ok(value)
+}
+
 pub mod sdk {
     pub use super::{
         DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
@@ -324,10 +359,14 @@ pub mod sdk {
     }
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
+        let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
+            .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
+        super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
         key::request(request_jcs).map_err(host_err)
     }
 
     pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
+        super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
         let request_jcs = serde_jcs::to_vec(request)
             .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))?;
         let outcome = request_key(&request_jcs)?;
@@ -336,6 +375,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
+        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         let request = sign::PayloadSignRequest {
             wallet: req.wallet.clone(),
             preimage: req.preimage.clone(),
@@ -360,6 +400,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<SignBatchOutcome, SdkError> {
+        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         let _ = payload_batch_digest(&req.payloads)?;
         let request = sign::PayloadBatchSignRequest {
             wallet: req.wallet.clone(),
@@ -407,6 +448,7 @@ pub mod sdk {
     }
 
     pub fn tx_stage(req: &EvmTransaction) -> Result<StagedTransaction, SdkError> {
+        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         tx::stage(&tx::EvmTransaction {
             wallet: req.wallet.clone(),
             chain: req.chain.clone(),
@@ -427,6 +469,7 @@ pub mod sdk {
         outbox_id: &str,
         acknowledge_warnings: bool,
     ) -> Result<StagedTransaction, SdkError> {
+        super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::confirm(wallet, chain_name, outbox_id, acknowledge_warnings)
             .map(staged_transaction)
             .map_err(host_err)
@@ -437,6 +480,7 @@ pub mod sdk {
         chain_name: &str,
         outbox_id: &str,
     ) -> Result<OutboxInspection, SdkError> {
+        super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::inspect(wallet, chain_name, outbox_id)
             .map(|inspection| OutboxInspection {
                 outbox_id: inspection.outbox_id,
@@ -450,6 +494,9 @@ pub mod sdk {
     pub fn request_private_input(
         request: &PrivateInputRequest,
     ) -> Result<PrivateInputOutcome, SdkError> {
+        if let Some(wallet) = request.approval_wallet.as_deref() {
+            super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
+        }
         let kind = match request.kind {
             PrivateInputKind::EvmAddress => private_input::InputKind::EvmAddress,
         };
@@ -931,6 +978,18 @@ pub fn current_route_canonical_path(ctx: &Ctx) -> &'static str {
 }
 
 pub fn framework_metadata(ctx: &Ctx, spec: RouteSpec) -> Result<RouteMeta, RouteError> {
+    let description = if ctx
+        .identity_params
+        .iter()
+        .any(|(name, _)| *name == "wallet")
+    {
+        format!(
+            "Petal route {}. Path parameter [wallet] is a Bloom wallet id under /bloom/wallets/<id>, not an on-chain address.",
+            current_route_path(ctx)
+        )
+    } else {
+        format!("Petal route {}", current_route_path(ctx))
+    };
     Ok(RouteMeta {
         kind: match spec.kind {
             RouteFileKind::Dir => EntryKind::Dir,
@@ -944,7 +1003,7 @@ pub fn framework_metadata(ctx: &Ctx, spec: RouteSpec) -> Result<RouteMeta, Route
         cache_ttl_ms: spec.cache_ttl_ms,
         side_effecting_read: spec.side_effecting_read,
         write_async: spec.write_async,
-        description: Some(format!("Petal route {}", current_route_path(ctx))),
+        description: Some(description),
         consent_summary: None,
         required_caps: spec
             .required_caps
@@ -1023,6 +1082,13 @@ pub fn param<'a>(ctx: &'a Ctx, name: &str) -> Result<&'a str, DispatchResponse> 
     route_param(ctx, name)
         .or_else(|| route_generated_param(ctx, name))
         .ok_or_else(|| route_invalid(format!("missing {name}")))
+}
+
+/// Return the reserved `[wallet]` route parameter as a validated Bloom wallet
+/// identifier rather than an on-chain address.
+pub fn wallet_param(ctx: &Ctx) -> Result<&str, DispatchResponse> {
+    let value = param(ctx, "wallet")?;
+    validate_wallet_id(value).map_err(route_invalid)
 }
 
 pub fn route_generated_param<'a>(ctx: &'a Ctx, name: &str) -> Option<&'a str> {
@@ -1184,6 +1250,47 @@ mod identity_tests {
         ));
         assert_eq!(param(&ctx, "wallet").unwrap(), "supplied-wallet");
         assert_eq!(param(&ctx, "id").unwrap(), "path-id");
+    }
+
+    #[test]
+    fn wallet_params_use_bloom_wallet_ids() {
+        let valid = Ctx::bind::<Nested>(raw("trade/alice-1/drafts/42/plan.md", &[]));
+        assert_eq!(wallet_param(&valid).unwrap(), "alice-1");
+        let metadata = framework_metadata(&valid, RouteSpec::file()).unwrap();
+        let description = metadata.description.unwrap();
+        assert!(description.contains("[wallet] is a Bloom wallet id"));
+        assert!(description.contains("not an on-chain address"));
+
+        let address = Ctx::bind::<Nested>(raw(
+            "trade/0x0000000000000000000000000000000000000001/drafts/42/plan.md",
+            &[],
+        ));
+        let Err(DispatchResponse::Error { code, message }) = wallet_param(&address) else {
+            panic!("address-shaped wallet parameter must fail");
+        };
+        assert_eq!(code, -3);
+        assert!(message.contains("on-chain address"));
+
+        assert!(validate_wallet_id("Alice").is_err());
+        assert!(validate_wallet_id("alice:1").is_err());
+        assert!(validate_wallet_id(&format!("a{}", "1".repeat(64))).is_err());
+    }
+
+    #[test]
+    fn raw_key_requests_cannot_bypass_wallet_validation() {
+        let request = PetalKeyRequest {
+            wallet_id: "0x0000000000000000000000000000000000000001".into(),
+            key_slot: "session".into(),
+            allowed_routes: vec!["r000001".into()],
+            allowed_operation_classes: vec!["example.action".into()],
+            allowed_crypto_suites: vec!["secp256k1-keccak256-recoverable".into()],
+            maximum_lifetime_ms: 60_000,
+        };
+        let request_jcs = serde_jcs::to_vec(&request).unwrap();
+        let Err(SdkError::Message(message)) = sdk::request_key(&request_jcs) else {
+            panic!("raw request must reject an address-shaped wallet before the host call");
+        };
+        assert!(message.contains("on-chain address"));
     }
 
     #[test]

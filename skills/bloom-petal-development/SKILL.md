@@ -85,6 +85,9 @@ module tree. Every `.rs` file below it becomes a separately compiled component:
   `markets/<slug>/book.json`;
 - a bracketed segment such as `[slug]` is available through
   `petal::param(ctx, "slug")`;
+- `[wallet]` is reserved for a Bloom wallet id under `/bloom/wallets/<id>`;
+  read it with `petal::wallet_param(ctx)`, and use a distinct parameter such as
+  `[account]` for an on-chain address;
 - `$list.rs` is unsupported; use `$index.rs`.
 
 Directory contents are explicit. Use `list` for a fixed child list,
@@ -143,13 +146,11 @@ of `contains`, `ends_with`, or string-keyed matches.
 The structural guarantee is that each route file is generated as its own
 component crate and the `route_file!` macro wires exactly one local handler
 per file, so shared code cannot serve a route unless that route opts in. Treat
-this as the primary enforcement. The toolchain's `petal check` reconciles a
-route's declared capabilities against its compiled imports, but it does not
-inspect source for route-identity access, so the path-dispatch rule has no
-canonical lint: a repository-level source check (for example a grep over the
-shared crate for `current_route_path` and `current_route_canonical_path`) is
-the authoritative gate for this rule. Keep its denylist aligned with the
-accessors the pinned SDK actually exposes.
+this as the primary enforcement. The toolchain's `petal check` rejects route
+identity accessors in the shared route crate and reconciles every route's
+declared capabilities against its compiled imports. Repository-level checks
+may enforce additional local rules, but must not duplicate the SDK accessor
+denylist.
 
 Avoid:
 

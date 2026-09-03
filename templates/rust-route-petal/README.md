@@ -8,5 +8,5 @@ Before pushing, enforce the route architecture rules from the
 
 ```sh
 bash scripts/check-route-architecture.sh
+petal check
 ```
-
