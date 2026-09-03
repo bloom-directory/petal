@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   test:
@@ -20,24 +20,24 @@ jobs:
           cargo install wit-bindgen-cli --version 0.57.1 --locked
       - run: scripts/check.sh
 
-  well-known-petals:
-    name: Well-known Petal (${{ matrix.name }})
+  first-party-consumers:
+    name: First-party consumer (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Keep these immutable refs aligned with Bloom's preinstalled catalog in
-          # bloom-directory/bloom:crates/bloom/src/github_source.rs.
+          # Pin reviewed source revisions for Bloom's first-party consumers.
+          # Bloom's release catalog advances separately after package publication.
           - name: polymarket
             repository: bloom-directory/bloom-petal-polymarket
-            ref: e2e898b69046c9f5d905dd2cd66b3a57ef195542
+            ref: c057e6d82f06626e2143213a9dc0c057e4812f89
+          - name: hyperliquid
+            repository: bloom-directory/bloom-petal-hyperliquid
+            ref: f19e1b10ab2dbeb145704e76b1189bb257622c60
           - name: near-intents
             repository: bloom-directory/bloom-petal-near
-            ref: 08e9bd83786425656bdd87e35031030cb7f3dc14
-          - name: enso
-            repository: bloom-directory/bloom-petal-enso
-            ref: 59e3c884f83c9c97b69b1b415becf8572791273b
+            ref: ccabb93214f1f18cf9b36946425e60035763f193
     steps:
       - name: Checkout Petal
         uses: actions/checkout@v4
@@ -83,4 +83,3 @@ jobs:
             --format-version 1 \
             | jq -e --arg sdk "$sdk_manifest" \
               'any(.packages[]; .name == "bloom-petal-sdk" and .manifest_path == $sdk)'
-
