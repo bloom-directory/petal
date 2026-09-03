@@ -293,7 +293,7 @@ pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
         && value[2..].bytes().all(|byte| byte.is_ascii_hexdigit())
     {
         return Err(
-            "wallet must be a Bloom wallet id, not an on-chain address; use the id under /bloom/wallets/"
+            "wallet must be a Bloom wallet id, not an on-chain address; use the id under /bloom/wallets/<id>"
                 .into(),
         );
     }

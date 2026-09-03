@@ -777,6 +777,19 @@ fn check_route_caps(route: &Route, artifact: &Path) -> Result<(), String> {
     }
 }
 
+/// Report whether `body` calls `accessor`, ignoring mentions in prose and
+/// longer identifiers that merely start with the same name.
+fn calls(body: &str, accessor: &str) -> bool {
+    body.match_indices(accessor).any(|(start, _)| {
+        let follows_identifier = body[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|char| char.is_alphanumeric() || char == '_');
+        let call_site = body[start + accessor.len()..].trim_start().starts_with('(');
+        !follows_identifier && call_site
+    })
+}
+
 fn check_shared_route_architecture(root: &Path, config: &BuildConfig) -> Result<(), String> {
     let source_root = root.join(&config.route_crate.path).join("src");
     let mut sources = Vec::new();
@@ -785,7 +798,7 @@ fn check_shared_route_architecture(root: &Path, config: &BuildConfig) -> Result<
     for source in sources {
         let body = fs::read_to_string(&source).map_err(display_err("read", &source))?;
         for accessor in ["current_route_path", "current_route_canonical_path"] {
-            if body.contains(accessor) {
+            if calls(&body, accessor) {
                 violations.push(format!(
                     "{} uses forbidden route-identity accessor {accessor}; keep dispatch behavior in route files",
                     source.display()
@@ -1164,5 +1177,12 @@ mod tests {
         let error = check_shared_route_architecture(fixture.path(), &package_config()).unwrap_err();
         assert!(error.contains("forbidden route-identity accessor current_route_path"));
         assert!(error.contains("route/src/lib.rs"));
+
+        fs::write(
+            source.join("lib.rs"),
+            "/// Route files own current_route_path dispatch.\npub fn current_route_path_label() -> &'static str { \"shared\" }\n",
+        )
+        .unwrap();
+        check_shared_route_architecture(fixture.path(), &package_config()).unwrap();
     }
 }
