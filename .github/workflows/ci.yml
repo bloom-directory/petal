@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -40,11 +40,11 @@ jobs:
             ref: ccabb93214f1f18cf9b36946425e60035763f193
     steps:
       - name: Checkout Petal
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: petal
       - name: Checkout ${{ matrix.name }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ matrix.repository }}
           ref: ${{ matrix.ref }}
