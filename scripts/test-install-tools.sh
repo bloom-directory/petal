@@ -32,7 +32,10 @@ if [[ "$1" == metadata ]]; then
 fi
 printf '%s\n' "$*" >> "$INSTALL_LOG"
 package=$2
-version=${WRONG_VERSION:-${4#=}}
+version=${4#=}
+if [[ "$package" == "${WRONG_PACKAGE:-}" ]]; then
+  version=9.9.9
+fi
 executable=$package
 [[ "$package" != wit-bindgen-cli ]] || executable=wit-bindgen
 binary="$(dirname -- "$0")/$executable"
@@ -74,9 +77,17 @@ done
 
 # Verification fails if PATH selects the wrong version.
 cp "$tmp/manifest.toml" "$manifest"
-if WRONG_VERSION=9.9.9 "$installer" > "$tmp/output" 2>&1; then
-  echo 'installer accepted the wrong executable version' >&2
-  exit 1
-fi
-grep -q 'on PATH' "$tmp/output"
+for package in wasm-tools wit-bindgen-cli; do
+  if WRONG_PACKAGE="$package" "$installer" > "$tmp/output" 2>&1; then
+    echo "installer accepted the wrong executable version for $package" >&2
+    exit 1
+  fi
+  if [[ "$package" == wasm-tools ]]; then
+    expected="expected 'wasm-tools 1.2.3' from 'wasm-tools --version'"
+  else
+    expected="expected 'wit-bindgen-cli 0.4.5' from 'wit-bindgen --version'"
+  fi
+  grep -Fq "$expected" "$tmp/output"
+  grep -Fq "got '$package 9.9.9'" "$tmp/output"
+done
 echo 'Installer tests passed'

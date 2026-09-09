@@ -46,8 +46,9 @@ for i in "${!packages[@]}"; do
   version=${versions[$i]#=}
   cargo install "$package" --version "=$version" --locked
   reported=$("$executable" --version)
-  if [[ "$reported" != "$package $version" ]]; then
-    echo "install-tools: expected $package $version on PATH, got '$reported'; put Cargo's installation bin directory first on PATH" >&2
+  expected="$package $version"
+  if [[ "$reported" != "$expected" ]]; then
+    echo "install-tools: expected '$expected' from '$executable --version' on PATH, got '$reported'; put Cargo's installation bin directory first on PATH" >&2
     exit 1
   fi
   echo "Verified $reported"

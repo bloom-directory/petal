@@ -383,10 +383,7 @@ fn write_package_archive(path: &Path, files: &[PackageFile]) -> Result<(), Strin
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<BuildReport, String> {
