@@ -121,7 +121,11 @@ pub fn wit_digest() -> String {
         hasher.update((bytes.len() as u64).to_le_bytes());
         hasher.update(bytes);
     }
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub fn write_wit_tree(destination: impl AsRef<Path>) -> io::Result<()> {

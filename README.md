@@ -27,7 +27,7 @@ cargo run -p bloom-petal-cli -- inspect
 Regenerate the committed Rust bindings after changing WIT:
 
 ```sh
-cargo install --locked wit-bindgen-cli --version 0.57.1
+cargo install --locked wit-bindgen-cli --version 0.61.1
 scripts/generate-bindings.sh
 ```
 
