@@ -70,7 +70,7 @@ jobs:
           fi
 
       - name: Check out Petal source at the tagged commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -100,7 +100,7 @@ jobs:
         run: cargo install wasm-tools --version 1.249.0 --locked
 
       - name: Check out pinned Petal tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@v7
         with:
           repository: bloom-directory/petal
           ref: ${{ inputs['petal-tooling-ref'] }}
