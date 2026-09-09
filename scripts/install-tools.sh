@@ -1,51 +1,54 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-exec python3 - "$root" "$@" <<'PY'
-import argparse
-import json
-from pathlib import Path
-import re
-import subprocess
-import sys
+wasm_tools_only=false
+case "${1:-}" in
+  --wasm-tools-only) wasm_tools_only=true; shift ;;
+  -h|--help)
+    echo 'Usage: install-tools.sh [--wasm-tools-only]'
+    exit 0
+    ;;
+esac
+if [[ $# -ne 0 ]]; then
+  echo 'Usage: install-tools.sh [--wasm-tools-only]' >&2
+  exit 1
+fi
 
-root = Path(sys.argv[1])
-parser = argparse.ArgumentParser(prog="install-tools.sh", description="Install the component tools pinned in Cargo.toml.")
-parser.add_argument("--wasm-tools-only", action="store_true", help="skip the binding generator")
-args = parser.parse_args(sys.argv[2:])
+root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
 
+# Let Cargo parse the manifest without downloading or building dependencies.
+metadata=$(cargo metadata --offline --no-deps --format-version 1 --manifest-path "$root/Cargo.toml")
+packages=(wasm-tools)
+executables=(wasm-tools)
+versions=("$(jq -er '.metadata.tools["wasm-tools"] | strings' <<<"$metadata")")
+if [[ "$wasm_tools_only" == false ]]; then
+  packages+=(wit-bindgen-cli)
+  executables+=(wit-bindgen)
+  versions+=("$(jq -er '
+    [.packages[] | select(.name == "bloom-petal-sdk")
+      | .dependencies[] | select(.name == "wit-bindgen") | .req]
+    | if length == 1 then .[0] | strings else error("expected one SDK wit-bindgen dependency") end
+  ' <<<"$metadata")")
+fi
 
-def exact_version(requirement):
-    if not isinstance(requirement, str) or not re.fullmatch(r"=\d+\.\d+\.\d+", requirement):
-        raise ValueError(f"expected an exact =major.minor.patch tool version, got {requirement!r}")
-    return requirement[1:]
+# Validate all pins before installing anything.
+for version in "${versions[@]}"; do
+  if [[ ! "$version" =~ ^=[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "install-tools: expected an exact =major.minor.patch tool version, got '$version'" >&2
+    exit 1
+  fi
+done
 
-
-try:
-    # Let Cargo parse the manifest without downloading or building dependencies.
-    metadata = json.loads(subprocess.check_output([
-        "cargo", "metadata", "--offline", "--no-deps", "--format-version", "1",
-        "--manifest-path", str(root / "Cargo.toml"),
-    ], cwd=root, text=True))
-    tools = [("wasm-tools", "wasm-tools", exact_version(metadata["metadata"]["tools"]["wasm-tools"]))]
-    if not args.wasm_tools_only:
-        sdk = next(package for package in metadata["packages"] if package["name"] == "bloom-petal-sdk")
-        binding = next(dep for dep in sdk["dependencies"] if dep["name"] == "wit-bindgen")
-        tools.append(("wit-bindgen-cli", "wit-bindgen", exact_version(binding["req"])))
-
-    # Validate all pins before installing anything.
-    for package, executable, version in tools:
-        subprocess.run([
-            "cargo", "install", package, "--version", f"={version}", "--locked",
-        ], cwd=root, check=True)
-        reported = subprocess.check_output([executable, "--version"], text=True).strip()
-        if reported != f"{package} {version}":
-            raise ValueError(
-                f"expected {executable} {version} on PATH, got {reported!r}; "
-                "put Cargo's installation bin directory first on PATH"
-            )
-        print(f"Verified {reported}", flush=True)
-except (OSError, ValueError, KeyError, TypeError, StopIteration, subprocess.CalledProcessError) as error:
-    sys.exit(f"install-tools: {error}")
-PY
+for i in "${!packages[@]}"; do
+  package=${packages[$i]}
+  executable=${executables[$i]}
+  version=${versions[$i]#=}
+  cargo install "$package" --version "=$version" --locked
+  reported=$("$executable" --version)
+  if [[ "$reported" != "$package $version" ]]; then
+    echo "install-tools: expected $package $version on PATH, got '$reported'; put Cargo's installation bin directory first on PATH" >&2
+    exit 1
+  fi
+  echo "Verified $reported"
+done

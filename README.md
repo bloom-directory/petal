@@ -19,7 +19,7 @@ payload-bearing `bloom:sign/signing@0.2.0`, including atomic ordered batches.
 
 ## Development
 
-With Rust, the `wasm32-unknown-unknown` target, and Python 3 installed:
+With Rust, the `wasm32-unknown-unknown` target, and jq installed:
 
 ```sh
 scripts/install-tools.sh
