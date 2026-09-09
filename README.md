@@ -19,15 +19,25 @@ payload-bearing `bloom:sign/signing@0.2.0`, including atomic ordered batches.
 
 ## Development
 
+With Rust, the `wasm32-unknown-unknown` target, and Python 3 installed:
+
 ```sh
+scripts/install-tools.sh
 scripts/check.sh
 cargo run -p bloom-petal-cli -- inspect
 ```
 
-Regenerate the committed Rust bindings after changing WIT:
+The installer reads the `wasm-tools` pin from `[workspace.metadata.tools]` in
+`Cargo.toml` and matches `wit-bindgen-cli` to the workspace `wit-bindgen`
+dependency. It installs with `--locked` and verifies the executables on `PATH`.
+Use `scripts/install-tools.sh --wasm-tools-only` when bindings are not needed.
+Update the `wasm-tools` pin manually when upgrading it; Dependabot does not
+track workspace metadata.
+
+Regenerate the committed Rust bindings after changing WIT or `wit-bindgen`:
 
 ```sh
-cargo install --locked wit-bindgen-cli --version 0.61.1
+scripts/install-tools.sh
 scripts/generate-bindings.sh
 ```
 

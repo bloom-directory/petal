@@ -15,9 +15,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install component tools
-        run: |
-          cargo install wasm-tools --version 1.249.0 --locked
-          cargo install wit-bindgen-cli --version 0.61.1 --locked
+        run: scripts/install-tools.sh
       - run: scripts/check.sh
 
   first-party-consumers:
@@ -54,7 +52,7 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - name: Install component tools
-        run: cargo install wasm-tools --version 1.249.0 --locked
+        run: petal/scripts/install-tools.sh --wasm-tools-only
       - name: Build Petal CLI from this checkout
         run: cargo build --manifest-path petal/Cargo.toml --locked -p bloom-petal-cli
       - name: Use this checkout's SDK
