@@ -1290,19 +1290,13 @@ mod identity_tests {
     fn account_ctx_requires_the_owner_fingerprint() {
         let ctx = Ctx::bind::<Root>(raw(
             "",
-            &[
-                ("bloom.wallet", "alice-1"),
-                ("bloom.account", "7"),
-            ],
+            &[("bloom.wallet", "alice-1"), ("bloom.account", "7")],
         ));
         let Err(DispatchResponse::Error { code, message }) = account_ctx(&ctx) else {
             panic!("a missing owner fingerprint must fail");
         };
         assert_eq!(code, -3);
-        assert!(
-            message.contains("bloom.owner_key_fingerprint"),
-            "{message}"
-        );
+        assert!(message.contains("bloom.owner_key_fingerprint"), "{message}");
     }
 
     #[test]
