@@ -291,10 +291,10 @@ pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
 
 pub mod sdk {
     pub use super::{
-        DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse, OutboxApproval,
-        OutboxInspection, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest,
-        PetalKeyOutcome, PetalKeyRequest, SdkError, SignBatchOutcome, SignOutcome, SignSelector,
-        StagedTransaction, payload_batch_digest,
+        AccountCtx, DispatchResponse, EvmTransaction, HostStatus, HttpRequest, HttpResponse,
+        OutboxApproval, OutboxInspection, PayloadBatchSignRequest, PayloadSignItem,
+        PayloadSignRequest, PetalKeyOutcome, PetalKeyRequest, SdkError, SignBatchOutcome,
+        SignOutcome, SignSelector, StagedTransaction, payload_batch_digest,
     };
     use crate::bindings::bloom::chain::read as chain;
     use crate::bindings::bloom::env::runtime as env;
@@ -1030,6 +1030,41 @@ pub fn wallet_param(ctx: &Ctx) -> Result<&str, DispatchResponse> {
     validate_wallet_id(value).map_err(route_invalid)
 }
 
+/// The trusted account context the Bloom host injected for this invocation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccountCtx {
+    pub wallet: String,
+    pub account: u32,
+    pub owner_key_fingerprint: String,
+}
+
+/// Return the account context the Bloom host injected for this invocation.
+///
+/// The host passes the trusted `bloom.wallet`, `bloom.account`, and
+/// `bloom.owner_key_fingerprint` route parameters naming the wallet, HD
+/// account index, and owner key fingerprint the route serves. The wallet is
+/// validated like `[wallet]`, so an on-chain address fails before a signing
+/// or custody request crosses the host boundary.
+pub fn account_ctx(ctx: &Ctx) -> Result<AccountCtx, DispatchResponse> {
+    let wallet =
+        route_param(ctx, "bloom.wallet").ok_or_else(|| route_invalid("missing bloom.wallet"))?;
+    validate_wallet_id(wallet).map_err(route_invalid)?;
+    let account =
+        route_param(ctx, "bloom.account").ok_or_else(|| route_invalid("missing bloom.account"))?;
+    let account = account.parse::<u32>().map_err(|error| {
+        route_invalid(format!(
+            "bloom.account must be a u32 account number: {error}"
+        ))
+    })?;
+    let owner_key_fingerprint = route_param(ctx, "bloom.owner_key_fingerprint")
+        .ok_or_else(|| route_invalid("missing bloom.owner_key_fingerprint"))?;
+    Ok(AccountCtx {
+        wallet: wallet.to_string(),
+        account,
+        owner_key_fingerprint: owner_key_fingerprint.to_string(),
+    })
+}
+
 pub fn route_generated_param<'a>(ctx: &'a Ctx, name: &str) -> Option<&'a str> {
     ctx.identity_params
         .iter()
@@ -1213,6 +1248,72 @@ mod identity_tests {
         assert!(validate_wallet_id("Alice").is_err());
         assert!(validate_wallet_id("alice:1").is_err());
         assert!(validate_wallet_id(&format!("a{}", "1".repeat(64))).is_err());
+    }
+
+    #[test]
+    fn account_ctx_reads_host_injected_params() {
+        let ctx = Ctx::bind::<Root>(raw(
+            "",
+            &[
+                ("bloom.wallet", "alice-1"),
+                ("bloom.account", "7"),
+                ("bloom.owner_key_fingerprint", "fp-123"),
+            ],
+        ));
+        assert_eq!(
+            account_ctx(&ctx).unwrap(),
+            AccountCtx {
+                wallet: "alice-1".into(),
+                account: 7,
+                owner_key_fingerprint: "fp-123".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn account_ctx_requires_every_host_param() {
+        let ctx = Ctx::bind::<Root>(raw(
+            "",
+            &[
+                ("bloom.wallet", "alice-1"),
+                ("bloom.owner_key_fingerprint", "fp-123"),
+            ],
+        ));
+        let Err(DispatchResponse::Error { code, message }) = account_ctx(&ctx) else {
+            panic!("missing bloom.* params must fail");
+        };
+        assert_eq!(code, -3);
+        assert!(message.contains("bloom.account"));
+    }
+
+    #[test]
+    fn account_ctx_requires_the_owner_fingerprint() {
+        let ctx = Ctx::bind::<Root>(raw(
+            "",
+            &[("bloom.wallet", "alice-1"), ("bloom.account", "7")],
+        ));
+        let Err(DispatchResponse::Error { code, message }) = account_ctx(&ctx) else {
+            panic!("a missing owner fingerprint must fail");
+        };
+        assert_eq!(code, -3);
+        assert!(message.contains("bloom.owner_key_fingerprint"), "{message}");
+    }
+
+    #[test]
+    fn account_ctx_rejects_malformed_account_numbers() {
+        let ctx = Ctx::bind::<Root>(raw(
+            "",
+            &[
+                ("bloom.wallet", "alice-1"),
+                ("bloom.account", "seven"),
+                ("bloom.owner_key_fingerprint", "fp-123"),
+            ],
+        ));
+        let Err(DispatchResponse::Error { code, message }) = account_ctx(&ctx) else {
+            panic!("malformed bloom.account must fail");
+        };
+        assert_eq!(code, -3);
+        assert!(message.contains("bloom.account"));
     }
 
     #[test]
