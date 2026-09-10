@@ -35,6 +35,11 @@ The workflow only accepts semantic version tags and exact 40-character tooling
 commits. It checks out the caller at the tagged commit, builds its routes,
 packages them deterministically, and refuses to replace existing assets.
 
+The tooling commit must include `scripts/install-tools.sh` and the
+`[workspace.metadata.tools]` configuration in `Cargo.toml`. The workflow runs
+that checkout's installer before building the CLI, so the CLI source and
+`wasm-tools` version come from the same pinned tooling revision.
+
 `expected-route-count` is optional. A positive value protects against a release
 that silently omits routes; zero disables the assertion.
 

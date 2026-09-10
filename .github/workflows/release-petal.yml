@@ -96,9 +96,6 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Install WASM component tools
-        run: cargo install wasm-tools --version 1.249.0 --locked
-
       - name: Check out pinned Petal tooling
         uses: actions/checkout@v7
         with:
@@ -106,6 +103,9 @@ jobs:
           ref: ${{ inputs['petal-tooling-ref'] }}
           path: .petal-tooling
           persist-credentials: false
+
+      - name: Install pinned WASM component tools
+        run: .petal-tooling/scripts/install-tools.sh --wasm-tools-only
 
       - name: Build pinned Petal CLI
         run: |

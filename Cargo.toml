@@ -33,21 +33,26 @@ rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/bloom-directory/petal"
 
+[workspace.metadata.tools]
+wasm-tools = "=1.249.0"
+
 [workspace.dependencies]
 blake3 = "1"
 clap = { version = "4", features = ["derive"] }
 flate2 = "1"
 getrandom = { version = "0.2", features = ["custom"] }
+hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 tar = "0.4"
 tempfile = "3"
-toml = "0.8"
+toml = "1.1"
 wasmparser = "0.221"
-wit-bindgen = "=0.57.1"
+wit-bindgen = "=0.61.1"
 
 [dependencies]
+hex.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]

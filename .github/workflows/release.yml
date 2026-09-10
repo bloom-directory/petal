@@ -20,9 +20,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install component tools
-        run: |
-          cargo install wasm-tools --version 1.249.0 --locked
-          cargo install wit-bindgen-cli --version 0.57.1 --locked
+        run: scripts/install-tools.sh
       - name: Verify and assemble release artifacts
         run: scripts/release-check.sh
       - name: Publish GitHub release
