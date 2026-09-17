@@ -92,11 +92,43 @@ pub struct PetalKeyRequest {
     pub allowed_operation_classes: Vec<String>,
     pub allowed_crypto_suites: Vec<String>,
     pub maximum_lifetime_ms: u64,
-    /// Asset budgets the host seals into the key's reusable approval, which
-    /// the owner reviews in that ceremony. Empty (omitted from the request)
-    /// authorizes no declared debit or fee.
+}
+
+/// A key request as the host reads it: [`PetalKeyRequest`] plus optional
+/// asset budgets. Kept separate so code that builds `PetalKeyRequest`
+/// literally is unaffected.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct KeyRequestWire {
+    wallet_id: String,
+    key_slot: String,
+    allowed_routes: Vec<String>,
+    allowed_operation_classes: Vec<String>,
+    allowed_crypto_suites: Vec<String>,
+    maximum_lifetime_ms: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub approval_value_limits: Vec<ApprovalValueLimit>,
+    approval_value_limits: Vec<ApprovalValueLimit>,
+}
+
+/// Canonical key-request bytes for [`sdk::request_key`]. Budgets are sealed
+/// by the host into the key's reusable approval, which the owner reviews in
+/// that ceremony; without budgets the bytes equal `PetalKeyRequest`'s own
+/// canonical JSON.
+pub fn key_request_jcs(
+    request: &PetalKeyRequest,
+    approval_value_limits: &[ApprovalValueLimit],
+) -> Result<Vec<u8>, String> {
+    let request = request.clone();
+    serde_jcs::to_vec(&KeyRequestWire {
+        wallet_id: request.wallet_id,
+        key_slot: request.key_slot,
+        allowed_routes: request.allowed_routes,
+        allowed_operation_classes: request.allowed_operation_classes,
+        allowed_crypto_suites: request.allowed_crypto_suites,
+        maximum_lifetime_ms: request.maximum_lifetime_ms,
+        approval_value_limits: approval_value_limits.to_vec(),
+    })
+    .map_err(|error| format!("encode Petal key request: {error}"))
 }
 
 /// One asset budget for a Petal key's reusable approval. Amounts are
@@ -360,7 +392,7 @@ pub mod sdk {
     }
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
-        let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
+        let request: super::KeyRequestWire = serde_json::from_slice(request_jcs)
             .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
         key::request(request_jcs).map_err(host_err)
@@ -368,8 +400,7 @@ pub mod sdk {
 
     pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
-        let request_jcs = serde_jcs::to_vec(request)
-            .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))?;
+        let request_jcs = super::key_request_jcs(request, &[]).map_err(SdkError::Message)?;
         let outcome = request_key(&request_jcs)?;
         serde_json::from_slice(&outcome)
             .map_err(|error| SdkError::Message(format!("decode Petal key outcome: {error}")))
@@ -1246,24 +1277,24 @@ mod identity_tests {
         assert!(validate_wallet_id(&format!("a{}", "1".repeat(64))).is_err());
     }
 
-    /// Budgets travel in the host's wire shape, and a request without them
-    /// serializes exactly as before the field existed.
+    /// Budgets travel in the host's wire shape, a request without them keeps
+    /// `PetalKeyRequest`'s canonical bytes, and `request_key` accepts both
+    /// shapes before the host call.
     #[test]
     fn key_request_budgets_use_the_host_wire_shape() {
-        let mut request = PetalKeyRequest {
-            wallet_id: "main".into(),
+        let request = PetalKeyRequest {
+            wallet_id: "0x0000000000000000000000000000000000000001".into(),
             key_slot: "session".into(),
             allowed_routes: vec!["r000001".into()],
             allowed_operation_classes: vec!["example.action".into()],
             allowed_crypto_suites: vec!["ed25519-message".into()],
             maximum_lifetime_ms: 60_000,
-            approval_value_limits: Vec::new(),
         };
         assert_eq!(
-            String::from_utf8(serde_jcs::to_vec(&request).unwrap()).unwrap(),
-            r#"{"allowed_crypto_suites":["ed25519-message"],"allowed_operation_classes":["example.action"],"allowed_routes":["r000001"],"key_slot":"session","maximum_lifetime_ms":60000,"wallet_id":"main"}"#
+            key_request_jcs(&request, &[]).unwrap(),
+            serde_jcs::to_vec(&request).unwrap()
         );
-        request.approval_value_limits = vec![ApprovalValueLimit {
+        let budgets = [ApprovalValueLimit {
             asset: ApprovalAsset {
                 chain: "solana".into(),
                 asset: "native".into(),
@@ -1274,7 +1305,8 @@ mod identity_tests {
                 duration_ms: "60000".into(),
             }],
         }];
-        let wire = serde_json::to_value(&request).unwrap();
+        let with_budgets = key_request_jcs(&request, &budgets).unwrap();
+        let wire: serde_json::Value = serde_json::from_slice(&with_budgets).unwrap();
         assert_eq!(
             wire["approval_value_limits"],
             serde_json::json!([{
@@ -1283,8 +1315,12 @@ mod identity_tests {
                 "rolling_windows": [{"maximum": "1000", "duration_ms": "60000"}]
             }])
         );
-        let decoded: PetalKeyRequest = serde_json::from_value(wire).unwrap();
-        assert_eq!(decoded, request);
+        // The request decodes; it is refused only for its address-shaped
+        // wallet, before the host call.
+        let Err(SdkError::Message(message)) = sdk::request_key(&with_budgets) else {
+            panic!("a budgeted request must reach wallet validation");
+        };
+        assert!(message.contains("on-chain address"), "{message}");
     }
 
     #[test]
@@ -1296,7 +1332,6 @@ mod identity_tests {
             allowed_operation_classes: vec!["example.action".into()],
             allowed_crypto_suites: vec!["secp256k1-keccak256-recoverable".into()],
             maximum_lifetime_ms: 60_000,
-            approval_value_limits: Vec::new(),
         };
         let request_jcs = serde_jcs::to_vec(&request).unwrap();
         let Err(SdkError::Message(message)) = sdk::request_key(&request_jcs) else {
