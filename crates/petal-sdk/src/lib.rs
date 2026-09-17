@@ -92,6 +92,37 @@ pub struct PetalKeyRequest {
     pub allowed_operation_classes: Vec<String>,
     pub allowed_crypto_suites: Vec<String>,
     pub maximum_lifetime_ms: u64,
+    /// Asset budgets the host seals into the key's reusable approval, which
+    /// the owner reviews in that ceremony. Empty (omitted from the request)
+    /// authorizes no declared debit or fee.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approval_value_limits: Vec<ApprovalValueLimit>,
+}
+
+/// One asset budget for a Petal key's reusable approval. Amounts are
+/// base-unit decimal strings.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalValueLimit {
+    pub asset: ApprovalAsset,
+    /// Total the approval may debit, fees included, over its lifetime.
+    pub lifetime: String,
+    #[serde(default)]
+    pub rolling_windows: Vec<ApprovalValueWindow>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalAsset {
+    pub chain: String,
+    pub asset: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalValueWindow {
+    pub maximum: String,
+    pub duration_ms: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -1215,6 +1246,47 @@ mod identity_tests {
         assert!(validate_wallet_id(&format!("a{}", "1".repeat(64))).is_err());
     }
 
+    /// Budgets travel in the host's wire shape, and a request without them
+    /// serializes exactly as before the field existed.
+    #[test]
+    fn key_request_budgets_use_the_host_wire_shape() {
+        let mut request = PetalKeyRequest {
+            wallet_id: "main".into(),
+            key_slot: "session".into(),
+            allowed_routes: vec!["r000001".into()],
+            allowed_operation_classes: vec!["example.action".into()],
+            allowed_crypto_suites: vec!["ed25519-message".into()],
+            maximum_lifetime_ms: 60_000,
+            approval_value_limits: Vec::new(),
+        };
+        assert_eq!(
+            String::from_utf8(serde_jcs::to_vec(&request).unwrap()).unwrap(),
+            r#"{"allowed_crypto_suites":["ed25519-message"],"allowed_operation_classes":["example.action"],"allowed_routes":["r000001"],"key_slot":"session","maximum_lifetime_ms":60000,"wallet_id":"main"}"#
+        );
+        request.approval_value_limits = vec![ApprovalValueLimit {
+            asset: ApprovalAsset {
+                chain: "solana".into(),
+                asset: "native".into(),
+            },
+            lifetime: "2500000000".into(),
+            rolling_windows: vec![ApprovalValueWindow {
+                maximum: "1000".into(),
+                duration_ms: "60000".into(),
+            }],
+        }];
+        let wire = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            wire["approval_value_limits"],
+            serde_json::json!([{
+                "asset": {"chain": "solana", "asset": "native"},
+                "lifetime": "2500000000",
+                "rolling_windows": [{"maximum": "1000", "duration_ms": "60000"}]
+            }])
+        );
+        let decoded: PetalKeyRequest = serde_json::from_value(wire).unwrap();
+        assert_eq!(decoded, request);
+    }
+
     #[test]
     fn raw_key_requests_cannot_bypass_wallet_validation() {
         let request = PetalKeyRequest {
@@ -1224,6 +1296,7 @@ mod identity_tests {
             allowed_operation_classes: vec!["example.action".into()],
             allowed_crypto_suites: vec!["secp256k1-keccak256-recoverable".into()],
             maximum_lifetime_ms: 60_000,
+            approval_value_limits: Vec::new(),
         };
         let request_jcs = serde_jcs::to_vec(&request).unwrap();
         let Err(SdkError::Message(message)) = sdk::request_key(&request_jcs) else {
