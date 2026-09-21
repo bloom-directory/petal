@@ -317,6 +317,9 @@ pub mod sdk {
         })
         .map_err(host_err)?;
         if resp.body.len() > max_bytes {
+            // The fetch itself succeeded, so no host reason belongs to this
+            // error; clearing stops an older one from being read against it.
+            set_host_reason(None);
             return Err(SdkError::Host(HostStatus::BufferTooSmall {
                 needed: resp.body.len(),
             }));
@@ -602,7 +605,136 @@ pub mod sdk {
         }
     }
 
+    #[cfg(test)]
+    mod host_reason_tests {
+        use super::super::{HostStatus, SdkError};
+        use super::{host_err, take_host_reason};
+
+        /// The Machine denies exact signing with the gate that refused. The
+        /// classification stays exactly what it was, so no existing route
+        /// changes behaviour; the reason is what used to be lost.
+        #[test]
+        fn a_denial_keeps_the_gate_that_refused_it() {
+            let _ = take_host_reason();
+            let error = host_err(
+                "denied: SELECTOR_MISMATCH: wallet policy must allow destination exact on evm-1"
+                    .into(),
+            );
+            assert_eq!(error, SdkError::Host(HostStatus::Denied));
+            assert_eq!(
+                take_host_reason().as_deref(),
+                Some("SELECTOR_MISMATCH: wallet policy must allow destination exact on evm-1")
+            );
+        }
+
+        /// Taken once. A later read cannot pick up a reason belonging to an
+        /// earlier failure and report it against an unrelated call.
+        #[test]
+        fn a_reason_is_taken_only_once() {
+            let _ = take_host_reason();
+            assert_eq!(
+                host_err("denied: policy".into()),
+                SdkError::Host(HostStatus::Denied)
+            );
+            assert_eq!(take_host_reason().as_deref(), Some("policy"));
+            assert_eq!(take_host_reason(), None);
+        }
+
+        /// Every host failure replaces the previous reason, including one that
+        /// has none, so a labelled-only refusal cannot inherit an explanation
+        /// from the call before it.
+        #[test]
+        fn a_reasonless_failure_clears_the_previous_reason() {
+            let _ = take_host_reason();
+            host_err("denied: policy".into());
+            assert_eq!(
+                host_err("permission denied".into()),
+                SdkError::Host(HostStatus::Denied)
+            );
+            assert_eq!(take_host_reason(), None);
+        }
+
+        #[test]
+        fn an_unclassified_host_error_still_reaches_the_route_intact() {
+            let _ = take_host_reason();
+            let error = host_err("backend: broker unreachable".into());
+            assert_eq!(
+                error,
+                SdkError::Message("backend: broker unreachable".into())
+            );
+            assert_eq!(error.message(), "backend: broker unreachable");
+        }
+
+        /// The reason a route reads must belong to the call it just made.
+        ///
+        /// An unclassified failure returns early with the whole message, so it
+        /// is easy to leave the slot untouched — and then a route asking why
+        /// this call failed is handed the refusal from the last one, which is
+        /// a wrong answer rather than a missing one.
+        #[test]
+        fn an_unclassified_failure_does_not_leave_the_previous_reason_behind() {
+            let _ = take_host_reason();
+            host_err("denied: old policy refusal".into());
+            host_err("backend: broker unreachable".into());
+            assert_eq!(take_host_reason().as_deref(), Some("broker unreachable"));
+            assert_eq!(take_host_reason(), None);
+        }
+    }
+
+    thread_local! {
+        static LAST_HOST_REASON: core::cell::RefCell<Option<String>> =
+            const { core::cell::RefCell::new(None) };
+    }
+
+    /// The reason the host gave for the most recent failed host call, removing
+    /// it so it can be read only once.
+    ///
+    /// `SdkError::Host(HostStatus::Denied)` says a call was refused but not
+    /// which gate refused it. The host does send that: the Machine formats
+    /// exact-signing refusals as `denied: <reason>`, naming the wallet policy,
+    /// the package provenance, the key mismatch or the stale approval that
+    /// stopped the call. Classifying the message threw the rest away, leaving
+    /// the reason only in the Machine's log — which an operator inside a
+    /// container, or an evaluated agent, cannot read.
+    ///
+    /// Read it when the error is an `SdkError::Host(..)`, and attach what it
+    /// returns to the diagnostic the route reports. Every path that produces
+    /// one replaces this slot first, so the reason always belongs to the call
+    /// whose error you are holding, and is `None` when the host gave no reason
+    /// or when it has already been taken.
+    ///
+    /// An `SdkError::Message` carries its own text, so there is nothing here to
+    /// add to it. Some of those are raised by the SDK before any host call —
+    /// a malformed request, an invalid wallet id — and those do not touch the
+    /// slot, so reading it against one would report an earlier host failure.
+    ///
+    /// Scope: a route component is instantiated per dispatch and the guest is
+    /// single-threaded, so there is never more than one host call in flight and
+    /// a reason cannot arrive from another request or another wallet. Taking
+    /// rather than peeking means a later unrelated read cannot pick up a reason
+    /// belonging to an earlier failure.
+    pub fn take_host_reason() -> Option<String> {
+        LAST_HOST_REASON.with(|slot| slot.borrow_mut().take())
+    }
+
+    /// Replace the slot so it describes the failure being returned right now.
+    ///
+    /// Every path that returns an `SdkError::Host` calls this, including the
+    /// ones with nothing to record. Leaving the slot alone instead would hand
+    /// a route the *previous* call's reason to explain this one.
+    fn set_host_reason(reason: Option<String>) {
+        LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = reason);
+    }
+
     fn host_err(message: String) -> SdkError {
+        // The host writes `<label>: <reason>`. Keep the reason; a message that
+        // is only a label has nothing to add.
+        set_host_reason(
+            message
+                .split_once(": ")
+                .map(|(_, reason)| reason.to_string())
+                .filter(|reason| !reason.is_empty()),
+        );
         let lower = message.to_ascii_lowercase();
         if lower.contains("not found") {
             SdkError::Host(HostStatus::NotFound)
@@ -611,6 +743,8 @@ pub mod sdk {
         } else if lower.contains("invalid") {
             SdkError::Host(HostStatus::Invalid)
         } else {
+            // Unclassified messages already reach the route intact. The slot
+            // is still replaced above, so nothing older survives this call.
             SdkError::Message(message)
         }
     }
