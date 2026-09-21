@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- `SdkError::Host` now carries the host's reason text alongside the coarse
-  status. Routes that matched `SdkError::Host(HostStatus::NotFound)` become
-  `err.is_not_found()`, or `SdkError::Host { status: HostStatus::NotFound, .. }`
-  when the status is needed; `SdkError::host(status)` builds a reason-free one.
+- Add `sdk::take_host_reason()`, which returns the reason the host gave for the
+  most recent failed host call. `SdkError` is unchanged, so no route needs
+  updating; a route that wants the reason reads it right after the failing
+  call.
 
 - Establish the canonical `bloom:route@0.1.0` contract.
 - Extract the shared Rust SDK and route builder.

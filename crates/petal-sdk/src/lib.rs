@@ -227,65 +227,21 @@ pub enum HostStatus {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SdkError {
-    /// A host call failed. `status` is the coarse classification a route can
-    /// branch on; `detail` is the host's own reason text, empty when the host
-    /// gave none or the SDK itself produced the error.
-    ///
-    /// The detail is what tells an operator *which* gate refused a call — a
-    /// wallet policy, package provenance, a key mismatch — instead of a bare
-    /// "denied". Route code should surface it rather than discard it.
-    Host {
-        status: HostStatus,
-        detail: String,
-    },
+    Host(HostStatus),
     Message(String),
 }
 
 impl SdkError {
-    pub fn host(status: HostStatus) -> Self {
-        SdkError::Host {
-            status,
-            detail: String::new(),
-        }
-    }
-
-    /// The classification of a host failure, or `None` for an SDK-local error.
-    pub fn status(&self) -> Option<&HostStatus> {
-        match self {
-            SdkError::Host { status, .. } => Some(status),
-            SdkError::Message(_) => None,
-        }
-    }
-
-    /// Whether the host reported the addressed object as absent.
-    pub fn is_not_found(&self) -> bool {
-        matches!(self.status(), Some(HostStatus::NotFound))
-    }
-
-    /// The host's reason text, empty when none was carried.
-    pub fn detail(&self) -> &str {
-        match self {
-            SdkError::Host { detail, .. } => detail,
-            SdkError::Message(message) => message,
-        }
-    }
-
     pub fn message(&self) -> String {
-        let label = match self {
-            SdkError::Host { status, .. } => match status {
-                HostStatus::NotFound => "not found".to_string(),
-                HostStatus::Denied => "denied".to_string(),
-                HostStatus::Invalid => "invalid".to_string(),
-                HostStatus::Backend => "backend error".to_string(),
-                HostStatus::BufferTooSmall { needed } => {
-                    format!("buffer too small: needs {needed} bytes")
-                }
-            },
-            SdkError::Message(message) => return message.clone(),
-        };
-        match self.detail() {
-            "" => label,
-            detail => format!("{label}: {detail}"),
+        match self {
+            SdkError::Host(HostStatus::NotFound) => "not found".into(),
+            SdkError::Host(HostStatus::Denied) => "denied".into(),
+            SdkError::Host(HostStatus::Invalid) => "invalid".into(),
+            SdkError::Host(HostStatus::Backend) => "backend error".into(),
+            SdkError::Host(HostStatus::BufferTooSmall { needed }) => {
+                format!("buffer too small: needs {needed} bytes")
+            }
+            SdkError::Message(message) => message.clone(),
         }
     }
 }
@@ -361,7 +317,7 @@ pub mod sdk {
         })
         .map_err(host_err)?;
         if resp.body.len() > max_bytes {
-            return Err(SdkError::host(HostStatus::BufferTooSmall {
+            return Err(SdkError::Host(HostStatus::BufferTooSmall {
                 needed: resp.body.len(),
             }));
         }
@@ -522,10 +478,10 @@ pub mod sdk {
     pub fn store_get(key: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
         let namespace = namespace_for_key(key, false);
         let Some(bytes) = store::get(namespace, key).map_err(host_err)? else {
-            return Err(SdkError::host(HostStatus::NotFound));
+            return Err(SdkError::Host(HostStatus::NotFound));
         };
         if bytes.len() > max_bytes {
-            return Err(SdkError::host(HostStatus::BufferTooSmall {
+            return Err(SdkError::Host(HostStatus::BufferTooSmall {
                 needed: bytes.len(),
             }));
         }
@@ -557,7 +513,7 @@ pub mod sdk {
         let keys = store::list(namespace, prefix).map_err(host_err)?;
         let size = keys.iter().map(|key| key.len()).sum::<usize>();
         if size > max_bytes {
-            return Err(SdkError::host(HostStatus::BufferTooSmall { needed: size }));
+            return Err(SdkError::Host(HostStatus::BufferTooSmall { needed: size }));
         }
         Ok(keys)
     }
@@ -565,7 +521,7 @@ pub mod sdk {
     pub fn vfs_read(path: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
         let bytes = vfs::read(path).map_err(host_err)?;
         if bytes.len() > max_bytes {
-            return Err(SdkError::host(HostStatus::BufferTooSmall {
+            return Err(SdkError::Host(HostStatus::BufferTooSmall {
                 needed: bytes.len(),
             }));
         }
@@ -581,7 +537,7 @@ pub mod sdk {
         let entries = vfs::list(path).map_err(host_err)?;
         let size = entries.iter().map(|entry| entry.name.len()).sum::<usize>();
         if size > max_bytes {
-            return Err(SdkError::host(HostStatus::BufferTooSmall { needed: size }));
+            return Err(SdkError::Host(HostStatus::BufferTooSmall { needed: size }));
         }
         Ok(entries.into_iter().map(|entry| entry.name).collect())
     }
@@ -595,7 +551,7 @@ pub mod sdk {
     }
 
     pub fn random_bytes(len: usize) -> Result<Vec<u8>, SdkError> {
-        let len = u32::try_from(len).map_err(|_| SdkError::host(HostStatus::Invalid))?;
+        let len = u32::try_from(len).map_err(|_| SdkError::Host(HostStatus::Invalid))?;
         env::random_bytes(len).map_err(host_err)
     }
 
@@ -647,76 +603,116 @@ pub mod sdk {
     }
 
     #[cfg(test)]
-    mod host_error_tests {
+    mod host_reason_tests {
         use super::super::{HostStatus, SdkError};
-        use super::host_err;
+        use super::{host_err, take_host_reason};
 
-        /// The Machine denies exact signing with the gate that refused, e.g.
-        /// `denied: SELECTOR_MISMATCH: wallet policy must allow destination
-        /// exact on evm-1`. Classifying on the label alone used to be where
-        /// that reason was lost, leaving every gate indistinguishable.
+        /// The Machine denies exact signing with the gate that refused. The
+        /// classification stays exactly what it was, so no existing route
+        /// changes behaviour; the reason is what used to be lost.
         #[test]
         fn a_denial_keeps_the_gate_that_refused_it() {
+            let _ = take_host_reason();
             let error = host_err(
                 "denied: SELECTOR_MISMATCH: wallet policy must allow destination exact on evm-1"
                     .into(),
             );
-            assert_eq!(error.status(), Some(&HostStatus::Denied));
+            assert_eq!(error, SdkError::Host(HostStatus::Denied));
             assert_eq!(
-                error.detail(),
-                "SELECTOR_MISMATCH: wallet policy must allow destination exact on evm-1"
+                take_host_reason().as_deref(),
+                Some("SELECTOR_MISMATCH: wallet policy must allow destination exact on evm-1")
             );
-            assert!(error.message().starts_with("denied: SELECTOR_MISMATCH"));
+        }
+
+        /// Taken once. A later read cannot pick up a reason belonging to an
+        /// earlier failure and report it against an unrelated call.
+        #[test]
+        fn a_reason_is_taken_only_once() {
+            let _ = take_host_reason();
+            assert_eq!(
+                host_err("denied: policy".into()),
+                SdkError::Host(HostStatus::Denied)
+            );
+            assert_eq!(take_host_reason().as_deref(), Some("policy"));
+            assert_eq!(take_host_reason(), None);
+        }
+
+        /// Every host failure replaces the previous reason, including one that
+        /// has none, so a labelled-only refusal cannot inherit an explanation
+        /// from the call before it.
+        #[test]
+        fn a_reasonless_failure_clears_the_previous_reason() {
+            let _ = take_host_reason();
+            host_err("denied: policy".into());
+            assert_eq!(
+                host_err("permission denied".into()),
+                SdkError::Host(HostStatus::Denied)
+            );
+            assert_eq!(take_host_reason(), None);
         }
 
         #[test]
-        fn a_reason_free_host_error_carries_no_detail() {
-            let error = host_err("permission denied".into());
-            assert_eq!(error.status(), Some(&HostStatus::Denied));
-            assert_eq!(error.detail(), "");
-            assert_eq!(error.message(), "denied");
-        }
-
-        /// An SDK-produced error has a classification but nothing to explain,
-        /// so it must not grow a fabricated reason.
-        #[test]
-        fn sdk_produced_errors_have_an_empty_detail() {
-            let error = SdkError::host(HostStatus::NotFound);
-            assert!(error.is_not_found());
-            assert_eq!(error.detail(), "");
-            assert_eq!(error.message(), "not found");
-        }
-
-        #[test]
-        fn an_unclassified_host_error_keeps_its_whole_message() {
+        fn an_unclassified_host_error_still_reaches_the_route_intact() {
+            let _ = take_host_reason();
             let error = host_err("backend: broker unreachable".into());
-            assert_eq!(error.status(), None);
+            assert_eq!(
+                error,
+                SdkError::Message("backend: broker unreachable".into())
+            );
             assert_eq!(error.message(), "backend: broker unreachable");
         }
     }
 
-    /// Classify a host failure without discarding the host's reason.
+    thread_local! {
+        static LAST_HOST_REASON: core::cell::RefCell<Option<String>> =
+            const { core::cell::RefCell::new(None) };
+    }
+
+    /// The reason the host gave for the most recent failed host call, removing
+    /// it so it can be read only once.
     ///
-    /// The host formats its errors as `"<label>: <reason>"`. Classifying on the
-    /// label alone used to be the last point at which a policy, provenance or
-    /// key refusal still had an explanation attached; everything downstream saw
-    /// an unqualified "denied".
+    /// `SdkError::Host(HostStatus::Denied)` says a call was refused but not
+    /// which gate refused it. The host does send that: the Machine formats
+    /// exact-signing refusals as `denied: <reason>`, naming the wallet policy,
+    /// the package provenance, the key mismatch or the stale approval that
+    /// stopped the call. Classifying the message threw the rest away, leaving
+    /// the reason only in the Machine's log — which an operator inside a
+    /// container, or an evaluated agent, cannot read.
+    ///
+    /// Call this immediately after the failing call and attach what it returns
+    /// to the diagnostic the route reports. It returns `None` when the host
+    /// gave no reason, when the error came from the SDK itself, or when the
+    /// reason has already been taken.
+    ///
+    /// Scope: a route component is instantiated per dispatch and the guest is
+    /// single-threaded, so there is never more than one host call in flight and
+    /// a reason cannot arrive from another request or another wallet. Taking
+    /// rather than peeking means a later unrelated read cannot pick up a reason
+    /// belonging to an earlier failure.
+    pub fn take_host_reason() -> Option<String> {
+        LAST_HOST_REASON.with(|slot| slot.borrow_mut().take())
+    }
+
     fn host_err(message: String) -> SdkError {
         let lower = message.to_ascii_lowercase();
-        let status = if lower.contains("not found") {
+        let classified = if lower.contains("not found") {
             HostStatus::NotFound
         } else if lower.contains("denied") || lower.contains("permission") {
             HostStatus::Denied
         } else if lower.contains("invalid") {
             HostStatus::Invalid
         } else {
+            // Unclassified messages already reach the route intact.
             return SdkError::Message(message);
         };
-        let detail = message
+        // The host writes `<label>: <reason>`. Keep the reason; a message that
+        // is only a label has nothing to add.
+        let reason = message
             .split_once(": ")
-            .map(|(_, detail)| detail.to_string())
-            .unwrap_or_default();
-        SdkError::Host { status, detail }
+            .map(|(_, reason)| reason.to_string())
+            .filter(|reason| !reason.is_empty());
+        LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = reason);
+        SdkError::Host(classified)
     }
 }
 
@@ -1411,7 +1407,7 @@ pub fn read_json_value<T: serde::Serialize>(value: &T) -> DispatchResponse {
 pub fn read_store(key: &str, max_bytes: usize) -> DispatchResponse {
     match sdk::store_get(key, max_bytes) {
         Ok(bytes) => DispatchResponse::Read(bytes),
-        Err(err) if err.is_not_found() => error(-1, "not found"),
+        Err(SdkError::Host(HostStatus::NotFound)) => error(-1, "not found"),
         Err(err) => error(-4, err.message()),
     }
 }
