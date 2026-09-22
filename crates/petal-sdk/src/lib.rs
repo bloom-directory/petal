@@ -96,16 +96,14 @@ pub struct PetalKeyRequest {
 
 /// A key request as the host reads it: [`PetalKeyRequest`] plus optional
 /// asset budgets. Kept separate so code that builds `PetalKeyRequest`
-/// literally is unaffected.
+/// literally is unaffected. Flattened so future [`PetalKeyRequest`] fields
+/// flow through instead of being silently dropped; unknown fields are still
+/// rejected.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct KeyRequestWire {
-    wallet_id: String,
-    key_slot: String,
-    allowed_routes: Vec<String>,
-    allowed_operation_classes: Vec<String>,
-    allowed_crypto_suites: Vec<String>,
-    maximum_lifetime_ms: u64,
+    #[serde(flatten)]
+    base: PetalKeyRequest,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     approval_value_limits: Vec<ApprovalValueLimit>,
 }
@@ -118,14 +116,8 @@ pub fn key_request_jcs(
     request: &PetalKeyRequest,
     approval_value_limits: &[ApprovalValueLimit],
 ) -> Result<Vec<u8>, String> {
-    let request = request.clone();
     serde_jcs::to_vec(&KeyRequestWire {
-        wallet_id: request.wallet_id,
-        key_slot: request.key_slot,
-        allowed_routes: request.allowed_routes,
-        allowed_operation_classes: request.allowed_operation_classes,
-        allowed_crypto_suites: request.allowed_crypto_suites,
-        maximum_lifetime_ms: request.maximum_lifetime_ms,
+        base: request.clone(),
         approval_value_limits: approval_value_limits.to_vec(),
     })
     .map_err(|error| format!("encode Petal key request: {error}"))
@@ -394,7 +386,7 @@ pub mod sdk {
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
         let request: super::KeyRequestWire = serde_json::from_slice(request_jcs)
             .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
-        super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
+        super::validate_wallet_id(&request.base.wallet_id).map_err(SdkError::Message)?;
         key::request(request_jcs).map_err(host_err)
     }
 
