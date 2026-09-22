@@ -1315,6 +1315,32 @@ mod identity_tests {
         assert!(message.contains("on-chain address"), "{message}");
     }
 
+    /// Unknown fields stay rejected through the flattened wire struct, so a
+    /// misspelled field fails loudly instead of decoding with defaults.
+    #[test]
+    fn key_requests_reject_unknown_fields() {
+        let mut wire = serde_json::json!({
+            "wallet_id": "0x0000000000000000000000000000000000000001",
+            "key_slot": "session",
+            "allowed_routes": ["r000001"],
+            "allowed_operation_classes": ["example.action"],
+            "allowed_crypto_suites": ["ed25519-message"],
+            "maximum_lifetime_ms": 60000,
+            "bogus": 1,
+        });
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let Err(SdkError::Message(message)) = sdk::request_key(&bytes) else {
+            panic!("an unknown field must be rejected before the host call");
+        };
+        assert!(message.contains("unknown field"), "{message}");
+        wire.as_object_mut().unwrap().remove("bogus");
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let Err(SdkError::Message(message)) = sdk::request_key(&bytes) else {
+            panic!("a known-shape request must still reach wallet validation");
+        };
+        assert!(message.contains("on-chain address"), "{message}");
+    }
+
     #[test]
     fn raw_key_requests_cannot_bypass_wallet_validation() {
         let request = PetalKeyRequest {
