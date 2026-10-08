@@ -27,5 +27,7 @@ contract: bloom:route@0.1.0
 wit_digest: $digest
 EOF
 
-(cd dist && shasum -a 256 contract.txt petal-wit-0.1.0.tar.gz >SHA256SUMS)
+git show HEAD:skills/bloom-petal-development/SKILL.md >dist/SKILL.md
+
+(cd dist && shasum -a 256 contract.txt petal-wit-0.1.0.tar.gz SKILL.md >SHA256SUMS)
 echo "release artifacts written to $root/dist"

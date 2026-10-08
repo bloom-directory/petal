@@ -1,7 +1,7 @@
 ---
 name: bloom-petal-development
 description: Build, migrate, refactor, review, and validate Bloom Petals that expose domain behavior as route-based virtual files through the Petal SDK and builder. Use when turning an API or workflow into a Petal, creating a Petal, adding or changing route files, designing route and shared-code boundaries, declaring capabilities and manifest policy, investigating oversized route components, or preparing a Petal for packaging and release.
-version: 0.1.0
+version: 0.2.0
 ---
 
 # Bloom Petal Development
@@ -85,9 +85,15 @@ module tree. Every `.rs` file below it becomes a separately compiled component:
   `markets/<slug>/book.json`;
 - a bracketed segment such as `[slug]` is available through
   `petal::param(ctx, "slug")`;
-- `[wallet]` is reserved for a Bloom wallet id under `/bloom/wallets/<id>`;
-  read it with `petal::wallet_param(ctx)`, and use a distinct parameter such as
-  `[account]` for an on-chain address;
+- `[wallet]` is reserved for a Bloom wallet id under `/bloom/wallets/<id>`, and
+  an account-bound route must follow it immediately with `[index]`, the
+  numbered account, for example `intents/[wallet]/[index]/new`. Bloom resolves
+  both against its own wallet projection before the route runs and refuses a
+  `[wallet]` with no adjacent `[index]`. Read the wallet with
+  `petal::wallet_param(ctx)`; the host also supplies the trusted
+  `bloom.wallet` and `bloom.account` parameters. There is no implicit
+  account 0, and every account, including 0, has its own private store. Use a
+  distinct parameter such as `[account]` for an on-chain address;
 - `$list.rs` is unsupported; use `$index.rs`.
 
 Directory contents are explicit. Use `list` for a fixed child list,
@@ -260,7 +266,37 @@ variant that returns a `&'static str` URL) so route code cannot direct a
 request at an arbitrary host. If a new upstream is introduced, widen
 `[net.allow]` deliberately, not as a side effect of editing a helper.
 
+### Delegated child keys
+
+A route that imports `bloom:key/derive@0.1.0` and hands the derived key to
+other routes declares that scope on its exact route pattern:
+
+```toml
+[[key.derive]]
+route = "[network]/agent_sessions/[wallet]/[index]/new.json"
+operation_classes = ["venue.agent_action"]
+allowed_routes = ["[network]/orders/[wallet]/[index]/new.json"]
+allowed_crypto_suites = ["secp256k1-keccak256-recoverable"]
+maximum_lifetime_ms = 86400000
+```
+
+Every listed class must also appear in `[sign].allowed_intents`. Declare all
+three bounds; a component may later request a narrower subset but never widen
+one. `allowed_crypto_suites` takes exactly the Broker `CryptoSuite` values:
+`secp256k1-keccak256-recoverable` (what EVM chains verify),
+`secp256k1-sha256-recoverable` (off-chain use only; no chain accepts it) and
+`ed25519-message` (the only suite a Solana wallet permits).
+
 ## Preserve write semantics
+
+Bloom runs a route's `write` synchronously and returns its error to the VFS
+caller. A successful write means the handler finished, nothing more. The
+`write_async` metadata field is reserved and does not detach the write, so do
+not document it as a background job.
+
+A guest VFS call can never reach another Petal or re-enter its own: every
+`petals/…` path is denied, and wallet paths are limited to the selected
+numbered account.
 
 For side-effecting routes:
 
@@ -320,6 +356,65 @@ not rebuild, so do not use it against stale artifacts. Packaging checks built
 routes but does not fully validate `petal.toml` policy and does not replace
 route-level tests or a runtime VFS smoke test.
 
+## Run it in Bloom
+
+Validate and install with the Bloom build you will run against. `build`
+regenerates `artifacts/routes/` and `artifacts/build-manifest.json`; never
+hand-edit them or install stale ones.
+
+```sh
+bloom petals build <root>
+bloom petals build <root> --out <name>.petal.tar
+bloom petals install <root>
+bloom petals install <name>.petal.tar
+bloom petals install https://github.com/bloom-directory/<repo> --ref <tag-or-sha>
+bloom petals ls
+bloom petals uninstall <name-or-hash-prefix>
+```
+
+Know what an install changes:
+
+- Every rebuild is a new content hash. Wallet policy allows Petal packages by
+  hash (`allowed_petal_packages`), so the owner approves a policy update for
+  the new hash before its routes can act for that wallet.
+- A new hash starts with an empty private store, unless it is a signed
+  successor in an authenticated lineage. Bloom then copies the predecessor's
+  store bytes on first use, with no migration hook, so a successor must read
+  the previous release's format. Test against a fixture store it wrote,
+  including settings and secrets.
+- A signing route is authorized only for the operation classes its installer
+  provenance record lists. Without that record the write fails with a plain
+  permission error; Machine's log names the reason
+  (`installer provenance does not authorize <class>`).
+- `--force` is not a reinstall flag. It replaces or removes a package while
+  sessions scoped to it are still active; those sessions then read
+  `package_replaced`, and only Exact recovery remains.
+- A GitHub source package may declare `[source]` and `[build].command`. Bloom
+  runs that command natively with the installing user's privileges and does
+  not sandbox it, so keep the build non-interactive, reproducible and
+  dependency-light, and test installs by tag and by immutable commit.
+
+Exercise the installed tree both through direct VFS
+(`bloom vfs ls|cat|write /petals/<name>/...`) and through a mounted daemon:
+lookup, list, read, invalid input, backend failure, and every writable route.
+
+### On a developer triad
+
+Bloom's `scripts/triad-dev-launch.sh` installs two optional packages after the
+services start: `BLOOM_TRIAD_DEV_POLYMARKET_PACKAGE` and
+`BLOOM_TRIAD_DEV_HYPERLIQUID_PACKAGE` (set `BLOOM_TRIAD_DEV_BUILD_PETALS=0` to
+skip building them). Only the Hyperliquid hook also enrolls installer
+provenance. For any other Petal that signs, enroll it before launching:
+
+```sh
+bloom init triad-enroll-developer-petal-provenance <developer-root>/config <root>
+```
+
+Enrollment rebuilds the package, so install from that same directory
+afterwards; an archive built separately has a different hash and its
+provenance will not match. Machine and Broker read the catalog at startup, so
+enroll before the triad starts or restart it afterwards.
+
 ## Review checklist
 
 Before handing off, confirm:
@@ -333,4 +428,5 @@ Before handing off, confirm:
 - no secret or signature material is reachable through a read handler;
 - durable state does not overstate external completion;
 - all route components and release packaging validate;
+- the package was installed in Bloom and exercised through the VFS;
 - no live write was performed without explicit authorization.

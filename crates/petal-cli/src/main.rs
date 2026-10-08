@@ -118,7 +118,7 @@ fn scaffold(name: &str, destination: &Path) -> Result<(), String> {
     }
     println!("created {}", destination.display());
     println!(
-        "development skill: https://github.com/bloom-directory/petal/tree/main/skills/bloom-petal-development"
+        "development skill: https://github.com/bloom-directory/petal/tree/master/skills/bloom-petal-development"
     );
     Ok(())
 }

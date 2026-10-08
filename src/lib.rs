@@ -113,6 +113,12 @@ pub const RUST_TEMPLATE_FILES: &[(&str, &str)] = &[
     ),
 ];
 
+/// The Petal development skill, shipped with the contract so the version a
+/// host serves is the version of the contract it runs. It is documentation:
+/// it is not part of [`wit_digest`].
+pub const PETAL_DEVELOPMENT_SKILL: &str =
+    include_str!("../skills/bloom-petal-development/SKILL.md");
+
 pub fn wit_digest() -> String {
     let mut hasher = Sha256::new();
     for (path, bytes) in WIT_FILES {
@@ -168,6 +174,13 @@ mod tests {
         assert_eq!(wit_digest().len(), 64);
         assert_eq!(WIT_FILES.len(), 9);
         assert!(WIT_FILES.iter().all(|(_, bytes)| !bytes.is_empty()));
+    }
+
+    #[test]
+    fn embeds_the_petal_development_skill() {
+        assert!(PETAL_DEVELOPMENT_SKILL.starts_with("---\nname: bloom-petal-development\n"));
+        assert!(PETAL_DEVELOPMENT_SKILL.contains("\n## Run it in Bloom\n"));
+        assert!(PETAL_DEVELOPMENT_SKILL.ends_with('\n'));
     }
 
     #[test]
