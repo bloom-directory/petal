@@ -98,10 +98,19 @@ does not happen automatically.
 
 Validate parameters for their domain before using them in URLs, storage keys,
 or VFS paths. Before interpolating a value into a URL, enforce its strict
-domain grammar or encode it as a URL path segment. Use `petal::is_safe_segment`
-for VFS or storage path segments; it is not sufficient URL validation. Do not
-assume supplied context parameters are safe merely because the source filename
-uses brackets.
+domain grammar or encode it as a URL path segment. Do not assume supplied
+context parameters are safe merely because the source filename uses brackets.
+
+- The route's own wallet and account come from `petal::wallet_account(ctx)`,
+  which reads the pair Bloom resolved before dispatch. Build paths under it
+  with its bounded `path()`.
+- A wallet id from a request body or stored state goes through
+  `petal::validate_wallet_segment` before it becomes a VFS path segment or a
+  store key. `petal::validate_wallet_id` is wider, admitting `.` and `/`, and
+  is only for the wire boundary.
+- `petal::is_safe_segment` judges one segment and admits `/`, so it is not a
+  wallet-id check. Split any multi-segment value on `/` and check each part.
+  It is not URL validation either.
 
 ## Select the local handler and spec
 

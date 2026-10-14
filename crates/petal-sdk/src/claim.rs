@@ -7,17 +7,25 @@
 //!   `crypto_suite`, `payload_digest` and `ordered_hashes`. A wrong value only
 //!   gets the signature refused, so [`petal_use_claim`] fills them in from the
 //!   route context and the payloads.
-//! - **Asserted by the Petal:** the debits, destinations and fee. Broker turns
-//!   these into the approval's value limits, checks the destinations against
-//!   the wallet's `allowed_destinations`, and shows them to the owner. An empty
-//!   list is not a neutral default: it gives Broker nothing to limit or check
-//!   and the owner nothing to read. So [`ClaimEffects`] has no default, and a
-//!   claim that moves value must say what it moves.
+//! - **Asserted by the Petal:** the debits, destinations and fee. Bloom derives
+//!   the approval's value limits from the debits and fee, and Broker enforces
+//!   them. Broker checks each declared destination against the wallet's
+//!   `allowed_destinations`, and shows all of it to the owner. Broker checks
+//!   only the destinations a claim names, so a debit with no destination
+//!   passes the destination policy unchecked. An empty list is not a neutral
+//!   default: it gives Broker nothing to limit or check and the owner nothing
+//!   to read. So [`ClaimEffects`] has no default, a claim that moves value
+//!   must say what it moves, and a debit must say where it goes.
 //!
 //! Broker compares a declared destination with the wallet policy by exact
 //! string equality on both the chain and the destination. Declare each one in
 //! exactly the form the owner's policy uses: a lowercase address never matches
 //! a checksummed policy entry, and `evm-8453` never matches `base`.
+//!
+//! Every effect check runs after the owner has approved, so a claim Broker
+//! refuses costs the owner a wasted approval. [`ClaimEffects::validate`]
+//! catches what the SDK can see; it cannot see the wallet's policy or how
+//! Bloom catalogs the operation class.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -77,8 +85,20 @@ pub struct ClaimDestination {
     pub destination: String,
 }
 
-/// The network fee the signed payload can spend. Broker refuses `None` for an
-/// operation class it catalogs as fee-bearing.
+/// The fee the signed payload can spend, in the asset Bloom catalogs for the
+/// operation class.
+///
+/// Whether a class is fee-bearing is decided by Bloom's catalog, not by the
+/// claim. Broker refuses, after the owner has approved:
+///
+/// - `FEE_REQUIRED`: `None` on a fee-bearing class;
+/// - `FEE_NOT_ALLOWED`: a fee on a class with no fee asset;
+/// - `FEE_ASSET_MISMATCH`: a fee whose chain or asset differs from the
+///   catalog's, compared byte for byte.
+///
+/// Current Bloom catalogs every Petal operation class with no fee asset, so
+/// a Petal claim must declare `None` until Bloom lets a Petal declare its
+/// fee asset (bloom#276).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClaimFee {
@@ -100,24 +120,38 @@ pub struct ClaimEffects {
     debits: Vec<ClaimDebit>,
     destinations: Vec<ClaimDestination>,
     fee: ClaimFee,
+    fees_declared: usize,
+    debits_without_destination: bool,
 }
 
 impl ClaimEffects {
-    /// The payload moves no value and pays no fee: for example a login
-    /// message, or an order cancellation whose venue charges nothing. This is
-    /// a statement about the payload, not a placeholder; use
-    /// [`ClaimEffects::moves_value`] whenever value can leave the wallet.
+    /// The payload moves no value, authorizes no one and pays no fee: for
+    /// example a login message, or an order cancellation whose venue charges
+    /// nothing. Effects are relative to the signing wallet.
+    ///
+    /// This is a statement about the payload, not a placeholder, and the SDK
+    /// cannot check it: it emits the same bytes as the empty claim. Use
+    /// [`ClaimEffects::moves_value`] whenever value can leave the wallet, or
+    /// someone gains the right to take it.
     pub fn moves_nothing() -> Self {
         Self {
             moves_value: false,
             debits: Vec::new(),
             destinations: Vec::new(),
             fee: ClaimFee::None,
+            fees_declared: 0,
+            debits_without_destination: false,
         }
     }
 
-    /// Start a claim for a payload that moves value. Building it fails unless
-    /// it declares at least one debit or a fee.
+    /// Start a claim for a payload that moves value, or lets someone move it.
+    ///
+    /// It must declare at least one non-zero debit, a destination, or a
+    /// non-zero fee. A payload that only authorizes, such as a token
+    /// allowance or an operator approval, declares the spender as a
+    /// destination and no debit, so the wallet's destination policy still
+    /// applies to it. Every debit needs a destination unless
+    /// [`ClaimEffects::debits_without_destination`] says otherwise.
     pub fn moves_value() -> Self {
         Self {
             moves_value: true,
@@ -126,7 +160,8 @@ impl ClaimEffects {
     }
 
     /// Declare value the payload takes from the wallet, in the asset's
-    /// smallest unit.
+    /// smallest unit. The amount must not be zero; leave out a debit that
+    /// takes nothing.
     pub fn debit(mut self, chain: &str, asset: &str, amount: &str) -> Self {
         self.debits.push(ClaimDebit {
             asset: ClaimAsset {
@@ -149,14 +184,28 @@ impl ClaimEffects {
         self
     }
 
-    /// Declare the network fee the payload can spend, in the asset's smallest
-    /// unit. Declare the cap the payload allows, not an estimate.
+    /// Declare the fee the payload can spend, in the smallest unit of the fee
+    /// asset Bloom catalogs for the operation class (see [`ClaimFee`]).
+    /// Declare the cap the payload allows, not an estimate. A claim carries
+    /// at most one fee, so a second call fails validation.
     pub fn fee(mut self, chain: &str, asset: &str, amount: &str) -> Self {
         self.fee = ClaimFee::Fee {
             chain: chain.to_owned(),
             asset: asset.to_owned(),
             amount: amount.to_owned(),
         };
+        self.fees_declared += 1;
+        self
+    }
+
+    /// Declare that the debits go to no address the owner's policy can name,
+    /// so Broker's destination check cannot apply to them: for example value
+    /// that stays inside a venue account, or a fee a venue keeps. Broker still
+    /// enforces the debits as value limits. Use it only when that is true;
+    /// whenever the payload names a recipient, declare it with
+    /// [`ClaimEffects::destination`] instead.
+    pub fn debits_without_destination(mut self) -> Self {
+        self.debits_without_destination = true;
         self
     }
 
@@ -180,6 +229,7 @@ impl ClaimEffects {
             if !self.debits.is_empty()
                 || !self.destinations.is_empty()
                 || self.fee != ClaimFee::None
+                || self.debits_without_destination
             {
                 return Err(
                     "a claim declared as moving nothing cannot carry debits, destinations or a fee; use ClaimEffects::moves_value()"
@@ -188,18 +238,25 @@ impl ClaimEffects {
             }
             return Ok(());
         }
-        if self.debits.is_empty() && self.fee == ClaimFee::None {
-            return Err("a value-moving claim must declare at least one debit or a fee".into());
+        if self.fees_declared > 1 {
+            return Err("a claim declares at most one fee".into());
         }
         for debit in &self.debits {
             validate_chain(&debit.asset.chain)?;
             validate_label("debit asset", &debit.asset.asset)?;
             validate_amount(&debit.amount)?;
+            if debit.amount == "0" {
+                return Err(format!(
+                    "a debit of {} on {} is zero; leave out a debit that takes nothing",
+                    debit.asset.asset, debit.asset.chain
+                ));
+            }
         }
         for destination in &self.destinations {
             validate_chain(&destination.chain)?;
             validate_label("destination", &destination.destination)?;
         }
+        let mut fee_moves_value = false;
         if let ClaimFee::Fee {
             chain,
             asset,
@@ -209,6 +266,67 @@ impl ClaimEffects {
             validate_chain(chain)?;
             validate_label("fee asset", asset)?;
             validate_amount(amount)?;
+            fee_moves_value = amount != "0";
+        }
+        if self.debits.is_empty() && self.destinations.is_empty() && !fee_moves_value {
+            return Err(
+                "a value-moving claim must declare a non-zero debit, a destination or a non-zero fee"
+                    .into(),
+            );
+        }
+        if !self.debits.is_empty()
+            && self.destinations.is_empty()
+            && !self.debits_without_destination
+        {
+            return Err(
+                "a claim with debits must declare where the value goes, so the wallet's allowed_destinations can check it; if no policy address applies, say so with debits_without_destination()"
+                    .into(),
+            );
+        }
+        if self.debits_without_destination && self.debits.is_empty() {
+            return Err("debits_without_destination() needs at least one debit".into());
+        }
+        self.validate_totals()
+    }
+
+    /// Bloom sums the debits and fee per asset and refuses a total above
+    /// 2^256-1, so check it here rather than after the owner approves.
+    fn validate_totals(&self) -> Result<(), String> {
+        let mut totals: Vec<(&str, &str, String)> = Vec::new();
+        let fee = match &self.fee {
+            ClaimFee::Fee {
+                chain,
+                asset,
+                amount,
+            } => Some((chain.as_str(), asset.as_str(), amount.as_str())),
+            ClaimFee::None => None,
+        };
+        let entries = self
+            .debits
+            .iter()
+            .map(|debit| {
+                (
+                    debit.asset.chain.as_str(),
+                    debit.asset.asset.as_str(),
+                    debit.amount.as_str(),
+                )
+            })
+            .chain(fee);
+        for (chain, asset, amount) in entries {
+            match totals
+                .iter_mut()
+                .find(|(c, a, _)| *c == chain && *a == asset)
+            {
+                Some((_, _, total)) => *total = add_decimal(total, amount),
+                None => totals.push((chain, asset, amount.to_owned())),
+            }
+        }
+        for (chain, asset, total) in &totals {
+            if validate_amount(total).is_err() {
+                return Err(format!(
+                    "the declared {asset} on {chain}, debits and fee together, exceeds 2^256-1"
+                ));
+            }
         }
         Ok(())
     }
@@ -226,23 +344,26 @@ pub enum ClaimNonce {
     Explicit([u8; 16]),
 }
 
-#[derive(Serialize)]
-struct WireClaim<'a> {
-    package_hash: &'a str,
-    route: &'a str,
-    operation_class: &'a str,
-    crypto_suite: &'static str,
+/// The claim as it goes on the wire. [`claim_effects`] decodes into the same
+/// type, so it accepts exactly the claims [`petal_use_claim`] can emit.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WireClaim {
+    package_hash: String,
+    route: String,
+    operation_class: String,
+    crypto_suite: String,
     payload_digest: String,
     ordered_hashes: Vec<String>,
-    declared_debits: &'a [ClaimDebit],
-    declared_destinations: &'a [ClaimDestination],
-    declared_fee: &'a ClaimFee,
+    declared_debits: Vec<ClaimDebit>,
+    declared_destinations: Vec<ClaimDestination>,
+    declared_fee: ClaimFee,
     nonce: String,
     claim_assurance: WireAssurance,
 }
 
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum WireAssurance {
     MachineAsserted,
 }
@@ -279,18 +400,18 @@ pub fn petal_use_claim(
         ClaimNonce::Derived => derived_nonce(&ctx.package_hash, route, operation_class, &digest),
     };
     let claim = WireClaim {
-        package_hash: &ctx.package_hash,
-        route,
-        operation_class,
-        crypto_suite: suite.as_str(),
+        package_hash: ctx.package_hash.clone(),
+        route: route.to_owned(),
+        operation_class: operation_class.to_owned(),
+        crypto_suite: suite.as_str().to_owned(),
         payload_digest: to_hex(&digest),
         ordered_hashes: payloads
             .iter()
             .map(|item| to_hex(&item.claimed_hash))
             .collect(),
-        declared_debits: &effects.debits,
-        declared_destinations: &effects.destinations,
-        declared_fee: &effects.fee,
+        declared_debits: effects.debits.clone(),
+        declared_destinations: effects.destinations.clone(),
+        declared_fee: effects.fee.clone(),
         nonce: to_hex(&nonce),
         claim_assurance: WireAssurance::MachineAsserted,
     };
@@ -322,26 +443,83 @@ pub fn derived_nonce(
     nonce
 }
 
-#[derive(Deserialize)]
-struct WireEffects {
-    declared_debits: Vec<ClaimDebit>,
-    declared_destinations: Vec<ClaimDestination>,
-    declared_fee: ClaimFee,
-}
-
 /// Read the declared effects back out of an emitted claim, so a Petal's tests
 /// can assert exactly what it declares.
+///
+/// It accepts only what [`petal_use_claim`] can emit: every claim field and
+/// no other, in canonical (RFC 8785) form, with effects that pass
+/// [`ClaimEffects::validate`]. A claim with any effect decodes as
+/// [`ClaimEffects::moves_value`], and one with none as
+/// [`ClaimEffects::moves_nothing`].
 pub fn claim_effects(claim_jcs: &[u8]) -> Result<ClaimEffects, String> {
-    let wire: WireEffects = serde_json::from_slice::<serde_json::Value>(claim_jcs)
-        .and_then(serde_json::from_value)
-        .map_err(|err| format!("decode claim effects: {err}"))?;
-    let moves_value = !wire.declared_debits.is_empty() || wire.declared_fee != ClaimFee::None;
-    Ok(ClaimEffects {
+    let wire: WireClaim =
+        serde_json::from_slice(claim_jcs).map_err(|err| format!("decode claim: {err}"))?;
+    let canonical = serde_jcs::to_vec(&wire).map_err(|err| format!("canonicalize claim: {err}"))?;
+    if canonical != claim_jcs {
+        return Err("claim is not in canonical (RFC 8785) form".into());
+    }
+    let hex_fields = [
+        ("package_hash", wire.package_hash.as_str(), 64),
+        ("payload_digest", wire.payload_digest.as_str(), 64),
+        ("nonce", wire.nonce.as_str(), 32),
+    ];
+    for (field, value, length) in hex_fields {
+        if !is_lower_hex(value, length) {
+            return Err(format!(
+                "claim {field} must be {length} lowercase hex digits"
+            ));
+        }
+    }
+    if wire.ordered_hashes.is_empty()
+        || !wire
+            .ordered_hashes
+            .iter()
+            .all(|hash| is_lower_hex(hash, 64))
+    {
+        return Err(
+            "claim ordered_hashes must list one or more 64-digit lowercase hex hashes".into(),
+        );
+    }
+    let moves_value = !wire.declared_debits.is_empty()
+        || !wire.declared_destinations.is_empty()
+        || wire.declared_fee != ClaimFee::None;
+    let fees_declared = usize::from(wire.declared_fee != ClaimFee::None);
+    let debits_without_destination =
+        !wire.declared_debits.is_empty() && wire.declared_destinations.is_empty();
+    let effects = ClaimEffects {
         moves_value,
         debits: wire.declared_debits,
         destinations: wire.declared_destinations,
         fee: wire.declared_fee,
-    })
+        fees_declared,
+        debits_without_destination,
+    };
+    effects.validate()?;
+    Ok(effects)
+}
+
+/// Add two canonical decimal integers. The result can exceed 2^256-1; the
+/// caller checks it.
+fn add_decimal(left: &str, right: &str) -> String {
+    let (left, right) = (left.as_bytes(), right.as_bytes());
+    let mut digits = Vec::with_capacity(left.len().max(right.len()) + 1);
+    let mut carry = 0;
+    for place in 0..left.len().max(right.len()) {
+        let digit = |number: &[u8]| {
+            number
+                .len()
+                .checked_sub(place + 1)
+                .map_or(0, |index| number[index] - b'0')
+        };
+        let sum = digit(left) + digit(right) + carry;
+        digits.push(b'0' + sum % 10);
+        carry = sum / 10;
+    }
+    if carry > 0 {
+        digits.push(b'0' + carry);
+    }
+    digits.reverse();
+    String::from_utf8(digits).expect("decimal digits are ASCII")
 }
 
 fn validate_amount(amount: &str) -> Result<(), String> {
@@ -533,15 +711,11 @@ mod tests {
 
     #[test]
     fn a_value_claim_must_say_what_it_moves() {
-        // The empty claim safe and polymarket ship today is refused unless it
-        // is declared as moving nothing.
-        let empty = ClaimEffects::moves_value().destination("base", "0x01");
-        assert!(
-            empty
-                .validate()
-                .unwrap_err()
-                .contains("at least one debit or a fee")
-        );
+        // The SDK forces a choice but cannot check it: moves_nothing() emits
+        // the same empty effects that safe and polymarket ship today. What it
+        // refuses is a value claim that then declares nothing.
+        let empty = ClaimEffects::moves_value();
+        assert!(empty.validate().unwrap_err().contains("non-zero debit"));
         let refused = petal_use_claim(
             &ctx(),
             "transfer.send",
@@ -560,6 +734,122 @@ mod tests {
                 .is_ok()
         );
         assert!(ClaimEffects::moves_nothing().validate().is_ok());
+    }
+
+    #[test]
+    fn zero_amounts_do_not_count_as_declaring_value() {
+        // A "0" debit would bring back the empty claim under another name.
+        let zero_debit = ClaimEffects::moves_value()
+            .debit("base", "usdc", "0")
+            .destination("base", "0x01");
+        assert!(zero_debit.validate().unwrap_err().contains("is zero"));
+        // A "0" fee is honest for a fee-bearing class whose gas someone else
+        // pays, but it is not an effect on its own.
+        let zero_fee = ClaimEffects::moves_value().fee("base", "native", "0");
+        assert!(zero_fee.validate().unwrap_err().contains("non-zero debit"));
+        assert!(
+            ClaimEffects::moves_value()
+                .debit("base", "usdc", "1")
+                .destination("base", "0x01")
+                .fee("base", "native", "0")
+                .validate()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_debit_must_say_where_the_value_goes() {
+        // Broker checks only the destinations a claim names, so a debit with
+        // none would pass the wallet's destination policy unchecked.
+        let unnamed = ClaimEffects::moves_value().debit("base", "usdc", "1000000");
+        assert!(
+            unnamed
+                .validate()
+                .unwrap_err()
+                .contains("allowed_destinations")
+        );
+        // Saying so explicitly is allowed, and greppable.
+        assert!(
+            unnamed
+                .clone()
+                .debits_without_destination()
+                .validate()
+                .is_ok()
+        );
+        // The opt-out is not a way to declare nothing.
+        assert!(
+            ClaimEffects::moves_value()
+                .fee("base", "native", "1")
+                .debits_without_destination()
+                .validate()
+                .is_err()
+        );
+        assert!(
+            ClaimEffects::moves_nothing()
+                .debits_without_destination()
+                .validate()
+                .is_err()
+        );
+        // A debit settling on another chain still names its destination.
+        assert!(
+            ClaimEffects::moves_value()
+                .debit("hyperliquid", "usdc", "5000000")
+                .destination("arbitrum", "0xAbC0000000000000000000000000000000000001")
+                .validate()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn an_authorization_declares_its_spender_as_a_destination() {
+        // A token allowance or operator approval moves nothing when signed,
+        // but lets the spender move value later, so the policy must see it.
+        let approval = ClaimEffects::moves_value()
+            .destination("polygon", "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E");
+        assert!(approval.validate().is_ok());
+        let jcs = petal_use_claim(
+            &ctx(),
+            "token.approve",
+            CryptoSuite::Secp256k1Keccak256Recoverable,
+            &[payload(3)],
+            &approval,
+            ClaimNonce::Derived,
+        )
+        .unwrap();
+        assert_eq!(claim_effects(&jcs).unwrap(), approval);
+    }
+
+    #[test]
+    fn a_claim_carries_at_most_one_fee() {
+        let twice = ClaimEffects::moves_value()
+            .debit("hyperliquid", "usdc", "100")
+            .destination("hyperliquid", "0x01")
+            .fee("hyperliquid", "usdc", "100")
+            .fee("arbitrum", "native", "1");
+        assert!(twice.validate().unwrap_err().contains("at most one fee"));
+    }
+
+    #[test]
+    fn declared_totals_per_asset_fit_in_256_bits() {
+        let max = ClaimEffects::moves_value()
+            .debit("base", "native", U256_MAX)
+            .destination("base", "0x01");
+        assert!(max.clone().validate().is_ok());
+        let over = max.fee("base", "native", "1");
+        assert!(over.validate().unwrap_err().contains("exceeds 2^256-1"));
+        // Different assets are separate totals.
+        assert!(
+            ClaimEffects::moves_value()
+                .debit("base", "native", U256_MAX)
+                .debit("base", "usdc", U256_MAX)
+                .destination("base", "0x01")
+                .fee("base", "eth", "1")
+                .validate()
+                .is_ok()
+        );
+        assert_eq!(add_decimal("999", "1"), "1000");
+        assert_eq!(add_decimal("0", "0"), "0");
+        assert_eq!(add_decimal("15", "985"), "1000");
     }
 
     #[test]
@@ -686,6 +976,47 @@ mod tests {
         .unwrap();
         assert_eq!(claim_effects(&jcs).unwrap(), send());
         assert!(claim_effects(b"{}").is_err());
+    }
+
+    #[test]
+    fn claim_effects_accepts_only_what_the_builder_can_emit() {
+        let jcs = petal_use_claim(
+            &ctx(),
+            "transfer.send",
+            CryptoSuite::Secp256k1Keccak256Recoverable,
+            &[payload(1)],
+            &send(),
+            ClaimNonce::Derived,
+        )
+        .unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&jcs).unwrap();
+        let reencode = |value: &serde_json::Value| serde_jcs::to_vec(value).unwrap();
+
+        // Not canonical: the same claim pretty-printed.
+        let pretty = serde_json::to_vec_pretty(&value).unwrap();
+        assert!(claim_effects(&pretty).unwrap_err().contains("canonical"));
+
+        // A field Bloom does not define.
+        value["extra"] = serde_json::json!(1);
+        assert!(claim_effects(&reencode(&value)).is_err());
+        value.as_object_mut().unwrap().remove("extra");
+
+        // Effects the builder would refuse: a zero debit.
+        value["declared_debits"][0]["amount"] = serde_json::json!("0");
+        assert!(
+            claim_effects(&reencode(&value))
+                .unwrap_err()
+                .contains("is zero")
+        );
+        value["declared_debits"][0]["amount"] = serde_json::json!("1000000000000000");
+
+        // A malformed digest.
+        value["payload_digest"] = serde_json::json!("ABCD");
+        assert!(
+            claim_effects(&reencode(&value))
+                .unwrap_err()
+                .contains("payload_digest")
+        );
     }
 
     #[test]
