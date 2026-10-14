@@ -19,6 +19,12 @@ fn component_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 
 getrandom::register_custom_getrandom!(component_getrandom);
 
+mod claim;
+pub use claim::{
+    CLAIM_NONCE_DOMAIN_V1, ClaimAsset, ClaimDebit, ClaimDestination, ClaimEffects, ClaimFee,
+    ClaimNonce, CryptoSuite, claim_effects, derived_nonce, petal_use_claim,
+};
+
 pub use bindings::bloom::route::types::EntryKind;
 pub use bindings::{Ctx as RawCtx, Entry, Guest as RawGuest, RouteError, RouteMeta};
 
@@ -287,6 +293,35 @@ pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
         );
     }
     Ok(value)
+}
+
+/// Validate a wallet id that arrives from untrusted input — a request body or
+/// stored state — before it becomes a VFS path segment or a store key.
+///
+/// This is Bloom's own wallet-name grammar, which is narrower than the wire
+/// type: a new name must pass both Bloom's `[A-Za-z0-9_-]` check and the
+/// `Token` rules (a lowercase first byte, then `[a-z0-9._/-]`), and the
+/// intersection is `[a-z][a-z0-9_-]{0,63}`. So it rejects `/` and `.`, which
+/// [`validate_wallet_id`] admits because `Token` does, and nothing is trimmed:
+/// a padded id is refused, not repaired.
+///
+/// A route's own wallet does not need this. Bloom resolves `[wallet]` against
+/// its projection before dispatch, and [`wallet_account`] reads that trusted
+/// value. [`validate_wallet_id`] stays as wide as `Token`, for checks at the
+/// wire boundary. Bloom never creates an id containing `.` or `/`, but only
+/// this validator guarantees a safe path segment.
+pub fn validate_wallet_segment(value: &str) -> Result<&str, String> {
+    let bytes = value.as_bytes();
+    let valid = (1..=64).contains(&bytes.len())
+        && bytes[0].is_ascii_lowercase()
+        && bytes.iter().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
+        });
+    if valid {
+        Ok(value)
+    } else {
+        Err("wallet must be a Bloom wallet name: a lowercase letter, then up to 63 lowercase letters, digits, '_' or '-'".into())
+    }
 }
 
 pub mod sdk {
@@ -1526,6 +1561,54 @@ mod account_tests {
     }
 
     #[test]
+    fn a_wallet_segment_is_exactly_bloom_wallet_name_grammar() {
+        for name in ["a", "main", "alice-1", "trading_2", "a0", &"a".repeat(64)] {
+            assert_eq!(validate_wallet_segment(name), Ok(name), "{name:?}");
+        }
+        // Escape attempts, carried over from the Robinhood Petal's own table.
+        for name in ["", "..", "../wallets", "a/b", "a\0b", &"a".repeat(65)] {
+            assert!(validate_wallet_segment(name).is_err(), "{name:?}");
+        }
+        // Names Bloom cannot create: Token forbids uppercase anywhere and a
+        // non-letter start, and Bloom's creation check forbids `.` and `/`.
+        for name in [
+            "Alice",
+            "A1",
+            "aLice",
+            "alicE",
+            "a\\b",
+            "alic\u{e9}",
+            "a:b",
+            "1alice",
+            "-a",
+            "_a",
+            "alice.vault",
+            "a.",
+            " alice",
+            "alice ",
+            "al ice",
+        ] {
+            assert!(validate_wallet_segment(name).is_err(), "{name:?}");
+        }
+        assert!(validate_wallet_segment(&format!("0x{}", "ab".repeat(20))).is_err());
+    }
+
+    #[test]
+    fn the_wire_validator_stays_wider_than_the_segment_validator() {
+        // Every segment-valid name is wire-valid.
+        for name in ["a", "main", "alice-1", "trading_2", "a0", &"a".repeat(64)] {
+            assert!(validate_wallet_segment(name).is_ok(), "{name:?}");
+            assert!(validate_wallet_id(name).is_ok(), "{name:?}");
+        }
+        // `Token` admits `.` and `/`, though Bloom never creates such a name,
+        // so only the segment validator may build a path segment or store key.
+        for name in ["alice.vault", "team/alice"] {
+            assert!(validate_wallet_id(name).is_ok(), "{name:?}");
+            assert!(validate_wallet_segment(name).is_err(), "{name:?}");
+        }
+    }
+
+    #[test]
     fn the_selected_account_comes_from_trusted_context() {
         let zero = wallet_account(&ctx("swaps/alice/0/new", "alice", 0)).unwrap();
         assert_eq!((zero.wallet(), zero.number()), ("alice", 0));
@@ -1640,8 +1723,8 @@ mod account_tests {
 
     #[test]
     fn an_evm_address_keeps_the_casing_bloom_projected() {
-        // Bloom projects EIP-55. Lowercasing it discards the checksum, which is
-        // what the near Petal did before this helper existed.
+        // Bloom projects EIP-55. Lowercasing it would discard the checksum, so
+        // a caller parsing the result into an address type could not check it.
         let checksummed = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
         let parsed = parse_evm_address(format!("{checksummed}\n").as_bytes()).unwrap();
         assert_eq!(parsed, checksummed);

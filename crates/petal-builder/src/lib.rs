@@ -833,6 +833,14 @@ fn warn_route_shapes(routes: &[Route]) {
     }
 }
 
+/// The name of a route capture, parsed the way Bloom parses it: `[wallet]`
+/// and `[wallet].json` both name `wallet`. Bloom binds the suffixed form too,
+/// so a lint matching only the exact segment misses routes Bloom refuses.
+fn capture_name(segment: &str) -> Option<&str> {
+    let rest = segment.strip_prefix('[')?;
+    rest.find(']').map(|end| &rest[..end])
+}
+
 fn route_shape_violations(routes: &[Route]) -> Vec<String> {
     let wallet = bloom_petal_contract::WALLET_CAPTURE;
     let index = bloom_petal_contract::ACCOUNT_INDEX_CAPTURE;
@@ -846,29 +854,42 @@ fn route_shape_violations(routes: &[Route]) -> Vec<String> {
     for route in routes {
         let segments = route.path.split('/').collect::<Vec<_>>();
         for (position, segment) in segments.iter().enumerate() {
-            if *segment == wallet {
-                let prefix = segments[..=position].join("/");
-                match segments.get(position + 1) {
-                    Some(next) if *next == index => {}
-                    // The host-owned account listing. Only meaningful when the
-                    // account routes it points at actually exist.
-                    Some(next) if *next == "$index" && has_account_routes(&prefix) => {}
-                    _ => violations.push(format!(
-                        "route {} declares {wallet} without an adjacent {index}; Bloom refuses it before the Petal runs",
+            match capture_name(segment) {
+                // Bloom compares the exact segments `[wallet]` and `[index]`
+                // for adjacency, so a suffixed capture can never satisfy it,
+                // even though Bloom still binds the parameter from it.
+                Some("wallet") | Some("index") if *segment != wallet && *segment != index => {
+                    violations.push(format!(
+                        "route {} captures {segment}; Bloom only grants wallet authority to the exact segments {wallet}/{index}, so it refuses this route before the Petal runs",
                         route.path
-                    )),
+                    ));
                 }
-            }
-            if *segment == index
-                && position
-                    .checked_sub(1)
-                    .and_then(|previous| segments.get(previous))
-                    != Some(&wallet)
-            {
-                violations.push(format!(
-                    "route {} declares {index} without a preceding {wallet}",
-                    route.path
-                ));
+                Some("wallet") => {
+                    let prefix = segments[..=position].join("/");
+                    match segments.get(position + 1) {
+                        Some(next) if *next == index => {}
+                        // The host-owned account listing. Only meaningful when
+                        // the account routes it points at actually exist.
+                        Some(next) if *next == "$index" && has_account_routes(&prefix) => {}
+                        Some(next) if capture_name(next) == Some("index") => {} // reported above
+                        _ => violations.push(format!(
+                            "route {} declares {wallet} without an adjacent {index}; Bloom refuses it before the Petal runs",
+                            route.path
+                        )),
+                    }
+                }
+                Some("index")
+                    if position
+                        .checked_sub(1)
+                        .and_then(|previous| segments.get(previous))
+                        != Some(&wallet) =>
+                {
+                    violations.push(format!(
+                        "route {} declares {index} without a preceding {wallet}",
+                        route.path
+                    ));
+                }
+                _ => {}
             }
         }
     }
@@ -1258,6 +1279,19 @@ mod tests {
         assert_eq!(found.len(), 2, "{found:?}");
         assert!(found.iter().any(|v| v.contains("swaps/[wallet]/$index")));
         assert!(found.iter().any(|v| v.contains("swaps/[wallet]/new")));
+    }
+
+    #[test]
+    fn a_suffixed_capture_is_refused_even_though_bloom_binds_it() {
+        // Bloom parses `[wallet].json` as the `wallet` param, so these routes
+        // look wallet-scoped, but its adjacency check compares exact segments.
+        for path in ["balance/[wallet].json", "balance/[wallet]/[index].json"] {
+            let found = route_shape_violations(&[route(path)]);
+            assert_eq!(found.len(), 1, "{path}: {found:?}");
+            assert!(found[0].contains("exact segments"), "{found:?}");
+        }
+        // A capture whose name merely starts with `wallet` is not a wallet.
+        assert!(route_shape_violations(&[route("keys/[wallet_id].json")]).is_empty());
     }
 
     #[test]
