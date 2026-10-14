@@ -21,8 +21,8 @@ getrandom::register_custom_getrandom!(component_getrandom);
 
 mod claim;
 pub use claim::{
-    CLAIM_NONCE_DOMAIN_V1, ClaimAsset, ClaimDebit, ClaimDestination, ClaimEffects, ClaimFee,
-    ClaimNonce, CryptoSuite, claim_effects, derived_nonce, petal_use_claim,
+    ClaimAsset, ClaimDebit, ClaimDestination, ClaimEffects, ClaimFee, ClaimNonce, ClaimOrigin,
+    CryptoSuite, PetalClaim, petal_use_claim,
 };
 
 pub use bindings::bloom::route::types::EntryKind;
@@ -159,6 +159,46 @@ pub struct PayloadBatchSignRequest {
 
 pub const PAYLOAD_BATCH_DIGEST_DOMAIN_V1: &[u8] = b"bloom.petal.payload-batch.v1\0";
 
+/// Bloom signs at most this many payloads in one batch.
+pub const MAX_SIGN_BATCH_ITEMS: usize = 32;
+/// Bloom refuses a batch child larger than this.
+pub const MAX_SIGN_BATCH_CHILD_BYTES: usize = 64 * 1024;
+/// Bloom refuses a batch whose preimages together exceed this.
+pub const MAX_SIGN_BATCH_PAYLOAD_BYTES: usize = 512 * 1024;
+
+/// Check a payload batch against the limits Bloom enforces before signing:
+/// 1 to [`MAX_SIGN_BATCH_ITEMS`] items, none empty, none larger than
+/// [`MAX_SIGN_BATCH_CHILD_BYTES`], and [`MAX_SIGN_BATCH_PAYLOAD_BYTES`] in all.
+pub fn validate_payload_batch(payloads: &[PayloadSignItem]) -> Result<(), SdkError> {
+    if payloads.is_empty() || payloads.len() > MAX_SIGN_BATCH_ITEMS {
+        return Err(SdkError::Message(format!(
+            "payload signing batch must contain 1..={MAX_SIGN_BATCH_ITEMS} items"
+        )));
+    }
+    let mut total = 0usize;
+    for (index, payload) in payloads.iter().enumerate() {
+        if payload.preimage.is_empty() {
+            return Err(SdkError::Message(format!(
+                "payload item {index} has an empty preimage"
+            )));
+        }
+        if payload.preimage.len() > MAX_SIGN_BATCH_CHILD_BYTES {
+            return Err(SdkError::Message(format!(
+                "payload item {index} exceeds {MAX_SIGN_BATCH_CHILD_BYTES} bytes"
+            )));
+        }
+        total += payload.preimage.len();
+    }
+    if total > MAX_SIGN_BATCH_PAYLOAD_BYTES {
+        return Err(SdkError::Message(format!(
+            "payload batch exceeds {MAX_SIGN_BATCH_PAYLOAD_BYTES} bytes"
+        )));
+    }
+    Ok(())
+}
+
+/// The digest a Petal use claim binds, for one payload or a batch. Bloom
+/// refuses an empty preimage on both paths, so this does too.
 pub fn payload_batch_digest(payloads: &[PayloadSignItem]) -> Result<[u8; 32], SdkError> {
     use sha2::{Digest as _, Sha256};
 
@@ -166,6 +206,11 @@ pub fn payload_batch_digest(payloads: &[PayloadSignItem]) -> Result<[u8; 32], Sd
         return Err(SdkError::Message(
             "payload signing batch must not be empty".into(),
         ));
+    }
+    if let Some(index) = payloads.iter().position(|item| item.preimage.is_empty()) {
+        return Err(SdkError::Message(format!(
+            "payload item {index} has an empty preimage"
+        )));
     }
     let mut digest = Sha256::new();
     digest.update(PAYLOAD_BATCH_DIGEST_DOMAIN_V1);
@@ -310,7 +355,21 @@ pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
 /// value. [`validate_wallet_id`] stays as wide as `Token`, for checks at the
 /// wire boundary. Bloom never creates an id containing `.` or `/`, but only
 /// this validator guarantees a safe path segment.
+///
+/// It also refuses the names Bloom's `/wallets` tree answers with its own
+/// nodes at every depth, so `wallets/<name>/...` never reaches a wallet:
+/// `registrations`, and `recoveries` once remote recovery lands (bloom#306).
+/// `new` and `recover` are special only as the single path `wallets/<name>`,
+/// so a wallet with either name still resolves beneath it.
+/// Children of `/wallets` that Bloom answers itself at every depth.
+const RESERVED_WALLET_CHILDREN: &[&str] = &["registrations", "recoveries"];
+
 pub fn validate_wallet_segment(value: &str) -> Result<&str, String> {
+    if RESERVED_WALLET_CHILDREN.contains(&value) {
+        return Err(format!(
+            "{value:?} names one of Bloom's own /wallets nodes, not a wallet"
+        ));
+    }
     let bytes = value.as_bytes();
     let valid = (1..=64).contains(&bytes.len())
         && bytes[0].is_ascii_lowercase()
@@ -406,7 +465,7 @@ pub mod sdk {
 
     pub fn sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<SignBatchOutcome, SdkError> {
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
-        let _ = payload_batch_digest(&req.payloads)?;
+        super::validate_payload_batch(&req.payloads)?;
         let request = sign::PayloadBatchSignRequest {
             wallet: req.wallet.clone(),
             payloads: req
@@ -1107,14 +1166,16 @@ pub struct WalletAccount {
 /// Read the wallet and account Bloom selected for this dispatch.
 ///
 /// There is deliberately no default: a route that is not account-mounted gets
-/// an error rather than account 0.
+/// an error rather than account 0. Bloom passes no `bloom.*` parameters to a route's
+/// `metadata()`, so called from there it returns `-2` too.
 pub fn wallet_account(ctx: &Ctx) -> Result<WalletAccount, DispatchResponse> {
     let wallet = route_param(ctx, "bloom.wallet")
         .ok_or_else(|| error(-2, "Bloom did not select a wallet for this route"))?;
-    // Compare against the generated capture rather than `route_param(ctx,
-    // "wallet")`: caller-supplied params precede the trusted ones and
-    // `route_param` takes the first match, while the generated value is
-    // positional and cannot be shadowed.
+    // Bloom injects `bloom.wallet` equal to the `[wallet]` capture, and its
+    // runner refuses caller params named `bloom.*`, so these agree on every
+    // context Bloom builds. Compare against the generated capture anyway, as
+    // defence in depth: it is positional, so even a context that carried a
+    // second `wallet` param could not shadow it.
     if route_generated_param(ctx, "wallet").is_some_and(|capture| capture != wallet) {
         return Err(error(-2, "Bloom did not select this wallet"));
     }
@@ -1235,9 +1296,10 @@ impl VfsRead for HostVfs {
 }
 
 /// An account with no key of that family projects no leaf for it, and Bloom
-/// answers a missing leaf beneath a directory that does exist with `NotAFile`,
-/// which reaches the guest as `Invalid`. To a caller the file is simply absent,
-/// so both report `-1` rather than one of them claiming a malformed request.
+/// answers a missing `address.evm` or `address.sol` with `NotFound`. A leaf
+/// Bloom does not project at all, reached through [`WalletAccount::path`] such
+/// as `address.btc`, is `NotAFile`, which reaches the guest as `Invalid`. To a
+/// caller both mean this account has no address there, so both report `-1`.
 fn read_address<R: VfsRead>(vfs: &mut R, path: &str) -> Result<Vec<u8>, DispatchResponse> {
     vfs.read(path, ADDRESS_MAX_BYTES).map_err(|err| match err {
         SdkError::Host(HostStatus::NotFound | HostStatus::Invalid) => {
@@ -1594,6 +1656,65 @@ mod account_tests {
     }
 
     #[test]
+    fn a_wallet_segment_is_never_one_of_bloom_s_own_wallet_nodes() {
+        // Bloom answers these itself at every depth under /wallets.
+        for name in ["registrations", "recoveries"] {
+            assert!(validate_wallet_segment(name).is_err(), "{name:?}");
+        }
+        // These are special only as the single path wallets/<name>, so a
+        // wallet with either name still resolves beneath it.
+        for name in ["new", "recover"] {
+            assert_eq!(validate_wallet_segment(name), Ok(name));
+        }
+    }
+
+    #[test]
+    fn nothing_the_segment_validator_accepts_can_traverse() {
+        // Every string of one or two bytes, then a deterministic sweep of
+        // longer printable-ASCII strings built from a mixing step.
+        let check = |name: &str| {
+            if validate_wallet_segment(name).is_ok() {
+                assert!(validate_wallet_id(name).is_ok(), "{name:?}");
+                assert!(is_safe_segment(name), "{name:?}");
+                assert!(
+                    !name.contains(['/', '.', '\\', '\0']) && !name.is_empty(),
+                    "{name:?}"
+                );
+                assert!(
+                    name.bytes().all(|byte| byte.is_ascii_lowercase()
+                        || byte.is_ascii_digit()
+                        || matches!(byte, b'_' | b'-')),
+                    "{name:?}"
+                );
+            }
+        };
+        for first in 0..=255u8 {
+            if let Ok(one) = core::str::from_utf8(&[first]) {
+                check(one);
+            }
+            for second in 0..=255u8 {
+                if let Ok(two) = core::str::from_utf8(&[first, second]) {
+                    check(two);
+                }
+            }
+        }
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..200_000 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let len = 1 + (state % 70) as usize;
+            let name: String = (0..len)
+                .map(|offset| {
+                    let mixed = state.rotate_left((offset * 7) as u32);
+                    char::from(b' ' + (mixed % 95) as u8)
+                })
+                .collect();
+            check(&name);
+        }
+    }
+
+    #[test]
     fn the_wire_validator_stays_wider_than_the_segment_validator() {
         // Every segment-valid name is wire-valid.
         for name in ["a", "main", "alice-1", "trading_2", "a0", &"a".repeat(64)] {
@@ -1645,9 +1766,10 @@ mod account_tests {
 
     #[test]
     fn a_caller_supplied_wallet_param_cannot_shadow_the_capture() {
-        // Caller params precede trusted ones and `route_param` takes the first
-        // match, so comparing against `route_param(ctx, "wallet")` would read
-        // the caller's value. The generated capture is positional.
+        // Bloom never builds this context: its runner refuses caller params
+        // that collide with trusted ones. If one did arrive, `route_param`
+        // takes the first match, so the generated capture, which is
+        // positional, is what the trusted wallet is checked against.
         let spoofed = RouteCtx::new("swaps/alice/0/new")
             .param("wallet", "mallory")
             .account("alice", 0)
@@ -1773,7 +1895,8 @@ mod account_tests {
             "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
         );
 
-        // An absent leaf and a leaf Bloom calls `NotAFile` are the same thing to
+        // A missing projected leaf (NotFound) and a leaf Bloom does not project
+        // (NotAFile, which reaches the guest as Invalid) mean the same thing to
         // a caller: this account has no address of that family.
         let mut absent = MapVfs::new();
         assert_eq!(
@@ -1854,7 +1977,18 @@ pub mod testing {
     use super::{Ctx, RawCtx, RouteIdentity, SdkError, VfsRead, WalletAccount};
     use std::collections::BTreeMap;
 
-    /// Assemble a [`Ctx`] for a route under test.
+    /// A well-formed package hash for tests: 64 lowercase hex digits, as Bloom
+    /// supplies.
+    pub const PACKAGE_HASH: &str =
+        "aa00000000000000000000000000000000000000000000000000000000000001";
+    /// The trusted route id [`RouteCtx`] supplies unless told otherwise.
+    pub const ROUTE_ID: &str = "r000001";
+
+    /// Assemble a [`Ctx`] for a route under test. It starts with a valid
+    /// [`PACKAGE_HASH`] and the trusted `bloom.route_id` [`ROUTE_ID`], so a
+    /// signing route can build its claim; change them with
+    /// [`RouteCtx::package_hash`], [`RouteCtx::route_id`] and
+    /// [`RouteCtx::without_route_id`].
     pub struct RouteCtx {
         path: String,
         params: Vec<(String, String)>,
@@ -1870,9 +2004,25 @@ pub mod testing {
                 path: path.to_owned(),
                 params: Vec::new(),
                 petal_root: "test".to_owned(),
-                package_hash: "test-package".to_owned(),
+                package_hash: PACKAGE_HASH.to_owned(),
                 actor: None,
             }
+            .route_id(ROUTE_ID)
+        }
+
+        /// Set the trusted `bloom.route_id`, replacing any earlier one.
+        pub fn route_id(self, route_id: &str) -> Self {
+            let mut ctx = self.without_route_id();
+            ctx.params
+                .push(("bloom.route_id".to_owned(), route_id.to_owned()));
+            ctx
+        }
+
+        /// Drop the trusted `bloom.route_id`, as on a context Bloom did not
+        /// dispatch.
+        pub fn without_route_id(mut self) -> Self {
+            self.params.retain(|(name, _)| name != "bloom.route_id");
+            self
         }
 
         /// Inject the trusted `bloom.wallet` and `bloom.account` pair Bloom

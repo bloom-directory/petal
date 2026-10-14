@@ -871,7 +871,7 @@ fn route_shape_violations(routes: &[Route]) -> Vec<String> {
                         // The host-owned account listing. Only meaningful when
                         // the account routes it points at actually exist.
                         Some(next) if *next == "$index" && has_account_routes(&prefix) => {}
-                        Some(next) if capture_name(next) == Some("index") => {} // reported above
+                        Some(next) if capture_name(next) == Some("index") => {} // reported at that segment
                         _ => violations.push(format!(
                             "route {} declares {wallet} without an adjacent {index}; Bloom refuses it before the Petal runs",
                             route.path
@@ -1292,6 +1292,27 @@ mod tests {
         }
         // A capture whose name merely starts with `wallet` is not a wallet.
         assert!(route_shape_violations(&[route("keys/[wallet_id].json")]).is_empty());
+    }
+
+    #[test]
+    fn suffixed_captures_are_reported_once_per_route() {
+        // A suffixed account capture with no wallet before it is one route
+        // with one problem.
+        let found = route_shape_violations(&[route("pages/[index].json")]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        // The morpho #5 shape: the listing points at a suffixed account route,
+        // which Bloom refuses, so the listing has no account route to serve.
+        let found = route_shape_violations(&[
+            route("positions/[wallet]/$index"),
+            route("positions/[wallet]/[index].json"),
+        ]);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(
+            found
+                .iter()
+                .any(|v| v.contains("positions/[wallet]/$index"))
+        );
+        assert!(found.iter().any(|v| v.contains("exact segments")));
     }
 
     #[test]

@@ -3,10 +3,15 @@
 //! Bloom checks some of the claim against its own trusted context and takes
 //! the rest on the Petal's word.
 //!
-//! - **Checked by Bloom:** `package_hash`, `route`, `operation_class`,
-//!   `crypto_suite`, `payload_digest` and `ordered_hashes`. A wrong value only
-//!   gets the signature refused, so [`petal_use_claim`] fills them in from the
-//!   route context and the payloads.
+//! - **Checked by Bloom:** `package_hash`, `route`, `crypto_suite`,
+//!   `payload_digest` and `ordered_hashes` against the context and the sign
+//!   request, and `operation_class` against the classes cataloged for the
+//!   route. Bloom compares the claim's class with the sign request's class on
+//!   the batch and reusable paths, but not on an exact single-payload sign. A
+//!   wrong value only gets the signature refused, so [`petal_use_claim`] fills
+//!   them in from the route context and the payloads, and [`PetalClaim`]
+//!   builds the sign request from the same class, suite and payloads so the
+//!   two cannot disagree.
 //! - **Asserted by the Petal:** the debits, destinations and fee. Bloom derives
 //!   the approval's value limits from the debits and fee, and Broker enforces
 //!   them. Broker checks each declared destination against the wallet's
@@ -30,10 +35,14 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
-use crate::{Ctx, DispatchResponse, PayloadSignItem, error, payload_batch_digest, route_param};
+use crate::{
+    Ctx, DispatchResponse, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest,
+    SignSelector, error, payload_batch_digest, route_param, validate_payload_batch,
+};
 
-/// Domain separator for the default claim nonce.
-pub const CLAIM_NONCE_DOMAIN_V1: &[u8] = b"bloom.petal.claim-nonce.v1\0";
+/// Domain separator for the SDK's default claim nonce. Bloom does not check
+/// the nonce; it is the SDK's convention for retry identity.
+pub(crate) const CLAIM_NONCE_DOMAIN_V1: &[u8] = b"bloom.petal.claim-nonce.v1\0";
 
 const U256_MAX: &str =
     "115792089237316195423570985008687907853269984665640564039457584007913129639935";
@@ -66,6 +75,22 @@ impl CryptoSuite {
 pub struct ClaimAsset {
     pub chain: String,
     pub asset: String,
+}
+
+impl ClaimAsset {
+    /// An asset on a chain, in the exact strings Bloom's catalog and the
+    /// wallet's policy use.
+    pub fn new(chain: &str, asset: &str) -> Self {
+        Self {
+            chain: chain.to_owned(),
+            asset: asset.to_owned(),
+        }
+    }
+
+    /// The chain's gas asset, which Bloom names `native`.
+    pub fn native(chain: &str) -> Self {
+        Self::new(chain, "native")
+    }
 }
 
 /// Value the signed payload takes from the wallet.
@@ -162,12 +187,9 @@ impl ClaimEffects {
     /// Declare value the payload takes from the wallet, in the asset's
     /// smallest unit. The amount must not be zero; leave out a debit that
     /// takes nothing.
-    pub fn debit(mut self, chain: &str, asset: &str, amount: &str) -> Self {
+    pub fn debit(mut self, asset: &ClaimAsset, amount: &str) -> Self {
         self.debits.push(ClaimDebit {
-            asset: ClaimAsset {
-                chain: chain.to_owned(),
-                asset: asset.to_owned(),
-            },
+            asset: asset.clone(),
             amount: amount.to_owned(),
         });
         self
@@ -188,10 +210,10 @@ impl ClaimEffects {
     /// asset Bloom catalogs for the operation class (see [`ClaimFee`]).
     /// Declare the cap the payload allows, not an estimate. A claim carries
     /// at most one fee, so a second call fails validation.
-    pub fn fee(mut self, chain: &str, asset: &str, amount: &str) -> Self {
+    pub fn fee(mut self, asset: &ClaimAsset, amount: &str) -> Self {
         self.fee = ClaimFee::Fee {
-            chain: chain.to_owned(),
-            asset: asset.to_owned(),
+            chain: asset.chain.clone(),
+            asset: asset.asset.clone(),
             amount: amount.to_owned(),
         };
         self.fees_declared += 1;
@@ -332,20 +354,33 @@ impl ClaimEffects {
     }
 }
 
-/// The claim nonce: derived from the claim's identity by default, so a retry
-/// of the same payload presents the same claim.
+/// The claim nonce.
+///
+/// Bloom keys an exact-signing request, its state and the owner's approval on
+/// the whole canonical claim, nonce included, and pins the request's `action`
+/// and `advisory` digests to it. So a retry, including the call that collects
+/// the signature after the owner approves, must present the same claim bytes:
+/// the same nonce, the same effects and byte-identical `action` and
+/// `advisory`. A changed claim is a new request with a new approval, and a
+/// changed `action` or `advisory` under the same claim is refused. Bloom does
+/// not otherwise check the nonce.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClaimNonce {
     /// SHA-256 over a domain separator, the package hash, the route, the
-    /// operation class and the payload digest, truncated to 16 bytes.
+    /// operation class and the payload digest, truncated to 16 bytes. The same
+    /// payload gives the same nonce, so a retry reproduces the claim as long
+    /// as its effects, `action` and `advisory` do not change: keep timestamps
+    /// and re-fetched quotes out of them.
     Derived,
     /// A nonce the Petal chose, for a payload that must be claimable again as
-    /// a distinct request.
+    /// a distinct request. Persist it with the operation record and present
+    /// the same nonce on every retry, or the owner's approval will not match.
     Explicit([u8; 16]),
 }
 
-/// The claim as it goes on the wire. [`claim_effects`] decodes into the same
-/// type, so it accepts exactly the claims [`petal_use_claim`] can emit.
+/// The claim as it goes on the wire. [`ClaimEffects::from_claim_jcs`] decodes
+/// into the same type, so it accepts exactly the claims [`petal_use_claim`]
+/// can emit.
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct WireClaim {
@@ -368,17 +403,114 @@ enum WireAssurance {
     MachineAsserted,
 }
 
-/// Build the canonical (RFC 8785) Petal use claim for `payloads`.
-///
-/// `package_hash` comes from the route context and the route id from Bloom's
-/// trusted `bloom.route_id` parameter; `payload_digest` and `ordered_hashes`
-/// come from the payloads. Pass the same `operation_class` and `suite` you put
-/// in the sign request. The claim is machine-asserted: Broker shows it and
-/// enforces limits and destinations from it, but no verifier proves it.
+/// Who is claiming: the package and route Bloom dispatched. Taking it apart
+/// from the [`Ctx`] lets a Petal that passes context pieces down its call
+/// stack, or tests without a route context, build claims too.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClaimOrigin {
+    package_hash: String,
+    route: String,
+}
+
+impl ClaimOrigin {
+    /// Read the package hash and Bloom's trusted `bloom.route_id` from the
+    /// route context.
+    ///
+    /// Errors: `-2` if the route is not running with Bloom's trusted route id,
+    /// which includes a call from `metadata()`, where Bloom passes no `bloom.*`
+    /// parameters, and `-4` if the context's package hash or route id is
+    /// malformed.
+    pub fn from_ctx(ctx: &Ctx) -> Result<Self, DispatchResponse> {
+        let route = route_param(ctx, "bloom.route_id")
+            .ok_or_else(|| error(-2, "route is not running with Bloom's trusted route id"))?;
+        Self::new(&ctx.package_hash, route)
+            .map_err(|message| error(-4, format!("route context: {message}")))
+    }
+
+    /// A package hash (64 lowercase hex digits) and a route id, as Bloom
+    /// supplies them.
+    pub fn new(package_hash: &str, route: &str) -> Result<Self, String> {
+        if !is_lower_hex(package_hash, 64) {
+            return Err("package hash must be 64 lowercase hex digits".into());
+        }
+        validate_token("route id", route)?;
+        Ok(Self {
+            package_hash: package_hash.to_owned(),
+            route: route.to_owned(),
+        })
+    }
+
+    pub fn package_hash(&self) -> &str {
+        &self.package_hash
+    }
+
+    pub fn route(&self) -> &str {
+        &self.route
+    }
+
+    /// Build the canonical (RFC 8785) Petal use claim for `payloads`.
+    ///
+    /// `payload_digest` and `ordered_hashes` come from the payloads. The claim
+    /// is machine-asserted: Broker shows it and enforces limits and
+    /// destinations from it, but no verifier proves it. Build the sign request
+    /// from the returned [`PetalClaim`], so it carries the same class, suite
+    /// and payloads.
+    ///
+    /// Errors: `-3` for an invalid operation class, payload list or effects.
+    pub fn claim(
+        &self,
+        operation_class: &str,
+        suite: CryptoSuite,
+        payloads: &[PayloadSignItem],
+        effects: &ClaimEffects,
+        nonce: ClaimNonce,
+    ) -> Result<PetalClaim, DispatchResponse> {
+        validate_token("operation class", operation_class).map_err(|message| error(-3, message))?;
+        effects.validate().map_err(|message| error(-3, message))?;
+        if payloads.len() > 1 {
+            validate_payload_batch(payloads).map_err(|err| error(-3, err.message()))?;
+        }
+        let digest = payload_batch_digest(payloads).map_err(|err| error(-3, err.message()))?;
+        let nonce = match nonce {
+            ClaimNonce::Explicit(bytes) => bytes,
+            ClaimNonce::Derived => {
+                derived_nonce(&self.package_hash, &self.route, operation_class, &digest)
+            }
+        };
+        let claim = WireClaim {
+            package_hash: self.package_hash.clone(),
+            route: self.route.clone(),
+            operation_class: operation_class.to_owned(),
+            crypto_suite: suite.as_str().to_owned(),
+            payload_digest: to_hex(&digest),
+            ordered_hashes: payloads
+                .iter()
+                .map(|item| to_hex(&item.claimed_hash))
+                .collect(),
+            declared_debits: effects.debits.clone(),
+            declared_destinations: effects.destinations.clone(),
+            declared_fee: effects.fee.clone(),
+            nonce: to_hex(&nonce),
+            claim_assurance: WireAssurance::MachineAsserted,
+        };
+        let jcs = serde_jcs::to_vec(&claim)
+            .map_err(|err| error(-4, format!("canonicalize claim: {err}")))?;
+        Ok(PetalClaim {
+            jcs,
+            operation_class: operation_class.to_owned(),
+            suite,
+            payloads: payloads.to_vec(),
+        })
+    }
+}
+
+/// Build the canonical (RFC 8785) Petal use claim for `payloads`, for the
+/// route `ctx` dispatched. See [`ClaimOrigin::from_ctx`] and
+/// [`ClaimOrigin::claim`].
 ///
 /// Errors: `-2` if the route is not running with Bloom's trusted route id,
 /// `-3` for an invalid operation class, payload list or effects, and `-4` if
-/// the context's package hash is malformed.
+/// the context's package hash or route id is malformed.
 pub fn petal_use_claim(
     ctx: &Ctx,
     operation_class: &str,
@@ -386,41 +518,102 @@ pub fn petal_use_claim(
     payloads: &[PayloadSignItem],
     effects: &ClaimEffects,
     nonce: ClaimNonce,
-) -> Result<Vec<u8>, DispatchResponse> {
-    let route = route_param(ctx, "bloom.route_id")
-        .ok_or_else(|| error(-2, "route is not running with Bloom's trusted route id"))?;
-    if !is_lower_hex(&ctx.package_hash, 64) {
-        return Err(error(-4, "route context carries a malformed package hash"));
-    }
-    validate_token("operation class", operation_class).map_err(|message| error(-3, message))?;
-    effects.validate().map_err(|message| error(-3, message))?;
-    let digest = payload_batch_digest(payloads).map_err(|err| error(-3, err.message()))?;
-    let nonce = match nonce {
-        ClaimNonce::Explicit(bytes) => bytes,
-        ClaimNonce::Derived => derived_nonce(&ctx.package_hash, route, operation_class, &digest),
-    };
-    let claim = WireClaim {
-        package_hash: ctx.package_hash.clone(),
-        route: route.to_owned(),
-        operation_class: operation_class.to_owned(),
-        crypto_suite: suite.as_str().to_owned(),
-        payload_digest: to_hex(&digest),
-        ordered_hashes: payloads
-            .iter()
-            .map(|item| to_hex(&item.claimed_hash))
-            .collect(),
-        declared_debits: effects.debits.clone(),
-        declared_destinations: effects.destinations.clone(),
-        declared_fee: effects.fee.clone(),
-        nonce: to_hex(&nonce),
-        claim_assurance: WireAssurance::MachineAsserted,
-    };
-    serde_jcs::to_vec(&claim).map_err(|err| error(-4, format!("canonicalize claim: {err}")))
+) -> Result<PetalClaim, DispatchResponse> {
+    ClaimOrigin::from_ctx(ctx)?.claim(operation_class, suite, payloads, effects, nonce)
 }
 
-/// The default [`ClaimNonce::Derived`] value, exposed so a Petal can record or
-/// test it.
-pub fn derived_nonce(
+/// A built claim, together with the class, suite and payloads it covers.
+///
+/// Build the sign request from it rather than by hand: Bloom does not compare
+/// the claim's class with the request's on an exact single-payload sign, so a
+/// request that names a different class would be signed under the claim's
+/// class.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PetalClaim {
+    jcs: Vec<u8>,
+    operation_class: String,
+    suite: CryptoSuite,
+    payloads: Vec<PayloadSignItem>,
+}
+
+impl PetalClaim {
+    /// The canonical claim bytes.
+    pub fn jcs(&self) -> &[u8] {
+        &self.jcs
+    }
+
+    pub fn into_jcs(self) -> Vec<u8> {
+        self.jcs
+    }
+
+    pub fn operation_class(&self) -> &str {
+        &self.operation_class
+    }
+
+    pub fn suite(&self) -> CryptoSuite {
+        self.suite
+    }
+
+    pub fn payloads(&self) -> &[PayloadSignItem] {
+        &self.payloads
+    }
+
+    /// The sign request for a single-payload claim. Set `action`, `advisory`
+    /// and `approval_hint` on it as the route needs; keep them byte-identical
+    /// across retries (see [`ClaimNonce`]).
+    ///
+    /// Errors: `-3` if the claim covers more than one payload; use
+    /// [`PetalClaim::batch_request`].
+    pub fn sign_request(
+        &self,
+        wallet: &str,
+        selector: SignSelector,
+    ) -> Result<PayloadSignRequest, DispatchResponse> {
+        let [item] = self.payloads.as_slice() else {
+            return Err(error(
+                -3,
+                "a claim over several payloads needs a batch sign request",
+            ));
+        };
+        Ok(PayloadSignRequest {
+            wallet: wallet.to_owned(),
+            preimage: item.preimage.clone(),
+            claimed_hash: item.claimed_hash,
+            signature_algorithm: self.suite.as_str().to_owned(),
+            operation_class: self.operation_class.clone(),
+            petal_use_claim_jcs: self.jcs.clone(),
+            claim_assurance_evidence: None,
+            approval_hint: None,
+            action: None,
+            advisory: None,
+            selector,
+            key_ref_jcs: None,
+        })
+    }
+
+    /// The batch sign request for this claim, over the same payloads in the
+    /// same order. The same retry rules apply as for
+    /// [`PetalClaim::sign_request`].
+    pub fn batch_request(&self, wallet: &str, selector: SignSelector) -> PayloadBatchSignRequest {
+        PayloadBatchSignRequest {
+            wallet: wallet.to_owned(),
+            payloads: self.payloads.clone(),
+            signature_algorithm: self.suite.as_str().to_owned(),
+            operation_class: self.operation_class.clone(),
+            petal_use_claim_jcs: self.jcs.clone(),
+            claim_assurance_evidence: None,
+            approval_hint: None,
+            action: None,
+            advisory: None,
+            selector,
+            key_ref_jcs: None,
+        }
+    }
+}
+
+/// The [`ClaimNonce::Derived`] value. A Petal that needs it reads the `nonce`
+/// field of the claim it built.
+pub(crate) fn derived_nonce(
     package_hash: &str,
     route: &str,
     operation_class: &str,
@@ -443,59 +636,62 @@ pub fn derived_nonce(
     nonce
 }
 
-/// Read the declared effects back out of an emitted claim, so a Petal's tests
-/// can assert exactly what it declares.
-///
-/// It accepts only what [`petal_use_claim`] can emit: every claim field and
-/// no other, in canonical (RFC 8785) form, with effects that pass
-/// [`ClaimEffects::validate`]. A claim with any effect decodes as
-/// [`ClaimEffects::moves_value`], and one with none as
-/// [`ClaimEffects::moves_nothing`].
-pub fn claim_effects(claim_jcs: &[u8]) -> Result<ClaimEffects, String> {
-    let wire: WireClaim =
-        serde_json::from_slice(claim_jcs).map_err(|err| format!("decode claim: {err}"))?;
-    let canonical = serde_jcs::to_vec(&wire).map_err(|err| format!("canonicalize claim: {err}"))?;
-    if canonical != claim_jcs {
-        return Err("claim is not in canonical (RFC 8785) form".into());
-    }
-    let hex_fields = [
-        ("package_hash", wire.package_hash.as_str(), 64),
-        ("payload_digest", wire.payload_digest.as_str(), 64),
-        ("nonce", wire.nonce.as_str(), 32),
-    ];
-    for (field, value, length) in hex_fields {
-        if !is_lower_hex(value, length) {
-            return Err(format!(
-                "claim {field} must be {length} lowercase hex digits"
-            ));
+impl ClaimEffects {
+    /// Read the declared effects back out of an emitted claim, so a Petal's tests
+    /// can assert exactly what it declares.
+    ///
+    /// It accepts only what [`petal_use_claim`] can emit: every claim field and
+    /// no other, in canonical (RFC 8785) form, with effects that pass
+    /// [`ClaimEffects::validate`]. A claim with any effect decodes as
+    /// [`ClaimEffects::moves_value`], and one with none as
+    /// [`ClaimEffects::moves_nothing`].
+    pub fn from_claim_jcs(claim_jcs: &[u8]) -> Result<Self, String> {
+        let wire: WireClaim =
+            serde_json::from_slice(claim_jcs).map_err(|err| format!("decode claim: {err}"))?;
+        let canonical =
+            serde_jcs::to_vec(&wire).map_err(|err| format!("canonicalize claim: {err}"))?;
+        if canonical != claim_jcs {
+            return Err("claim is not in canonical (RFC 8785) form".into());
         }
+        let hex_fields = [
+            ("package_hash", wire.package_hash.as_str(), 64),
+            ("payload_digest", wire.payload_digest.as_str(), 64),
+            ("nonce", wire.nonce.as_str(), 32),
+        ];
+        for (field, value, length) in hex_fields {
+            if !is_lower_hex(value, length) {
+                return Err(format!(
+                    "claim {field} must be {length} lowercase hex digits"
+                ));
+            }
+        }
+        if wire.ordered_hashes.is_empty()
+            || !wire
+                .ordered_hashes
+                .iter()
+                .all(|hash| is_lower_hex(hash, 64))
+        {
+            return Err(
+                "claim ordered_hashes must list one or more 64-digit lowercase hex hashes".into(),
+            );
+        }
+        let moves_value = !wire.declared_debits.is_empty()
+            || !wire.declared_destinations.is_empty()
+            || wire.declared_fee != ClaimFee::None;
+        let fees_declared = usize::from(wire.declared_fee != ClaimFee::None);
+        let debits_without_destination =
+            !wire.declared_debits.is_empty() && wire.declared_destinations.is_empty();
+        let effects = Self {
+            moves_value,
+            debits: wire.declared_debits,
+            destinations: wire.declared_destinations,
+            fee: wire.declared_fee,
+            fees_declared,
+            debits_without_destination,
+        };
+        effects.validate()?;
+        Ok(effects)
     }
-    if wire.ordered_hashes.is_empty()
-        || !wire
-            .ordered_hashes
-            .iter()
-            .all(|hash| is_lower_hex(hash, 64))
-    {
-        return Err(
-            "claim ordered_hashes must list one or more 64-digit lowercase hex hashes".into(),
-        );
-    }
-    let moves_value = !wire.declared_debits.is_empty()
-        || !wire.declared_destinations.is_empty()
-        || wire.declared_fee != ClaimFee::None;
-    let fees_declared = usize::from(wire.declared_fee != ClaimFee::None);
-    let debits_without_destination =
-        !wire.declared_debits.is_empty() && wire.declared_destinations.is_empty();
-    let effects = ClaimEffects {
-        moves_value,
-        debits: wire.declared_debits,
-        destinations: wire.declared_destinations,
-        fee: wire.declared_fee,
-        fees_declared,
-        debits_without_destination,
-    };
-    effects.validate()?;
-    Ok(effects)
 }
 
 /// Add two canonical decimal integers. The result can exceed 2^256-1; the
@@ -560,13 +756,17 @@ fn validate_token(label: &str, value: &str) -> Result<(), String> {
     }
 }
 
+/// Broker compares assets and destinations byte for byte, so a label is
+/// printable ASCII with no spaces: invisible, bidi and look-alike characters
+/// would make a value that reads like the policy entry and never matches it.
+/// Addresses, base58, venue ids and `native` all fit.
 fn validate_label(label: &str, value: &str) -> Result<(), String> {
-    if value.is_empty() || value.len() > 256 || value.chars().any(char::is_control) {
-        Err(format!(
-            "{label} must be 1-256 characters with no control characters"
-        ))
-    } else {
+    if (1..=256).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_graphic()) {
         Ok(())
+    } else {
+        Err(format!(
+            "{label} must be 1-256 bytes of printable ASCII with no spaces"
+        ))
     }
 }
 
@@ -605,7 +805,7 @@ mod tests {
     fn ctx() -> Ctx {
         RouteCtx::new("transfers/alice/0/confirm.json")
             .account("alice", 0)
-            .param("bloom.route_id", "r000007")
+            .route_id("r000007")
             .package_hash(PACKAGE)
             .bind::<Confirm>()
     }
@@ -619,9 +819,9 @@ mod tests {
 
     fn send() -> ClaimEffects {
         ClaimEffects::moves_value()
-            .debit("base", "native", "1000000000000000")
+            .debit(&ClaimAsset::new("base", "native"), "1000000000000000")
             .destination("base", "0xAbC0000000000000000000000000000000000001")
-            .fee("base", "native", "21000000000000")
+            .fee(&ClaimAsset::new("base", "native"), "21000000000000")
     }
 
     fn code(response: &DispatchResponse) -> i32 {
@@ -640,7 +840,8 @@ mod tests {
             effects,
             ClaimNonce::Derived,
         )
-        .unwrap();
+        .unwrap()
+        .into_jcs();
         serde_json::from_slice(&jcs).unwrap()
     }
 
@@ -665,8 +866,12 @@ mod tests {
 
     #[test]
     fn a_claim_is_exact_canonical_json() {
-        // A golden vector: changing the wire shape must change this test.
-        let jcs = petal_use_claim(
+        // Golden vectors, written out in full rather than computed with the
+        // SDK's own digest code, so a change to the wire shape, the batch
+        // digest domain or its length prefixes fails here. The digests were
+        // computed independently: SHA-256 over the domain, the u64 big-endian
+        // item count, then each preimage's u64 big-endian length and bytes.
+        let one = petal_use_claim(
             &ctx(),
             "transfer.send",
             CryptoSuite::Ed25519Message,
@@ -675,20 +880,49 @@ mod tests {
             ClaimNonce::Explicit([7; 16]),
         )
         .unwrap();
-        let digest = to_hex(&payload_batch_digest(&[payload(2)]).unwrap());
-        let expected = format!(
+        assert_eq!(
+            core::str::from_utf8(one.jcs()).unwrap(),
             concat!(
-                r#"{{"claim_assurance":{{"kind":"machine_asserted"}},"crypto_suite":"ed25519-message","#,
-                r#""declared_debits":[],"declared_destinations":[],"declared_fee":{{"kind":"none"}},"#,
-                r#""nonce":"07070707070707070707070707070707","operation_class":"transfer.send","#,
-                r#""ordered_hashes":["{hashes}"],"package_hash":"{package}","payload_digest":"{digest}","#,
-                r#""route":"r000007"}}"#
-            ),
-            hashes = to_hex(&[2; 32]),
-            package = PACKAGE,
-            digest = digest,
+                r#"{"claim_assurance":{"kind":"machine_asserted"},"crypto_suite":"ed25519-message","declared_"#,
+                r#"debits":[],"declared_destinations":[],"declared_fee":{"kind":"none"},"nonce":"070707070707"#,
+                r#"07070707070707070707","operation_class":"transfer.send","ordered_hashes":["020202020202020"#,
+                r#"2020202020202020202020202020202020202020202020202"],"package_hash":"aa00000000000000000000"#,
+                r#"000000000000000000000000000000000000000001","payload_digest":"3804fefd8cc0b4ade2e77decf718"#,
+                r#"dee9246cdbae9bf8f3fa0ddbea0e0046af2d","route":"r000007"}"#,
+            )
         );
-        assert_eq!(String::from_utf8(jcs).unwrap(), expected);
+
+        // Several payloads keep their order, and several effects keep theirs.
+        let effects = ClaimEffects::moves_value()
+            .debit(&ClaimAsset::new("base", "usdc"), "5")
+            .debit(&ClaimAsset::native("base"), "7")
+            .destination("base", "0xAbC0000000000000000000000000000000000001")
+            .destination("base", "0xAbC0000000000000000000000000000000000002")
+            .fee(&ClaimAsset::native("base"), "9");
+        let two = petal_use_claim(
+            &ctx(),
+            "transfer.send",
+            CryptoSuite::Secp256k1Keccak256Recoverable,
+            &[payload(1), payload(2)],
+            &effects,
+            ClaimNonce::Explicit([10; 16]),
+        )
+        .unwrap();
+        assert_eq!(
+            core::str::from_utf8(two.jcs()).unwrap(),
+            concat!(
+                r#"{"claim_assurance":{"kind":"machine_asserted"},"crypto_suite":"secp256k1-keccak256-recover"#,
+                r#"able","declared_debits":[{"amount":"5","asset":{"asset":"usdc","chain":"base"}},{"amount":"#,
+                r#""7","asset":{"asset":"native","chain":"base"}}],"declared_destinations":[{"chain":"base",""#,
+                r#"destination":"0xAbC0000000000000000000000000000000000001"},{"chain":"base","destination":""#,
+                r#"0xAbC0000000000000000000000000000000000002"}],"declared_fee":{"amount":"9","asset":"native"#,
+                r#"","chain":"base","kind":"fee"},"nonce":"0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a","operation_class"#,
+                r#"":"transfer.send","ordered_hashes":["01010101010101010101010101010101010101010101010101010"#,
+                r#"10101010101","0202020202020202020202020202020202020202020202020202020202020202"],"package_"#,
+                r#"hash":"aa00000000000000000000000000000000000000000000000000000000000001","payload_digest":"#,
+                r#""80986b51a09b6ecdf8e5c0b7722785da768339d46743728ab5eff3b108296db7","route":"r000007"}"#,
+            )
+        );
     }
 
     #[test]
@@ -729,7 +963,7 @@ mod tests {
         // A fee alone is enough: a contract call that moves no token still pays.
         assert!(
             ClaimEffects::moves_value()
-                .fee("base", "native", "1")
+                .fee(&ClaimAsset::new("base", "native"), "1")
                 .validate()
                 .is_ok()
         );
@@ -740,18 +974,18 @@ mod tests {
     fn zero_amounts_do_not_count_as_declaring_value() {
         // A "0" debit would bring back the empty claim under another name.
         let zero_debit = ClaimEffects::moves_value()
-            .debit("base", "usdc", "0")
+            .debit(&ClaimAsset::new("base", "usdc"), "0")
             .destination("base", "0x01");
         assert!(zero_debit.validate().unwrap_err().contains("is zero"));
         // A "0" fee is honest for a fee-bearing class whose gas someone else
         // pays, but it is not an effect on its own.
-        let zero_fee = ClaimEffects::moves_value().fee("base", "native", "0");
+        let zero_fee = ClaimEffects::moves_value().fee(&ClaimAsset::new("base", "native"), "0");
         assert!(zero_fee.validate().unwrap_err().contains("non-zero debit"));
         assert!(
             ClaimEffects::moves_value()
-                .debit("base", "usdc", "1")
+                .debit(&ClaimAsset::new("base", "usdc"), "1")
                 .destination("base", "0x01")
-                .fee("base", "native", "0")
+                .fee(&ClaimAsset::new("base", "native"), "0")
                 .validate()
                 .is_ok()
         );
@@ -761,7 +995,8 @@ mod tests {
     fn a_debit_must_say_where_the_value_goes() {
         // Broker checks only the destinations a claim names, so a debit with
         // none would pass the wallet's destination policy unchecked.
-        let unnamed = ClaimEffects::moves_value().debit("base", "usdc", "1000000");
+        let unnamed =
+            ClaimEffects::moves_value().debit(&ClaimAsset::new("base", "usdc"), "1000000");
         assert!(
             unnamed
                 .validate()
@@ -779,7 +1014,7 @@ mod tests {
         // The opt-out is not a way to declare nothing.
         assert!(
             ClaimEffects::moves_value()
-                .fee("base", "native", "1")
+                .fee(&ClaimAsset::new("base", "native"), "1")
                 .debits_without_destination()
                 .validate()
                 .is_err()
@@ -793,7 +1028,7 @@ mod tests {
         // A debit settling on another chain still names its destination.
         assert!(
             ClaimEffects::moves_value()
-                .debit("hyperliquid", "usdc", "5000000")
+                .debit(&ClaimAsset::new("hyperliquid", "usdc"), "5000000")
                 .destination("arbitrum", "0xAbC0000000000000000000000000000000000001")
                 .validate()
                 .is_ok()
@@ -815,35 +1050,36 @@ mod tests {
             &approval,
             ClaimNonce::Derived,
         )
-        .unwrap();
-        assert_eq!(claim_effects(&jcs).unwrap(), approval);
+        .unwrap()
+        .into_jcs();
+        assert_eq!(ClaimEffects::from_claim_jcs(&jcs).unwrap(), approval);
     }
 
     #[test]
     fn a_claim_carries_at_most_one_fee() {
         let twice = ClaimEffects::moves_value()
-            .debit("hyperliquid", "usdc", "100")
+            .debit(&ClaimAsset::new("hyperliquid", "usdc"), "100")
             .destination("hyperliquid", "0x01")
-            .fee("hyperliquid", "usdc", "100")
-            .fee("arbitrum", "native", "1");
+            .fee(&ClaimAsset::new("hyperliquid", "usdc"), "100")
+            .fee(&ClaimAsset::new("arbitrum", "native"), "1");
         assert!(twice.validate().unwrap_err().contains("at most one fee"));
     }
 
     #[test]
     fn declared_totals_per_asset_fit_in_256_bits() {
         let max = ClaimEffects::moves_value()
-            .debit("base", "native", U256_MAX)
+            .debit(&ClaimAsset::new("base", "native"), U256_MAX)
             .destination("base", "0x01");
         assert!(max.clone().validate().is_ok());
-        let over = max.fee("base", "native", "1");
+        let over = max.fee(&ClaimAsset::new("base", "native"), "1");
         assert!(over.validate().unwrap_err().contains("exceeds 2^256-1"));
         // Different assets are separate totals.
         assert!(
             ClaimEffects::moves_value()
-                .debit("base", "native", U256_MAX)
-                .debit("base", "usdc", U256_MAX)
+                .debit(&ClaimAsset::new("base", "native"), U256_MAX)
+                .debit(&ClaimAsset::new("base", "usdc"), U256_MAX)
                 .destination("base", "0x01")
-                .fee("base", "eth", "1")
+                .fee(&ClaimAsset::new("base", "eth"), "1")
                 .validate()
                 .is_ok()
         );
@@ -855,9 +1091,9 @@ mod tests {
     #[test]
     fn a_claim_declared_as_moving_nothing_cannot_carry_effects() {
         for effects in [
-            ClaimEffects::moves_nothing().debit("base", "native", "1"),
+            ClaimEffects::moves_nothing().debit(&ClaimAsset::new("base", "native"), "1"),
             ClaimEffects::moves_nothing().destination("base", "0x01"),
-            ClaimEffects::moves_nothing().fee("base", "native", "1"),
+            ClaimEffects::moves_nothing().fee(&ClaimAsset::new("base", "native"), "1"),
         ] {
             assert!(effects.validate().is_err(), "{effects:?}");
         }
@@ -890,13 +1126,13 @@ mod tests {
         }
         assert!(
             ClaimEffects::moves_value()
-                .debit("base", "native", "1.5")
+                .debit(&ClaimAsset::new("base", "native"), "1.5")
                 .validate()
                 .is_err()
         );
         assert!(
             ClaimEffects::moves_value()
-                .fee("base", "native", "1")
+                .fee(&ClaimAsset::new("base", "native"), "1")
                 .destination("base", "")
                 .validate()
                 .is_err()
@@ -919,11 +1155,11 @@ mod tests {
         };
         let no_route = RouteCtx::new("transfers/alice/0/confirm.json")
             .account("alice", 0)
-            .package_hash(PACKAGE)
+            .without_route_id()
             .bind::<Confirm>();
         assert_eq!(code(&build(&no_route, "transfer.send", &[payload(1)])), -2);
         let bad_package = RouteCtx::new("transfers/alice/0/confirm.json")
-            .param("bloom.route_id", "r000007")
+            .package_hash("test-package")
             .bind::<Confirm>();
         assert_eq!(
             code(&build(&bad_package, "transfer.send", &[payload(1)])),
@@ -973,9 +1209,10 @@ mod tests {
             &send(),
             ClaimNonce::Derived,
         )
-        .unwrap();
-        assert_eq!(claim_effects(&jcs).unwrap(), send());
-        assert!(claim_effects(b"{}").is_err());
+        .unwrap()
+        .into_jcs();
+        assert_eq!(ClaimEffects::from_claim_jcs(&jcs).unwrap(), send());
+        assert!(ClaimEffects::from_claim_jcs(b"{}").is_err());
     }
 
     #[test]
@@ -988,23 +1225,28 @@ mod tests {
             &send(),
             ClaimNonce::Derived,
         )
-        .unwrap();
+        .unwrap()
+        .into_jcs();
         let mut value: serde_json::Value = serde_json::from_slice(&jcs).unwrap();
         let reencode = |value: &serde_json::Value| serde_jcs::to_vec(value).unwrap();
 
         // Not canonical: the same claim pretty-printed.
         let pretty = serde_json::to_vec_pretty(&value).unwrap();
-        assert!(claim_effects(&pretty).unwrap_err().contains("canonical"));
+        assert!(
+            ClaimEffects::from_claim_jcs(&pretty)
+                .unwrap_err()
+                .contains("canonical")
+        );
 
         // A field Bloom does not define.
         value["extra"] = serde_json::json!(1);
-        assert!(claim_effects(&reencode(&value)).is_err());
+        assert!(ClaimEffects::from_claim_jcs(&reencode(&value)).is_err());
         value.as_object_mut().unwrap().remove("extra");
 
         // Effects the builder would refuse: a zero debit.
         value["declared_debits"][0]["amount"] = serde_json::json!("0");
         assert!(
-            claim_effects(&reencode(&value))
+            ClaimEffects::from_claim_jcs(&reencode(&value))
                 .unwrap_err()
                 .contains("is zero")
         );
@@ -1013,7 +1255,7 @@ mod tests {
         // A malformed digest.
         value["payload_digest"] = serde_json::json!("ABCD");
         assert!(
-            claim_effects(&reencode(&value))
+            ClaimEffects::from_claim_jcs(&reencode(&value))
                 .unwrap_err()
                 .contains("payload_digest")
         );
@@ -1030,5 +1272,163 @@ mod tests {
             "secp256k1-sha256-recoverable"
         );
         assert_eq!(CryptoSuite::Ed25519Message.as_str(), "ed25519-message");
+    }
+
+    #[test]
+    fn the_sign_request_carries_the_claim_s_class_suite_and_payloads() {
+        let claim = petal_use_claim(
+            &ctx(),
+            "transfer.send",
+            CryptoSuite::Secp256k1Keccak256Recoverable,
+            &[payload(1)],
+            &send(),
+            ClaimNonce::Derived,
+        )
+        .unwrap();
+        let request = claim.sign_request("alice", SignSelector::Exact).unwrap();
+        assert_eq!(request.operation_class, "transfer.send");
+        assert_eq!(
+            request.signature_algorithm,
+            "secp256k1-keccak256-recoverable"
+        );
+        assert_eq!(request.preimage, payload(1).preimage);
+        assert_eq!(request.claimed_hash, payload(1).claimed_hash);
+        assert_eq!(request.petal_use_claim_jcs, claim.jcs());
+
+        let batch = petal_use_claim(
+            &ctx(),
+            "transfer.send",
+            CryptoSuite::Ed25519Message,
+            &[payload(1), payload(2)],
+            &ClaimEffects::moves_nothing(),
+            ClaimNonce::Derived,
+        )
+        .unwrap();
+        // One payload request cannot stand for a batch claim.
+        assert_eq!(
+            code(
+                &batch
+                    .sign_request("alice", SignSelector::Exact)
+                    .unwrap_err()
+            ),
+            -3
+        );
+        let request = batch.batch_request("alice", SignSelector::Reusable);
+        assert_eq!(request.payloads, vec![payload(1), payload(2)]);
+        assert_eq!(request.operation_class, "transfer.send");
+        assert_eq!(request.signature_algorithm, "ed25519-message");
+        assert_eq!(request.petal_use_claim_jcs, batch.jcs());
+    }
+
+    #[test]
+    fn payloads_bloom_would_refuse_are_refused_here() {
+        let build = |payloads: &[PayloadSignItem]| {
+            petal_use_claim(
+                &ctx(),
+                "transfer.send",
+                CryptoSuite::Ed25519Message,
+                payloads,
+                &ClaimEffects::moves_nothing(),
+                ClaimNonce::Derived,
+            )
+            .map(|_| ())
+            .map_err(|err| code(&err))
+        };
+        let empty = PayloadSignItem {
+            preimage: Vec::new(),
+            claimed_hash: [1; 32],
+        };
+        assert_eq!(build(std::slice::from_ref(&empty)), Err(-3));
+        assert_eq!(build(&[payload(1), empty]), Err(-3));
+        assert_eq!(build(&vec![payload(1); 32]), Ok(()));
+        assert_eq!(build(&vec![payload(1); 33]), Err(-3));
+        let child = |len: usize| PayloadSignItem {
+            preimage: vec![1; len],
+            claimed_hash: [1; 32],
+        };
+        let max = crate::MAX_SIGN_BATCH_CHILD_BYTES;
+        assert_eq!(build(&[child(max), payload(1)]), Ok(()));
+        assert_eq!(build(&[child(max + 1), payload(1)]), Err(-3));
+        // Eight full children reach the 512 KiB total exactly; one more byte
+        // is over.
+        assert_eq!(build(&vec![child(max); 8]), Ok(()));
+        let mut over = vec![child(max); 8];
+        over.push(payload(1));
+        assert_eq!(build(&over), Err(-3));
+        // A single payload has no batch size limit in Bloom, only non-empty.
+        assert_eq!(build(&[child(max + 1)]), Ok(()));
+    }
+
+    #[test]
+    fn a_claim_origin_can_be_built_without_a_route_context() {
+        let origin = ClaimOrigin::new(PACKAGE, "r000007").unwrap();
+        let from_ctx = ClaimOrigin::from_ctx(&ctx()).unwrap();
+        assert_eq!(origin, from_ctx);
+        let claim = origin
+            .claim(
+                "transfer.send",
+                CryptoSuite::Ed25519Message,
+                &[payload(1)],
+                &ClaimEffects::moves_nothing(),
+                ClaimNonce::Derived,
+            )
+            .unwrap();
+        let same = petal_use_claim(
+            &ctx(),
+            "transfer.send",
+            CryptoSuite::Ed25519Message,
+            &[payload(1)],
+            &ClaimEffects::moves_nothing(),
+            ClaimNonce::Derived,
+        )
+        .unwrap();
+        assert_eq!(claim, same);
+        for (package, route) in [
+            ("test-package", "r000007"),
+            (&PACKAGE.to_uppercase()[..], "r000007"),
+            (PACKAGE, ""),
+            (PACKAGE, "R7"),
+        ] {
+            assert!(
+                ClaimOrigin::new(package, route).is_err(),
+                "{package} {route}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_default_test_context_can_build_a_claim() {
+        let ctx = RouteCtx::new("transfers/alice/0/confirm.json")
+            .account("alice", 0)
+            .bind::<Confirm>();
+        let origin = ClaimOrigin::from_ctx(&ctx).unwrap();
+        assert_eq!(origin.package_hash(), crate::testing::PACKAGE_HASH);
+        assert_eq!(origin.route(), crate::testing::ROUTE_ID);
+    }
+
+    #[test]
+    fn assets_and_destinations_are_printable_ascii() {
+        let with_destination = |destination: &str| {
+            ClaimEffects::moves_value()
+                .destination("base", destination)
+                .validate()
+        };
+        assert!(with_destination("0xAbC0000000000000000000000000000000000001").is_ok());
+        assert!(with_destination("7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV").is_ok());
+        for bad in [
+            " 0x01",
+            "0x01 ",
+            "0x\u{200b}01",
+            "0x\u{202e}01",
+            "0x\u{a0}01",
+            "0x\u{feff}01",
+            "0x\u{2028}01",
+            "\u{e9}",
+        ] {
+            let message = with_destination(bad).unwrap_err();
+            assert!(message.contains("printable ASCII"), "{bad:?}: {message}");
+        }
+        assert!(with_destination(&"a".repeat(256)).is_ok());
+        assert!(with_destination(&"a".repeat(257)).is_err());
     }
 }
