@@ -49,6 +49,39 @@ The conformance build emits the WIT digest
 Consumer CI must reject a different digest until it intentionally upgrades the
 contract release.
 
+## Pinning the SDK
+
+A Petal pins the SDK in two places. `[sdk]` in `petal-build.toml` is what the
+generated route components build against. The `bloom-petal-sdk` dependency in
+`route/Cargo.toml`, resolved in `route/Cargo.lock`, is what the shared route
+crate and its host-side tests build against.
+
+`[sdk]` must be an exact pin: a git `rev` that is a full 40-character commit,
+or a version requirement such as `=0.1.0`. `petal build`, `petal check` and
+`petal package` then refuse a Petal when:
+
+- any SDK dependency of the route crate, in any dependency table or inherited
+  from its workspace, differs from `[sdk]`;
+- for a git pin, another crate from the SDK's repository, such as
+  `bloom-petal-contract`, is pinned at a different revision, in the route crate
+  or in `[dependencies]` of `petal-build.toml`;
+- the lockfile resolves any of them from another source or revision;
+- the route crate or its workspace overrides the SDK with `[patch]` or
+  `[replace]`, which generated route components ignore.
+
+To upgrade, change every pin to the same version or commit, then refresh the
+lockfile:
+
+```sh
+cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+```
+
+A local checkout can still be tested through a `[patch]` in
+`.cargo/config.toml`, as this repository's consumer CI does. Pins outside
+Cargo are not checked: scripts that install the `petal` CLI, and the release
+workflow's `uses:` reference and `petal-tooling-ref`. Keep them at the same
+commit.
+
 ## Packaging a Petal
 
 After building route components, create the platform-neutral archive consumed

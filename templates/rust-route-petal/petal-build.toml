@@ -8,6 +8,9 @@ package = "{{crate-name}}-route"
 path = "route"
 alias = "example_route"
 
+# An exact pin. It must match the bloom-petal-sdk dependency in
+# route/Cargo.toml and its lockfile; petal build, check and package refuse a
+# mismatch.
 [sdk]
 package = "bloom-petal-sdk"
 version = "=0.1.0"

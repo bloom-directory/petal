@@ -150,6 +150,7 @@ pub fn package(
         .as_ref()
         .canonicalize()
         .map_err(|error| format!("resolve {}: {error}", root.as_ref().display()))?;
+    check_sdk_pin(&root, config)?;
     let out = absolute_from(&root, out.as_ref());
     let manifest_path = root.join("petal.toml");
     let manifest_body =
@@ -390,6 +391,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     let root = root
         .canonicalize()
         .map_err(|error| format!("resolve {}: {error}", root.display()))?;
+    check_sdk_pin(&root, config)?;
     check_shared_route_architecture(&root, config)?;
     let routes = discover_routes(&root.join(&config.routes))?;
     if routes.is_empty() {
@@ -985,6 +987,17 @@ fn validate_sdk(sdk: &SdkDependency) -> Result<(), String> {
     if sdk.rev.is_some() && sdk.git.is_none() {
         return Err("sdk.rev requires sdk.git".into());
     }
+    // An exact pin, so every build and every test resolves the same SDK.
+    if sdk.git.is_some() && !sdk.rev.as_deref().is_some_and(is_full_commit) {
+        return Err("sdk.git requires sdk.rev, a full 40-character commit".into());
+    }
+    if let Some(version) = &sdk.version
+        && !is_exact_version(version)
+    {
+        return Err(format!(
+            "sdk.version must be an exact requirement such as \"=0.1.0\", not {version:?}"
+        ));
+    }
     if let Some(path) = &sdk.path {
         validate_relative(path, "sdk.path")?;
     }
@@ -1010,6 +1023,511 @@ fn dependency_toml(sdk: &SdkDependency, root: &Path) -> Result<String, String> {
         table.insert("rev".into(), toml::Value::String(rev.clone()));
     }
     Ok(toml::Value::Table(table).to_string())
+}
+
+/// The crates.io index, in the forms Cargo writes to a lockfile.
+const CRATES_IO_SOURCES: [&str; 2] = [
+    "registry+https://github.com/rust-lang/crates.io-index",
+    "sparse+https://index.crates.io/",
+];
+
+/// One dependency source, normalized so that equal pins compare equal wherever
+/// they are written: paths are resolved, git URLs are canonicalized the way
+/// Cargo does, and version requirements ignore whitespace.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SdkSource {
+    Version {
+        requirement: String,
+        /// An alternate registry, which `[sdk]` cannot express.
+        registry: Option<String>,
+    },
+    Path(PathBuf),
+    Git {
+        url: String,
+        rev: Option<String>,
+        /// A `branch` or `tag` reference, which `[sdk]` cannot express.
+        other_ref: Option<String>,
+    },
+}
+
+impl std::fmt::Display for SdkSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Version {
+                requirement,
+                registry,
+            } => {
+                write!(f, "version {requirement}")?;
+                if let Some(registry) = registry {
+                    write!(f, " from registry {registry}")?;
+                }
+                Ok(())
+            }
+            Self::Path(path) => write!(f, "path {}", path.display()),
+            Self::Git {
+                url,
+                rev,
+                other_ref,
+            } => {
+                write!(f, "git {url}")?;
+                if let Some(rev) = rev {
+                    write!(f, " rev {rev}")?;
+                }
+                if let Some(other) = other_ref {
+                    write!(f, " {other}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Canonicalize a git URL as Cargo does for source identity: drop one trailing
+/// `/` and one `.git`, and treat GitHub paths as case-insensitive and https.
+fn normalize_git_url(url: &str) -> String {
+    let url = url.trim();
+    let url = url.strip_suffix('/').unwrap_or(url);
+    let url = url.strip_suffix(".git").unwrap_or(url);
+    let lower = url.to_ascii_lowercase();
+    for scheme in ["https://github.com/", "http://github.com/"] {
+        if let Some(path) = lower.strip_prefix(scheme) {
+            return format!("https://github.com/{path}");
+        }
+    }
+    url.to_owned()
+}
+
+fn normalize_version(requirement: &str) -> String {
+    requirement.split_whitespace().collect()
+}
+
+/// `=MAJOR.MINOR.PATCH`, optionally with a pre-release or build suffix.
+fn is_exact_version(requirement: &str) -> bool {
+    let Some(version) = normalize_version(requirement)
+        .strip_prefix('=')
+        .map(str::to_owned)
+    else {
+        return false;
+    };
+    let core = version.split(['-', '+']).next().unwrap_or("");
+    let parts = core.split('.').collect::<Vec<_>>();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+        && version
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
+}
+
+fn is_full_commit(rev: &str) -> bool {
+    rev.len() == 40 && rev.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&text[index + 1..index + 3], 16)
+        {
+            out.push(byte);
+            index += 3;
+            continue;
+        }
+        out.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn resolve_sdk_path(base: &Path, path: &Path) -> Result<PathBuf, String> {
+    let joined = base.join(path);
+    joined
+        .canonicalize()
+        .map_err(|error| format!("resolve SDK path {}: {error}", joined.display()))
+}
+
+fn configured_sdk_source(root: &Path, sdk: &SdkDependency) -> Result<SdkSource, String> {
+    if let Some(version) = &sdk.version {
+        return Ok(SdkSource::Version {
+            requirement: normalize_version(version),
+            registry: None,
+        });
+    }
+    if let Some(path) = &sdk.path {
+        return Ok(SdkSource::Path(resolve_sdk_path(root, path)?));
+    }
+    match &sdk.git {
+        Some(git) => Ok(SdkSource::Git {
+            url: normalize_git_url(git),
+            rev: sdk.rev.clone(),
+            other_ref: None,
+        }),
+        None => Err("sdk must specify exactly one of version, path, or git".into()),
+    }
+}
+
+/// The source a dependency entry names. `base` is the directory its paths are
+/// relative to.
+fn dependency_source(base: &Path, key: &str, value: &toml::Value) -> Result<SdkSource, String> {
+    let Some(table) = value.as_table() else {
+        return Ok(SdkSource::Version {
+            requirement: normalize_version(value.as_str().unwrap_or_default()),
+            registry: None,
+        });
+    };
+    let text = |field: &str| table.get(field).and_then(toml::Value::as_str);
+    if let Some(git) = text("git") {
+        let other_ref = text("branch")
+            .map(|branch| format!("branch {branch}"))
+            .or_else(|| text("tag").map(|tag| format!("tag {tag}")));
+        return Ok(SdkSource::Git {
+            url: normalize_git_url(git),
+            rev: text("rev").map(str::to_owned),
+            other_ref,
+        });
+    }
+    if let Some(path) = text("path") {
+        return Ok(SdkSource::Path(resolve_sdk_path(base, Path::new(path))?));
+    }
+    match text("version") {
+        Some(version) => Ok(SdkSource::Version {
+            requirement: normalize_version(version),
+            registry: text("registry")
+                .or_else(|| text("registry-index"))
+                .map(str::to_owned),
+        }),
+        None => Err(format!(
+            "dependency {key} has no version, path, or git source"
+        )),
+    }
+}
+
+/// The package a dependency entry resolves to: its `package` key, or its name.
+fn dependency_package<'a>(key: &'a str, value: &'a toml::Value) -> &'a str {
+    value
+        .get("package")
+        .and_then(toml::Value::as_str)
+        .unwrap_or(key)
+}
+
+/// Every dependency table in a manifest, with a label for messages:
+/// `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]` (and their
+/// older underscore spellings), their `[target.<cfg>.…]` forms, and
+/// `[workspace.dependencies]`.
+fn dependency_tables(manifest: &toml::Table) -> Vec<(String, &toml::Table)> {
+    const KINDS: [&str; 5] = [
+        "dependencies",
+        "dev-dependencies",
+        "dev_dependencies",
+        "build-dependencies",
+        "build_dependencies",
+    ];
+    let mut tables = Vec::new();
+    for kind in KINDS {
+        if let Some(table) = manifest.get(kind).and_then(toml::Value::as_table) {
+            tables.push((format!("[{kind}]"), table));
+        }
+    }
+    if let Some(targets) = manifest.get("target").and_then(toml::Value::as_table) {
+        for (target, value) in targets {
+            for kind in KINDS {
+                if let Some(table) = value.get(kind).and_then(toml::Value::as_table) {
+                    tables.push((format!("[target.{target}.{kind}]"), table));
+                }
+            }
+        }
+    }
+    if let Some(table) = manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(toml::Value::as_table)
+    {
+        tables.push(("[workspace.dependencies]".into(), table));
+    }
+    tables
+}
+
+/// `[patch.<source>]` and `[replace]` entries that override `package`.
+fn overrides(manifest: &toml::Table, package: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    if let Some(patches) = manifest.get("patch").and_then(toml::Value::as_table) {
+        for (source, table) in patches {
+            for (key, value) in table.as_table().into_iter().flatten() {
+                if dependency_package(key, value) == package {
+                    found.push(format!("[patch.{source:?}] {key}"));
+                }
+            }
+        }
+    }
+    if let Some(replace) = manifest.get("replace").and_then(toml::Value::as_table) {
+        for spec in replace.keys() {
+            let name = spec.split([':', '@']).next().unwrap_or(spec);
+            if name == package {
+                found.push(format!("[replace] {spec:?}"));
+            }
+        }
+    }
+    found
+}
+
+fn read_toml(path: &Path) -> Result<toml::Table, String> {
+    let body = fs::read_to_string(path).map_err(display_err("read", path))?;
+    toml::from_str(&body).map_err(|error| format!("parse {}: {error}", path.display()))
+}
+
+/// The directory of the workspace the route crate belongs to: the route crate
+/// itself when it declares `[workspace]` or has no workspace above it inside
+/// the package root.
+fn workspace_dir(root: &Path, crate_dir: &Path, manifest: &toml::Table) -> Result<PathBuf, String> {
+    if manifest.contains_key("workspace") {
+        return Ok(crate_dir.to_owned());
+    }
+    for dir in crate_dir.ancestors().skip(1) {
+        if !dir.starts_with(root) {
+            break;
+        }
+        let path = dir.join("Cargo.toml");
+        if path.is_file() && read_toml(&path)?.contains_key("workspace") {
+            return Ok(dir.to_owned());
+        }
+    }
+    Ok(crate_dir.to_owned())
+}
+
+/// Whether a `.cargo/config.toml` that Cargo reads for the route crate patches
+/// `package`. This is how the petal repository's consumer CI builds a Petal
+/// against its own checkout.
+fn patched_by_cargo_config(root: &Path, crate_dir: &Path, package: &str) -> Result<bool, String> {
+    for dir in crate_dir.ancestors() {
+        for name in ["config.toml", "config"] {
+            let path = dir.join(".cargo").join(name);
+            if path.is_file() && !overrides(&read_toml(&path)?, package).is_empty() {
+                return Ok(true);
+            }
+        }
+        if dir == root {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+/// Check one `Cargo.lock` source against the pin.
+fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>) -> bool {
+    match expected {
+        SdkSource::Path(_) => false,
+        SdkSource::Version {
+            requirement,
+            registry: None,
+        } => {
+            CRATES_IO_SOURCES.contains(&source)
+                && requirement
+                    .strip_prefix('=')
+                    .is_some_and(|exact| version == Some(exact))
+        }
+        SdkSource::Version { .. } => false,
+        SdkSource::Git { url, rev, .. } => {
+            let Some(locked) = source.strip_prefix("git+") else {
+                return false;
+            };
+            let locked = locked.split('#').next().unwrap_or(locked);
+            let (locked_url, query) = locked.split_once('?').unwrap_or((locked, ""));
+            let locked_rev = query
+                .split('&')
+                .find_map(|pair| pair.strip_prefix("rev="))
+                .map(percent_decode);
+            normalize_git_url(locked_url) == *url && locked_rev.as_deref() == rev.as_deref()
+        }
+    }
+}
+
+/// Refuse a Petal whose route crate pins the SDK differently from `[sdk]` in
+/// the build configuration.
+///
+/// Generated route components build against `[sdk]`. The route crate's shared
+/// code and host-side tests build against its own manifest and lockfile. When
+/// they disagree, components and tests run against different SDKs and an SDK
+/// upgrade is half applied. This checks, against `[sdk]`:
+///
+/// - every SDK dependency of the route crate, in any dependency table, and any
+///   `workspace = true` entry resolved from its workspace;
+/// - for a git pin, every dependency on another crate from the SDK's
+///   repository (such as `bloom-petal-contract`), here and in the build
+///   configuration's `[dependencies]`;
+/// - every lockfile entry for those packages;
+/// - that no `[patch]` or `[replace]` in the route crate or its workspace
+///   overrides the SDK, because generated components ignore them.
+///
+/// A lockfile entry with no source is accepted only while a `.cargo/config.toml`
+/// patches the SDK, as the petal repository's consumer CI does.
+pub fn check_sdk_pin(root: impl AsRef<Path>, config: &BuildConfig) -> Result<(), String> {
+    let root = root.as_ref();
+    let package = &config.sdk.package;
+    let expected = configured_sdk_source(root, &config.sdk)?;
+    let sdk_repo = match &expected {
+        SdkSource::Git { url, .. } => Some(url.clone()),
+        _ => None,
+    };
+    let same_repo = |source: &SdkSource| match (source, &sdk_repo) {
+        (SdkSource::Git { url, .. }, Some(repo)) => url == repo,
+        _ => false,
+    };
+    let shown = |path: &Path| {
+        path.strip_prefix(root)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    };
+
+    let crate_dir = root.join(&config.route_crate.path);
+    let manifest_path = crate_dir.join("Cargo.toml");
+    let manifest = read_toml(&manifest_path)?;
+    let workspace = workspace_dir(root, &crate_dir, &manifest)?;
+    let workspace_manifest_path = workspace.join("Cargo.toml");
+    let workspace_manifest = if workspace == crate_dir {
+        None
+    } else {
+        Some(read_toml(&workspace_manifest_path)?)
+    };
+    let workspace_dependencies = workspace_manifest
+        .as_ref()
+        .unwrap_or(&manifest)
+        .get("workspace")
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(toml::Value::as_table);
+
+    let mut disagreements = Vec::new();
+    // Packages from the SDK's source, whose lockfile entries are checked too.
+    let mut checked_packages = BTreeSet::from([package.clone()]);
+    let mut check_entry = |label: String,
+                           base: &Path,
+                           key: &str,
+                           value: &toml::Value,
+                           disagreements: &mut Vec<String>|
+     -> Result<(), String> {
+        let named = dependency_package(key, value);
+        let source = dependency_source(base, key, value)?;
+        if named == package.as_str() {
+            if source != expected {
+                disagreements.push(format!("{label}: {source}"));
+            }
+        } else if same_repo(&source) {
+            checked_packages.insert(named.to_owned());
+            if let (SdkSource::Git { rev, other_ref, .. }, SdkSource::Git { rev: want, .. }) =
+                (&source, &expected)
+                && (rev != want || other_ref.is_some())
+            {
+                disagreements.push(format!("{label}: {source} (same repository as the SDK)"));
+            }
+        }
+        Ok(())
+    };
+
+    for (section, table) in dependency_tables(&manifest) {
+        for (key, value) in table {
+            let label = format!("{} {section} {key}", shown(&manifest_path));
+            if value.get("workspace").and_then(toml::Value::as_bool) == Some(true) {
+                let Some(inherited) = workspace_dependencies.and_then(|deps| deps.get(key)) else {
+                    return Err(format!(
+                        "{label} inherits from a workspace with no [workspace.dependencies] {key}"
+                    ));
+                };
+                check_entry(
+                    format!(
+                        "{label} (from {} [workspace.dependencies])",
+                        shown(&workspace_manifest_path)
+                    ),
+                    &workspace,
+                    key,
+                    inherited,
+                    &mut disagreements,
+                )?;
+                continue;
+            }
+            check_entry(label, &crate_dir, key, value, &mut disagreements)?;
+        }
+    }
+    for (key, value) in &config.dependencies {
+        check_entry(
+            format!("[dependencies] {key} in the build configuration"),
+            root,
+            key,
+            value,
+            &mut disagreements,
+        )?;
+    }
+    for (path, table) in [
+        (&manifest_path, Some(&manifest)),
+        (&workspace_manifest_path, workspace_manifest.as_ref()),
+    ] {
+        for entry in table
+            .map(|table| overrides(table, package))
+            .into_iter()
+            .flatten()
+        {
+            disagreements.push(format!(
+                "{} {entry} overrides the SDK, which generated route components ignore",
+                shown(path)
+            ));
+        }
+    }
+
+    let lock_path = workspace.join("Cargo.lock");
+    if lock_path.is_file() {
+        let lock = read_toml(&lock_path)?;
+        let entries = lock
+            .get("package")
+            .and_then(toml::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let patched = patched_by_cargo_config(root, &crate_dir, package)?;
+        for entry in entries.iter().filter_map(toml::Value::as_table) {
+            let Some(name) = entry.get("name").and_then(toml::Value::as_str) else {
+                continue;
+            };
+            let version = entry.get("version").and_then(toml::Value::as_str);
+            let source = entry.get("source").and_then(toml::Value::as_str);
+            let matches = if name == package.as_str() {
+                match source {
+                    // A local path: only a pinned path or an active patch.
+                    None => matches!(expected, SdkSource::Path(_)) || patched,
+                    Some(source) => lock_source_matches(&expected, source, version),
+                }
+            } else if checked_packages.contains(name)
+                && let Some(source) = source
+                && source.starts_with("git+")
+            {
+                lock_source_matches(&expected, source, None)
+            } else {
+                true
+            };
+            if !matches {
+                disagreements.push(format!(
+                    "{} resolves {name} {} from {}",
+                    shown(&lock_path),
+                    version.unwrap_or("?"),
+                    source.unwrap_or("a local path")
+                ));
+            }
+        }
+    }
+
+    if disagreements.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{package} is pinned inconsistently. [sdk] in the build configuration pins {expected}, but:\n{}\nPin every site to the same SDK source, remove any [patch] or [replace] of it, then refresh the lockfile:\n  cargo update --manifest-path {} -p {package}",
+        disagreements
+            .iter()
+            .map(|line| format!("  - {line}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        shown(&workspace_manifest_path),
+    ))
 }
 
 fn path_from_member(member: &Path, target: &Path) -> Result<String, String> {
@@ -1085,6 +1603,444 @@ mod tests {
         }
     }
 
+    const SDK_GIT: &str = "https://github.com/bloom-directory/petal";
+    const REV_A: &str = "222557410bf4d45b0fc30feefe779d4234c04097";
+    const REV_B: &str = "2beed2f0000000000000000000000000000000aa";
+
+    fn git_sdk(rev: &str) -> SdkDependency {
+        SdkDependency {
+            package: "bloom-petal-sdk".into(),
+            version: None,
+            path: None,
+            git: Some(SDK_GIT.into()),
+            rev: Some(rev.into()),
+        }
+    }
+
+    /// A package root holding only what the pin check reads: the route crate's
+    /// manifest and, when given, its lockfile.
+    fn pin_fixture(
+        sdk: SdkDependency,
+        manifest: &str,
+        lock: Option<&str>,
+    ) -> (tempfile::TempDir, BuildConfig) {
+        let tmp = tempfile::tempdir().unwrap();
+        let route = tmp.path().join("route");
+        fs::create_dir_all(&route).unwrap();
+        fs::write(
+            route.join("Cargo.toml"),
+            format!("[package]\nname = \"demo-route\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n{manifest}"),
+        )
+        .unwrap();
+        if let Some(lock) = lock {
+            fs::write(route.join("Cargo.lock"), lock).unwrap();
+        }
+        let mut config = package_config();
+        config.sdk = sdk;
+        (tmp, config)
+    }
+
+    fn git_lock(rev: &str) -> String {
+        format!(
+            "version = 4\n\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"0.1.0\"\nsource = \"git+{SDK_GIT}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"demo-route\"\nversion = \"0.1.0\"\n"
+        )
+    }
+
+    #[test]
+    fn sdk_pin_agrees_across_build_config_manifest_and_lockfile() {
+        let manifest = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\" }}\n"
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(&git_lock(REV_A)));
+        check_sdk_pin(tmp.path(), &config).unwrap();
+    }
+
+    #[test]
+    fn sdk_pin_refuses_a_route_crate_on_another_rev() {
+        let manifest = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_B}\" }}\n"
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains(&format!("rev {REV_A}")), "{error}");
+        assert!(
+            error.contains("route/Cargo.toml [dependencies] petal"),
+            "{error}"
+        );
+        assert!(error.contains(&format!("rev {REV_B}")), "{error}");
+    }
+
+    #[test]
+    fn sdk_pin_refuses_a_stale_lockfile() {
+        let manifest = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\" }}\n"
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(&git_lock(REV_B)));
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(
+            error.contains("route/Cargo.lock resolves bloom-petal-sdk"),
+            "{error}"
+        );
+        assert!(error.contains(REV_B), "{error}");
+        assert!(
+            error.contains("cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk"),
+            "{error}"
+        );
+    }
+
+    fn git_dep(name: &str, package: &str, rev: &str) -> String {
+        format!("{name} = {{ package = \"{package}\", git = \"{SDK_GIT}\", rev = \"{rev}\" }}\n")
+    }
+
+    #[test]
+    fn sdk_pin_refuses_branches_and_tags() {
+        for reference in ["branch = \"master\"", "tag = \"v0.1.0\""] {
+            let manifest = format!(
+                "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", {reference} }}\n"
+            );
+            let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
+            assert!(check_sdk_pin(tmp.path(), &config).is_err(), "{reference}");
+        }
+    }
+
+    /// The consumer CI job patches the SDK to a local checkout through
+    /// `.cargo/config.toml`, which rewrites the lockfile entry to a path.
+    #[test]
+    fn sdk_pin_accepts_a_lockfile_patched_by_cargo_config_only() {
+        let manifest = format!(
+            "[dependencies]\n{}",
+            git_dep("petal", "bloom-petal-sdk", REV_A)
+        );
+        let patched =
+            "version = 4\n\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"0.1.0\"\n";
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(patched));
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("from a local path"), "{error}");
+
+        fs::create_dir_all(tmp.path().join(".cargo")).unwrap();
+        fs::write(
+            tmp.path().join(".cargo/config.toml"),
+            format!("[patch.\"{SDK_GIT}\"]\nbloom-petal-sdk = {{ path = \"/checkout/crates/petal-sdk\" }}\n"),
+        )
+        .unwrap();
+        check_sdk_pin(tmp.path(), &config).unwrap();
+    }
+
+    #[test]
+    fn sdk_pin_refuses_a_patch_or_replace_in_the_route_crate() {
+        for overriding in [
+            format!("[patch.\"{SDK_GIT}\"]\nbloom-petal-sdk = {{ path = \"../sdk\" }}\n"),
+            "[replace]\n\"bloom-petal-sdk:0.1.0\" = { path = \"../sdk\" }\n".to_owned(),
+        ] {
+            let manifest = format!(
+                "[dependencies]\n{}\n{overriding}",
+                git_dep("petal", "bloom-petal-sdk", REV_A)
+            );
+            let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(error.contains("overrides the SDK"), "{error}");
+        }
+    }
+
+    #[test]
+    fn sdk_pin_holds_other_crates_from_the_sdk_repository_to_the_same_rev() {
+        // polymarket pins bloom-petal-contract from the SDK repository as a
+        // dev-dependency; an SDK-only bump must not leave it behind.
+        let manifest = format!(
+            "[dependencies]\n{}\n[dev-dependencies]\n{}",
+            git_dep("petal", "bloom-petal-sdk", REV_B),
+            git_dep("bloom-petal-contract", "bloom-petal-contract", REV_A)
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_B), &manifest, None);
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("bloom-petal-contract"), "{error}");
+        assert!(error.contains("same repository as the SDK"), "{error}");
+
+        // The lockfile entry for that crate is held to the rev as well.
+        let manifest = format!(
+            "[dependencies]\n{}\n[dev-dependencies]\n{}",
+            git_dep("petal", "bloom-petal-sdk", REV_B),
+            git_dep("bloom-petal-contract", "bloom-petal-contract", REV_B)
+        );
+        let lock = format!(
+            "{}\n[[package]]\nname = \"bloom-petal-contract\"\nversion = \"0.1.0\"\nsource = \"git+{SDK_GIT}?rev={REV_A}#{REV_A}\"\n",
+            git_lock(REV_B)
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_B), &manifest, Some(&lock));
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("resolves bloom-petal-contract"), "{error}");
+
+        // So is a crate from the SDK repository in the build configuration.
+        let (tmp, mut config) = pin_fixture(
+            git_sdk(REV_B),
+            &format!(
+                "[dependencies]\n{}",
+                git_dep("petal", "bloom-petal-sdk", REV_B)
+            ),
+            None,
+        );
+        config.dependencies.insert(
+            "bloom-petal-contract".into(),
+            toml::from_str::<toml::Table>(&format!(
+                "v = {{ git = \"{SDK_GIT}\", rev = \"{REV_A}\" }}"
+            ))
+            .unwrap()
+            .remove("v")
+            .unwrap(),
+        );
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("in the build configuration"), "{error}");
+    }
+
+    #[test]
+    fn sdk_pin_resolves_workspace_inheritance_and_the_workspace_lockfile() {
+        let workspace = |rev: &str| {
+            format!(
+                "[workspace]\nmembers = [\"route\"]\n\n[workspace.dependencies]\n{}",
+                git_dep("petal", "bloom-petal-sdk", rev)
+            )
+        };
+        // `petal.workspace = true` names the SDK only through the workspace.
+        let (tmp, config) = pin_fixture(
+            git_sdk(REV_A),
+            "[dependencies]\npetal.workspace = true\n",
+            None,
+        );
+        fs::write(tmp.path().join("Cargo.toml"), workspace(REV_B)).unwrap();
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(
+            error.contains("from Cargo.toml [workspace.dependencies]"),
+            "{error}"
+        );
+        assert!(error.contains(&format!("rev {REV_B}")), "{error}");
+        assert!(
+            error.contains("cargo update --manifest-path Cargo.toml"),
+            "{error}"
+        );
+
+        // The lockfile lives at the workspace root and is checked there.
+        fs::write(tmp.path().join("Cargo.toml"), workspace(REV_A)).unwrap();
+        check_sdk_pin(tmp.path(), &config).unwrap();
+        fs::write(tmp.path().join("Cargo.lock"), git_lock(REV_B)).unwrap();
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(
+            error.contains("Cargo.lock resolves bloom-petal-sdk"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn sdk_pin_canonicalizes_urls_and_lockfile_revs_like_cargo() {
+        // GitHub paths are case-insensitive and http means https.
+        let manifest = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"http://github.com/Bloom-Directory/Petal\", rev = \"{REV_A}\" }}\n"
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(&git_lock(REV_A)));
+        check_sdk_pin(tmp.path(), &config).unwrap();
+
+        // Lockfile v4 percent-encodes the rev; it is compared decoded.
+        let encoded = git_lock(REV_A).replace(
+            &format!("?rev={REV_A}"),
+            &format!("?rev=%{:02X}{}", REV_A.as_bytes()[0], &REV_A[1..]),
+        );
+        let manifest = format!(
+            "[dependencies]\n{}",
+            git_dep("petal", "bloom-petal-sdk", REV_A)
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(&encoded));
+        check_sdk_pin(tmp.path(), &config).unwrap();
+    }
+
+    #[test]
+    fn sdk_pin_refuses_an_alternate_registry_and_checks_old_table_names() {
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.1.0\", registry = \"mirror\" }\n",
+            None,
+        );
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("from registry mirror"), "{error}");
+
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dev_dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.2.0\" }\n",
+            None,
+        );
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("[dev_dependencies] petal"), "{error}");
+    }
+
+    #[test]
+    fn sdk_config_requires_an_exact_pin() {
+        let mut sdk = git_sdk(REV_A);
+        validate_sdk(&sdk).unwrap();
+        sdk.rev = None;
+        assert!(
+            validate_sdk(&sdk)
+                .unwrap_err()
+                .contains("40-character commit")
+        );
+        sdk.rev = Some("2225574".into());
+        assert!(validate_sdk(&sdk).is_err());
+
+        for version in ["=0.1.0", "= 0.1.0", "=1.2.3-rc.1"] {
+            let mut sdk = package_config().sdk;
+            sdk.version = Some(version.into());
+            validate_sdk(&sdk).unwrap_or_else(|error| panic!("{version}: {error}"));
+        }
+        for version in ["0.1.0", "^0.1.0", "~0.1", "=0.1", ">=0.1.0, <0.2.0", "*"] {
+            let mut sdk = package_config().sdk;
+            sdk.version = Some(version.into());
+            assert!(validate_sdk(&sdk).is_err(), "{version}");
+        }
+    }
+
+    #[test]
+    fn sdk_pin_ignores_trailing_slash_and_dot_git_in_urls() {
+        let manifest = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}.git/\", rev = \"{REV_A}\" }}\n"
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(&git_lock(REV_A)));
+        check_sdk_pin(tmp.path(), &config).unwrap();
+    }
+
+    #[test]
+    fn sdk_pin_checks_every_dependency_table() {
+        for section in [
+            "dev-dependencies",
+            "build-dependencies",
+            "target.'cfg(target_arch = \"wasm32\")'.dependencies",
+        ] {
+            let manifest = format!(
+                "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\" }}\n\n[{section}]\nsdk = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_B}\" }}\n"
+            );
+            let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(
+                error.contains(&format!("rev {REV_B}")),
+                "{section}: {error}"
+            );
+            assert!(
+                !error.contains("[dependencies] petal"),
+                "{section}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn sdk_pin_recognizes_the_package_by_name_or_rename() {
+        // A plain `bloom-petal-sdk = "..."` entry is the SDK too.
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\nbloom-petal-sdk = \"=0.2.0\"\n",
+            None,
+        );
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(
+            error.contains("[dependencies] bloom-petal-sdk: version =0.2.0"),
+            "{error}"
+        );
+
+        // Other packages, including one renamed to `petal`, are not.
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"other\", version = \"9\" }\nserde = \"1\"\n",
+            None,
+        );
+        check_sdk_pin(tmp.path(), &config).unwrap();
+    }
+
+    #[test]
+    fn sdk_pin_compares_versions_exactly() {
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.1.0\" }\n",
+            Some(
+                "version = 4\n\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"0.1.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+            ),
+        );
+        check_sdk_pin(tmp.path(), &config).unwrap();
+
+        // Whitespace inside a requirement does not change it.
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"= 0.1.0\" }\n",
+            None,
+        );
+        check_sdk_pin(tmp.path(), &config).unwrap();
+
+        // `0.1.0` is a caret range, not the exact `=0.1.0` that [sdk] pins.
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"0.1.0\" }\n",
+            None,
+        );
+        assert!(check_sdk_pin(tmp.path(), &config).is_err());
+
+        // An exact version pin must also be what the lockfile resolved.
+        let (tmp, config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.1.0\" }\n",
+            Some(
+                "version = 4\n\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"0.1.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+            ),
+        );
+        assert!(
+            check_sdk_pin(tmp.path(), &config)
+                .unwrap_err()
+                .contains("0.1.1")
+        );
+    }
+
+    #[test]
+    fn sdk_pin_resolves_paths_from_their_own_manifests() {
+        let (tmp, mut config) = pin_fixture(
+            package_config().sdk,
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", path = \"../sdk\" }\n",
+            Some("version = 4\n\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"0.1.0\"\n"),
+        );
+        fs::create_dir_all(tmp.path().join("sdk")).unwrap();
+        fs::create_dir_all(tmp.path().join("other-sdk")).unwrap();
+        config.sdk = SdkDependency {
+            package: "bloom-petal-sdk".into(),
+            version: None,
+            path: Some("sdk".into()),
+            git: None,
+            rev: None,
+        };
+        check_sdk_pin(tmp.path(), &config).unwrap();
+
+        config.sdk.path = Some("other-sdk".into());
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("other-sdk"), "{error}");
+    }
+
+    #[test]
+    fn sdk_pin_allows_a_route_crate_without_the_sdk() {
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), "[dependencies]\nserde = \"1\"\n", None);
+        check_sdk_pin(tmp.path(), &config).unwrap();
+    }
+
+    #[test]
+    fn package_refuses_disagreeing_sdk_pins() {
+        let tmp = tempfile::tempdir().unwrap();
+        package_fixture(tmp.path());
+        fs::create_dir_all(tmp.path().join("route")).unwrap();
+        fs::write(
+            tmp.path().join("route/Cargo.toml"),
+            "[package]\nname = \"demo-route\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.2.0\" }\n",
+        )
+        .unwrap();
+        let error = package(
+            tmp.path(),
+            &package_config(),
+            tmp.path().join("out/demo.petal.tar.gz"),
+        )
+        .unwrap_err();
+        assert!(error.contains("pinned inconsistently"), "{error}");
+        assert!(!tmp.path().join("out/demo.petal.tar.gz").exists());
+    }
+
     fn package_fixture(root: &Path) {
         fs::create_dir_all(root.join("petal/demo")).unwrap();
         fs::write(
@@ -1095,6 +2051,12 @@ mod tests {
         fs::write(root.join("README.md"), "demo\n").unwrap();
         fs::write(root.join("AGENTS.md"), "agent guidance\n").unwrap();
         fs::write(root.join("petal/demo/status.wasm"), b"component").unwrap();
+        fs::create_dir_all(root.join("route")).unwrap();
+        fs::write(
+            root.join("route/Cargo.toml"),
+            "[package]\nname = \"demo-route\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.1.0\" }\n",
+        )
+        .unwrap();
     }
 
     #[test]
