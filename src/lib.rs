@@ -180,6 +180,7 @@ mod tests {
     fn embeds_the_petal_development_skill() {
         assert!(PETAL_DEVELOPMENT_SKILL.starts_with("---\nname: bloom-petal-development\n"));
         assert!(PETAL_DEVELOPMENT_SKILL.contains("\n## Run it in Bloom\n"));
+        assert!(PETAL_DEVELOPMENT_SKILL.contains("\n## Troubleshoot a bare `permission denied`\n"));
         assert!(PETAL_DEVELOPMENT_SKILL.ends_with('\n'));
     }
 

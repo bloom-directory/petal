@@ -6,6 +6,6 @@ effects.
 ## Development skill
 
 Petals are authored against the `bloom-petal-development` skill:
-https://github.com/bloom-directory/petal/tree/main/skills/bloom-petal-development
+https://github.com/bloom-directory/petal/tree/master/skills/bloom-petal-development
 Load it into your agent before extending this Petal.
 

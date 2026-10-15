@@ -89,8 +89,9 @@ module tree. Every `.rs` file below it becomes a separately compiled component:
 - `[wallet]` is reserved for a Bloom wallet id under `/bloom/wallets/<id>`, and
   an account-bound route must follow it immediately with `[index]`, the
   numbered account, for example `intents/[wallet]/[index]/new`. Bloom resolves
-  both against its own wallet projection before the route runs and refuses a
-  `[wallet]` with no adjacent `[index]`. Read the wallet with
+  both against its own wallet projection before the route runs. It refuses a
+  `[wallet]` that is not immediately followed by `[index]`, and an `[index]`
+  that is not immediately preceded by `[wallet]`. Read the wallet with
   `petal::wallet_param(ctx)`; the host also supplies the trusted
   `bloom.wallet` and `bloom.account` parameters. There is no implicit
   account 0, and every account, including 0, has its own private store. Use a
@@ -385,8 +386,9 @@ Know what an install changes:
   including settings and secrets.
 - A signing route is authorized only for the operation classes its installer
   provenance record lists. Without that record the write fails with a plain
-  permission error; Machine's log names the reason
-  (`installer provenance does not authorize <class>`).
+  permission error; for `sign_payload`, Machine's log names the reason
+  (`installer provenance does not authorize <class>`). See
+  [Troubleshoot a bare `permission denied`](#troubleshoot-a-bare-permission-denied).
 - `--force` is not a reinstall flag. It replaces or removes a package while
   sessions scoped to it are still active; those sessions then read
   `package_replaced`, and only Exact recovery remains.
@@ -415,6 +417,77 @@ Enrollment rebuilds the package, so install from that same directory
 afterwards; an archive built separately has a different hash and its
 provenance will not match. Machine and Broker read the catalog at startup, so
 enroll before the triad starts or restart it afterwards.
+
+## Troubleshoot a bare `permission denied`
+
+Bloom drops the message of every denial. A route response with code `-2`
+(`RouteError::Denied`, which the SDK also returns for any host denial) reaches
+the caller only as `permission denied`: EACCES on the mount, JSON-RPC `-32007`
+through `bloom vfs`. Work through the candidates:
+
+- **Route shape.** A `[wallet]` not immediately followed by `[index]`, or an
+  `[index]` not immediately preceded by `[wallet]`, installs without error, but
+  Bloom refuses every call to it at dispatch and logs nothing. The exception is
+  a directory route ending at `[wallet]` with `[wallet]/[index]/...` routes
+  beneath it: Bloom lists the accounts itself, so its `$index.rs` never runs,
+  and reading it is denied.
+- **Owner approval pending.** Bloom does not deny a signature that needs
+  approval. The SDK returns `ApprovalPending` with an action id. For a
+  signature, the owner-only `/petal-signing-requests/<id>.json` carries the
+  `ceremony_url`; when the wallet policy must first allow the package hash, the
+  id names that policy update instead. It becomes `permission denied` only when the route returns `-2` for it, and
+  then its message is lost, so record the pending state in a readable file.
+  After the owner approves, retry the exact same write. A retry that changes
+  the payload is refused, and after five minutes a retry opens a new ceremony.
+- **Signing refused.** Missing installer provenance for the operation class, a
+  wallet policy that does not allow the package hash or a destination, an
+  approval that is not yet active, spent or expired, or a reused approval hint.
+  For `sign_payload`, Machine logs most of these at WARN as
+  `petal.sign_payload_denied`, with `wallet`, `operation_class`,
+  `package_hash`, `route`, `request_id`, and a `reason` or
+  `protocol_error_code`. `sign_payload_batch` refusals are not logged under
+  that name: Broker errors on the exact path appear at ERROR as
+  `petal exact batch signing failed`, and the reusable path logs nothing.
+  Refusals checked inside the route runtime, such as an operation class outside
+  the route's `sign_intent` or `[sign].allowed_intents`, a signing route without
+  `[wallet]/[index]`, or a wallet that differs from the routed one, are not
+  logged either.
+- **Capabilities and policy.** A host import whose capability the route does
+  not declare is logged at INFO as `host capability denied`, with the `op`. An
+  HTTP request outside `[[net.allow]]` is logged at INFO as
+  `component http.fetch denied by net policy`. A store namespace or visibility
+  mismatch, `put_new` on an existing key, a VFS path outside the selected
+  account or under `petals/`, and a chain method outside the read allowlist are
+  denied without a log line.
+- **Mounted writes.** Through the mount, a write to a route runs
+  asynchronously: the writer sees success, and a failure reaches Machine's log
+  only at WARN as `mount.adapter.async_command_outcome_deferred`. Reproduce with
+  `bloom vfs write` to see the error. A write to a route without a write
+  handler fails the mount's access check with EACCES before the route runs;
+  through `bloom vfs` it is `invalid input`.
+
+Machine's log is the place to look:
+
+| Machine runs from | Log |
+| --- | --- |
+| `scripts/triad-dev-launch.sh` | `<log-dir>/machine.log`, text |
+| Packaged macOS | `~/.bloom/logs/machine.jsonl`, JSON Lines |
+| Packaged Linux | `journalctl --user -u bloom-machine.service -o cat`, JSON Lines |
+
+In JSON Lines the event name is the tracing message, under `.fields.message`:
+
+```sh
+grep -a 'petal.sign_payload_denied' <log-dir>/machine.log
+jq -cR 'fromjson? | select(.fields.message == "petal.sign_payload_denied")' \
+  ~/.bloom/logs/machine.jsonl
+```
+
+Broker refusals also appear in the Broker log as `broker.authority_rejected`
+or `broker.signer_operation_rejected`: `<log-dir>/broker.log` on a developer
+triad, `/private/var/log/bloom/<uid>/broker.jsonl` on macOS, and
+`journalctl -t bloom-broker-<uid> -o cat` on Linux. Route-shape refusals and
+the unlogged denials above leave nothing in either log, so check the route
+pattern, its declared capabilities and its manifest grants first.
 
 ## Review checklist
 
