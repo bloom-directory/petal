@@ -1,7 +1,8 @@
 ---
 name: bloom-petal-development
 description: Build, migrate, refactor, review, and validate Bloom Petals that expose domain behavior as route-based virtual files through the Petal SDK and builder. Use when turning an API or workflow into a Petal, creating a Petal, adding or changing route files, designing route and shared-code boundaries, declaring capabilities and manifest policy, investigating oversized route components, or preparing a Petal for packaging and release.
-version: 0.2.0
+metadata:
+  version: "0.2.0"
 ---
 
 # Bloom Petal Development

@@ -183,6 +183,32 @@ mod tests {
         assert!(PETAL_DEVELOPMENT_SKILL.ends_with('\n'));
     }
 
+    /// The Agent Skills spec allows only these top-level frontmatter fields;
+    /// anything else, such as a version, belongs under `metadata`.
+    #[test]
+    fn skill_frontmatter_uses_only_spec_fields() {
+        const ALLOWED: &[&str] = &[
+            "name",
+            "description",
+            "license",
+            "compatibility",
+            "metadata",
+            "allowed-tools",
+        ];
+        let frontmatter = PETAL_DEVELOPMENT_SKILL
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split_once("\n---\n"))
+            .map(|(frontmatter, _)| frontmatter)
+            .expect("skill starts with a frontmatter block");
+        for line in frontmatter.lines() {
+            if line.starts_with([' ', '\t']) || line.is_empty() {
+                continue;
+            }
+            let key = line.split_once(':').map_or(line, |(key, _)| key);
+            assert!(ALLOWED.contains(&key), "top-level frontmatter field {key}");
+        }
+    }
+
     #[test]
     fn writes_the_embedded_tree() {
         let tmp = tempfile::tempdir().unwrap();
