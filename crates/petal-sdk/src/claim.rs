@@ -22,6 +22,16 @@
 //!   to read. So [`ClaimEffects`] has no default, a claim that moves value
 //!   must say what it moves, and a debit must say where it goes.
 //!
+//! A debit is the most the signed payload lets leave the wallet in that
+//! asset, not just the principal: a venue, taker, protocol, builder or relayer
+//! fee pulled together with the principal belongs in the same debit, declared
+//! to the same destination; when such a fee goes to a different recipient,
+//! declare that recipient as a destination too, since Broker checks only the
+//! destinations a claim names. Broker accounts only declared values, so it
+//! cannot detect an under-declared debit. The fee is only the network fee, in
+//! the fee asset Bloom catalogs for the operation class, and Broker refuses
+//! any declared fee on current Bloom (see [`ClaimFee`]).
+//!
 //! Broker compares a declared destination with the wallet policy by exact
 //! string equality on both the chain and the destination. Declare each one in
 //! exactly the form the owner's policy uses: a lowercase address never matches
@@ -93,7 +103,13 @@ impl ClaimAsset {
     }
 }
 
-/// Value the signed payload takes from the wallet.
+/// The most the signed payload lets leave the wallet in one asset.
+///
+/// That includes every venue, taker, protocol, builder or relayer fee pulled
+/// together with the principal, declared to the same destination: an exchange
+/// that takes its taker fee from the wallet at match time takes more than the
+/// order's principal. Broker accounts only declared values, so it cannot
+/// detect an under-declared debit.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimDebit {
@@ -110,8 +126,9 @@ pub struct ClaimDestination {
     pub destination: String,
 }
 
-/// The fee the signed payload can spend, in the asset Bloom catalogs for the
-/// operation class.
+/// The network fee the signed payload can spend, in the fee asset Bloom
+/// catalogs for the operation class. It is never a venue fee: a venue, taker,
+/// protocol, builder or relayer fee belongs in the debit (see [`ClaimDebit`]).
 ///
 /// Whether a class is fee-bearing is decided by Bloom's catalog, not by the
 /// claim. Broker refuses, after the owner has approved:
@@ -121,9 +138,12 @@ pub struct ClaimDestination {
 /// - `FEE_ASSET_MISMATCH`: a fee whose chain or asset differs from the
 ///   catalog's, compared byte for byte.
 ///
-/// Current Bloom catalogs every Petal operation class with no fee asset, so
-/// a Petal claim must declare `None` until Bloom lets a Petal declare its
-/// fee asset (bloom#276).
+/// Current Bloom catalogs no fee asset for any Petal operation class, so
+/// Broker refuses every declared fee with `FEE_NOT_ALLOWED` after the owner
+/// has approved, and a Petal claim must declare `None` until Bloom lets a
+/// Petal declare its fee asset (bloom#276). [`ClaimEffects::validate`] still
+/// accepts a fee, even as a claim's only effect, so the type is usable once
+/// bloom#276 lands; Petals pin the SDK, so a later release can tighten that.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClaimFee {
@@ -171,12 +191,12 @@ impl ClaimEffects {
 
     /// Start a claim for a payload that moves value, or lets someone move it.
     ///
-    /// It must declare at least one non-zero debit, a destination, or a
-    /// non-zero fee. A payload that only authorizes, such as a token
-    /// allowance or an operator approval, declares the spender as a
-    /// destination and no debit, so the wallet's destination policy still
-    /// applies to it. Every debit needs a destination unless
-    /// [`ClaimEffects::debits_without_destination`] says otherwise.
+    /// It must declare at least one non-zero debit or a destination. A
+    /// payload that only authorizes, such as a token allowance or an operator
+    /// approval, declares the spender as a destination and no debit, so the
+    /// wallet's destination policy still applies to it. Every debit needs a
+    /// destination unless [`ClaimEffects::debits_without_destination`] says
+    /// otherwise.
     pub fn moves_value() -> Self {
         Self {
             moves_value: true,
@@ -184,9 +204,13 @@ impl ClaimEffects {
         }
     }
 
-    /// Declare value the payload takes from the wallet, in the asset's
-    /// smallest unit. The amount must not be zero; leave out a debit that
-    /// takes nothing.
+    /// Declare the most the payload lets leave the wallet in `asset`, in the
+    /// asset's smallest unit. Include every venue, taker, protocol, builder or
+    /// relayer fee pulled together with the principal, declared to the same
+    /// destination; [`ClaimEffects::fee`] is only the network fee. Broker
+    /// accounts only declared values, so it cannot detect an under-declared
+    /// debit. The amount must not be zero; leave out a debit that takes
+    /// nothing.
     pub fn debit(mut self, asset: &ClaimAsset, amount: &str) -> Self {
         self.debits.push(ClaimDebit {
             asset: asset.clone(),
@@ -206,10 +230,13 @@ impl ClaimEffects {
         self
     }
 
-    /// Declare the fee the payload can spend, in the smallest unit of the fee
-    /// asset Bloom catalogs for the operation class (see [`ClaimFee`]).
-    /// Declare the cap the payload allows, not an estimate. A claim carries
-    /// at most one fee, so a second call fails validation.
+    /// Declare the network fee the payload can spend, in the smallest unit of
+    /// the fee asset Bloom catalogs for the operation class; never a venue
+    /// fee, which belongs in the debit. Current Bloom catalogs no fee asset
+    /// for any Petal class, so Broker refuses a declared fee with
+    /// `FEE_NOT_ALLOWED` after the owner approves, until bloom#276 (see
+    /// [`ClaimFee`]). Declare the cap the payload allows, not an estimate. A
+    /// claim carries at most one fee, so a second call fails validation.
     pub fn fee(mut self, asset: &ClaimAsset, amount: &str) -> Self {
         self.fee = ClaimFee::Fee {
             chain: asset.chain.clone(),
@@ -292,8 +319,7 @@ impl ClaimEffects {
         }
         if self.debits.is_empty() && self.destinations.is_empty() && !fee_moves_value {
             return Err(
-                "a value-moving claim must declare a non-zero debit, a destination or a non-zero fee"
-                    .into(),
+                "a value-moving claim must declare a non-zero debit or a destination".into(),
             );
         }
         if !self.debits.is_empty()
@@ -821,7 +847,6 @@ mod tests {
         ClaimEffects::moves_value()
             .debit(&ClaimAsset::new("base", "native"), "1000000000000000")
             .destination("base", "0xAbC0000000000000000000000000000000000001")
-            .fee(&ClaimAsset::new("base", "native"), "21000000000000")
     }
 
     fn code(response: &DispatchResponse) -> i32 {
@@ -923,6 +948,8 @@ mod tests {
                 r#""80986b51a09b6ecdf8e5c0b7722785da768339d46743728ab5eff3b108296db7","route":"r000007"}"#,
             )
         );
+        // It decodes back to the same effects, fee included.
+        assert_eq!(ClaimEffects::from_claim_jcs(two.jcs()).unwrap(), effects);
     }
 
     #[test]
@@ -937,10 +964,7 @@ mod tests {
             value["declared_destinations"],
             serde_json::json!([{"chain": "base", "destination": "0xAbC0000000000000000000000000000000000001"}])
         );
-        assert_eq!(
-            value["declared_fee"],
-            serde_json::json!({"kind": "fee", "chain": "base", "asset": "native", "amount": "21000000000000"})
-        );
+        assert_eq!(value["declared_fee"], serde_json::json!({"kind": "none"}));
     }
 
     #[test]
@@ -949,7 +973,12 @@ mod tests {
         // the same empty effects that safe and polymarket ship today. What it
         // refuses is a value claim that then declares nothing.
         let empty = ClaimEffects::moves_value();
-        assert!(empty.validate().unwrap_err().contains("non-zero debit"));
+        assert!(
+            empty
+                .validate()
+                .unwrap_err()
+                .contains("a non-zero debit or a destination")
+        );
         let refused = petal_use_claim(
             &ctx(),
             "transfer.send",
@@ -960,10 +989,11 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(code(&refused), -3);
-        // A fee alone is enough: a contract call that moves no token still pays.
+        // A debit with its destination says it; so does a spender alone.
+        assert!(send().validate().is_ok());
         assert!(
             ClaimEffects::moves_value()
-                .fee(&ClaimAsset::new("base", "native"), "1")
+                .destination("base", "0x01")
                 .validate()
                 .is_ok()
         );
@@ -1014,7 +1044,7 @@ mod tests {
         // The opt-out is not a way to declare nothing.
         assert!(
             ClaimEffects::moves_value()
-                .fee(&ClaimAsset::new("base", "native"), "1")
+                .destination("base", "0x01")
                 .debits_without_destination()
                 .validate()
                 .is_err()

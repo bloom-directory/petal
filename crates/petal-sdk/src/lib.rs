@@ -340,6 +340,9 @@ pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
     Ok(value)
 }
 
+/// Children of `/wallets` that Bloom answers itself at every depth.
+const RESERVED_WALLET_CHILDREN: &[&str] = &["registrations", "recoveries"];
+
 /// Validate a wallet id that arrives from untrusted input — a request body or
 /// stored state — before it becomes a VFS path segment or a store key.
 ///
@@ -358,12 +361,9 @@ pub fn validate_wallet_id(value: &str) -> Result<&str, String> {
 ///
 /// It also refuses the names Bloom's `/wallets` tree answers with its own
 /// nodes at every depth, so `wallets/<name>/...` never reaches a wallet:
-/// `registrations`, and `recoveries` once remote recovery lands (bloom#306).
+/// `registrations`, and `recoveries` since remote recovery (bloom#306).
 /// `new` and `recover` are special only as the single path `wallets/<name>`,
 /// so a wallet with either name still resolves beneath it.
-/// Children of `/wallets` that Bloom answers itself at every depth.
-const RESERVED_WALLET_CHILDREN: &[&str] = &["registrations", "recoveries"];
-
 pub fn validate_wallet_segment(value: &str) -> Result<&str, String> {
     if RESERVED_WALLET_CHILDREN.contains(&value) {
         return Err(format!(
@@ -1152,7 +1152,12 @@ pub const ADDRESS_MAX_BYTES: usize = 128;
 /// Bloom canonicalises `[index]`, proves the account projection exists, and
 /// injects the pair as trusted context before the guest runs, so this reports
 /// what the host decided rather than re-validating a path capture. The fields
-/// are private: a route cannot invent an account number.
+/// are private so that, in normal use, the pair stays the one the host
+/// resolved. That is a discipline aid, not a security boundary:
+/// [`testing::wallet_account`], or a [`RawCtx`] passed to [`Ctx::bind`], can
+/// build any value. Bloom's host enforces the boundary: it refuses a guest VFS
+/// path into any wallet account but the selected one, and signing for any
+/// wallet but the trusted one.
 ///
 /// One Petal serves several wallets by being dispatched once per wallet. Carry
 /// this value into domain code instead of a bare `&str`, so each function
