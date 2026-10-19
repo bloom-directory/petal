@@ -108,8 +108,10 @@ impl ClaimAsset {
 /// That includes every venue, taker, protocol, builder or relayer fee pulled
 /// together with the principal, declared to the same destination: an exchange
 /// that takes its taker fee from the wallet at match time takes more than the
-/// order's principal. Broker accounts only declared values, so it cannot
-/// detect an under-declared debit.
+/// order's principal. When such a fee goes to a different recipient, declare
+/// that recipient as a destination too, since Broker checks only the
+/// destinations a claim names. Broker accounts only declared values, so it
+/// cannot detect an under-declared debit.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimDebit {
@@ -207,10 +209,12 @@ impl ClaimEffects {
     /// Declare the most the payload lets leave the wallet in `asset`, in the
     /// asset's smallest unit. Include every venue, taker, protocol, builder or
     /// relayer fee pulled together with the principal, declared to the same
-    /// destination; [`ClaimEffects::fee`] is only the network fee. Broker
-    /// accounts only declared values, so it cannot detect an under-declared
-    /// debit. The amount must not be zero; leave out a debit that takes
-    /// nothing.
+    /// destination; when such a fee goes to a different recipient, declare
+    /// that recipient with [`ClaimEffects::destination`] too, since Broker
+    /// checks only the destinations a claim names. [`ClaimEffects::fee`] is
+    /// only the network fee. Broker accounts only declared values, so it
+    /// cannot detect an under-declared debit. The amount must not be zero;
+    /// leave out a debit that takes nothing.
     pub fn debit(mut self, asset: &ClaimAsset, amount: &str) -> Self {
         self.debits.push(ClaimDebit {
             asset: asset.clone(),
