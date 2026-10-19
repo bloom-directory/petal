@@ -69,6 +69,15 @@ pub enum CryptoSuite {
 }
 
 impl CryptoSuite {
+    /// Every suite. A suite missing here stops decoding, and the compiler
+    /// cannot see this list is complete; the match after this impl makes a
+    /// new variant fail to build until it is named there.
+    const ALL: [Self; 3] = [
+        Self::Secp256k1Keccak256Recoverable,
+        Self::Secp256k1Sha256Recoverable,
+        Self::Ed25519Message,
+    ];
+
     /// The wire name, also the `signature_algorithm` of a sign request.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -77,7 +86,20 @@ impl CryptoSuite {
             Self::Ed25519Message => "ed25519-message",
         }
     }
+
+    /// The suite whose [`CryptoSuite::as_str`] is `name`, exactly.
+    fn from_wire(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|suite| suite.as_str() == name)
+    }
 }
+
+// A new suite fails to build here until this match names it. Add it to
+// `CryptoSuite::ALL` as well, or a claim naming it stops decoding.
+const _: fn(CryptoSuite) = |suite| match suite {
+    CryptoSuite::Secp256k1Keccak256Recoverable
+    | CryptoSuite::Secp256k1Sha256Recoverable
+    | CryptoSuite::Ed25519Message => (),
+};
 
 /// An asset on a chain, as Broker names it in value limits.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -409,8 +431,8 @@ pub enum ClaimNonce {
 }
 
 /// The claim as it goes on the wire. [`ClaimEffects::from_claim_jcs`] decodes
-/// into the same type, so it accepts exactly the claims [`petal_use_claim`]
-/// can emit.
+/// into the same type, so the two cannot disagree on the fields or their
+/// names.
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct WireClaim {
@@ -495,7 +517,7 @@ impl ClaimOrigin {
         effects: &ClaimEffects,
         nonce: ClaimNonce,
     ) -> Result<PetalClaim, DispatchResponse> {
-        validate_token("operation class", operation_class).map_err(|message| error(-3, message))?;
+        validate_operation_class(operation_class).map_err(|message| error(-3, message))?;
         effects.validate().map_err(|message| error(-3, message))?;
         if payloads.len() > 1 {
             validate_payload_batch(payloads).map_err(|err| error(-3, err.message()))?;
@@ -670,9 +692,23 @@ impl ClaimEffects {
     /// Read the declared effects back out of an emitted claim, so a Petal's tests
     /// can assert exactly what it declares.
     ///
-    /// It accepts only what [`petal_use_claim`] can emit: every claim field and
-    /// no other, in canonical (RFC 8785) form, with effects that pass
-    /// [`ClaimEffects::validate`]. A claim with any effect decodes as
+    /// It accepts a claim only if it has:
+    ///
+    /// - every claim field and no other, in canonical (RFC 8785) form, with a
+    ///   `machine_asserted` assurance;
+    /// - a `package_hash` and `route` that [`ClaimOrigin::new`] accepts;
+    /// - an `operation_class` that [`ClaimOrigin::claim`] accepts, a Bloom
+    ///   token;
+    /// - a `crypto_suite` that is exactly the wire name of a [`CryptoSuite`];
+    /// - a `payload_digest` of 64 and a `nonce` of 32 lowercase hex digits,
+    ///   and one or more `ordered_hashes` of 64 lowercase hex digits each;
+    /// - effects that pass [`ClaimEffects::validate`].
+    ///
+    /// The origin, class and effects go through the builder's own validators,
+    /// and the suite is compared with [`CryptoSuite::as_str`] of each suite
+    /// the SDK lists. Without the payloads it cannot recompute the digest, the
+    /// hashes or a derived nonce, so it checks only their form, and it does not
+    /// bound the number of hashes. A claim with any effect decodes as
     /// [`ClaimEffects::moves_value`], and one with none as
     /// [`ClaimEffects::moves_nothing`].
     pub fn from_claim_jcs(claim_jcs: &[u8]) -> Result<Self, String> {
@@ -683,8 +719,17 @@ impl ClaimEffects {
         if canonical != claim_jcs {
             return Err("claim is not in canonical (RFC 8785) form".into());
         }
+        ClaimOrigin::new(&wire.package_hash, &wire.route)
+            .map_err(|message| format!("claim {message}"))?;
+        validate_operation_class(&wire.operation_class)
+            .map_err(|message| format!("claim {message}"))?;
+        if CryptoSuite::from_wire(&wire.crypto_suite).is_none() {
+            return Err(format!(
+                "claim crypto_suite {:?} is not a supported suite",
+                wire.crypto_suite
+            ));
+        }
         let hex_fields = [
-            ("package_hash", wire.package_hash.as_str(), 64),
             ("payload_digest", wire.payload_digest.as_str(), 64),
             ("nonce", wire.nonce.as_str(), 32),
         ];
@@ -765,6 +810,10 @@ fn validate_amount(amount: &str) -> Result<(), String> {
 
 fn validate_chain(chain: &str) -> Result<(), String> {
     validate_token("chain", chain)
+}
+
+fn validate_operation_class(operation_class: &str) -> Result<(), String> {
+    validate_token("operation class", operation_class)
 }
 
 /// Bloom's `Token`: 1-64 bytes, a lowercase first byte, then `[a-z0-9._/-]`.
@@ -1321,6 +1370,99 @@ mod tests {
                 .unwrap_err()
                 .contains("payload_digest")
         );
+    }
+
+    /// Decode a canonical claim that is valid but for `field`, expecting a
+    /// refusal.
+    fn refusal(field: &str, bad: &str) -> String {
+        let mut value = claim(&send());
+        value[field] = serde_json::json!(bad);
+        match ClaimEffects::from_claim_jcs(&serde_jcs::to_vec(&value).unwrap()) {
+            Ok(_) => panic!("a claim with {field} {bad:?} decoded"),
+            Err(message) => message,
+        }
+    }
+
+    #[test]
+    fn claim_effects_decodes_every_suite_the_builder_emits() {
+        for suite in [
+            CryptoSuite::Secp256k1Keccak256Recoverable,
+            CryptoSuite::Secp256k1Sha256Recoverable,
+            CryptoSuite::Ed25519Message,
+        ] {
+            let jcs = petal_use_claim(
+                &ctx(),
+                "transfer.send",
+                suite,
+                &[payload(1)],
+                &send(),
+                ClaimNonce::Derived,
+            )
+            .unwrap()
+            .into_jcs();
+            assert_eq!(
+                ClaimEffects::from_claim_jcs(&jcs).unwrap(),
+                send(),
+                "{suite:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn claim_effects_refuses_an_origin_the_builder_refuses() {
+        // The same refusal, word for word, as ClaimOrigin::new gives.
+        let builder = |package: &str, route: &str| {
+            format!("claim {}", ClaimOrigin::new(package, route).unwrap_err())
+        };
+        for route in ["", "R7", "r 7"] {
+            let message = refusal("route", route);
+            assert!(message.starts_with("claim route id "), "{message}");
+            assert_eq!(message, builder(PACKAGE, route));
+        }
+        let message = refusal("package_hash", "test-package");
+        assert!(message.starts_with("claim package hash "), "{message}");
+        assert_eq!(message, builder("test-package", "r000007"));
+    }
+
+    #[test]
+    fn claim_effects_refuses_an_operation_class_the_builder_refuses() {
+        // The same refusal, word for word, as ClaimOrigin::claim gives.
+        let builder = |class: &str| {
+            let refused = ClaimOrigin::new(PACKAGE, "r000007")
+                .unwrap()
+                .claim(
+                    class,
+                    CryptoSuite::Ed25519Message,
+                    &[payload(1)],
+                    &ClaimEffects::moves_nothing(),
+                    ClaimNonce::Derived,
+                )
+                .unwrap_err();
+            match refused {
+                DispatchResponse::Error { code: -3, message } => format!("claim {message}"),
+                other => panic!("expected a -3 refusal, got {other:?}"),
+            }
+        };
+        for class in ["BAD CLASS", "Transfer.Send", ""] {
+            let message = refusal("operation_class", class);
+            assert!(message.starts_with("claim operation class "), "{message}");
+            assert_eq!(message, builder(class));
+        }
+    }
+
+    #[test]
+    fn claim_effects_refuses_an_unsupported_crypto_suite() {
+        for suite in [
+            "not-a-suite",
+            "SECP256K1-KECCAK256-RECOVERABLE",
+            "ed25519-message ",
+            "",
+        ] {
+            assert_eq!(
+                refusal("crypto_suite", suite),
+                format!("claim crypto_suite {suite:?} is not a supported suite")
+            );
+        }
     }
 
     #[test]

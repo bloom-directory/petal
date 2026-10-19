@@ -85,9 +85,18 @@ module tree. Every `.rs` file below it becomes a separately compiled component:
   `markets/<slug>/book.json`;
 - a bracketed segment such as `[slug]` is available through
   `petal::param(ctx, "slug")`;
-- `[wallet]` is reserved for a Bloom wallet id under `/bloom/wallets/<id>`;
-  read it with `petal::wallet_param(ctx)`, and use a distinct parameter such as
-  `[account]` for an on-chain address;
+- `[wallet]` and `[index]` are reserved for the route's own Bloom wallet and
+  numbered account, and Bloom grants wallet authority only to the exact
+  adjacent segments `<feature>/[wallet]/[index]/...`. It refuses any other
+  shape, such as `[wallet]/[account]` or `[wallet]/[index].json`, before the
+  Petal runs; `petal build` and `petal check` warn about it. Read the pair
+  with `petal::wallet_account(ctx)`;
+- `<feature>/[wallet]/$index.rs` above those routes is
+  `petal::account_listing!()`, because Bloom lists the accounts itself;
+- the account's own on-chain address comes from Bloom's account projection,
+  through `address_evm()` or `address_sol()` on the `petal::WalletAccount`, or
+  its `address_evm_path()` or `address_sol_path()` leaf; never capture it as a
+  route segment;
 - `$list.rs` is unsupported; use `$index.rs`.
 
 Directory contents are explicit. Use `list` for a fixed child list,
