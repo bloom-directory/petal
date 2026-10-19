@@ -1174,6 +1174,34 @@ mod tests {
     }
 
     #[test]
+    fn every_chain_and_asset_a_claim_declares_is_checked() {
+        // A valid claim plus one bad value, so each refusal can only come from
+        // the check on that value.
+        for (effects, expected) in [
+            (
+                send().debit(&ClaimAsset::native("Base"), "1"),
+                r#"chain "Base""#,
+            ),
+            (
+                send().debit(&ClaimAsset::new("base", "usdc "), "1"),
+                "debit asset",
+            ),
+            (send().destination("8453", "0x01"), r#"chain "8453""#),
+            (
+                send().fee(&ClaimAsset::native("base chain"), "1"),
+                r#"chain "base chain""#,
+            ),
+            (
+                send().fee(&ClaimAsset::new("base", " native"), "1"),
+                "fee asset",
+            ),
+        ] {
+            let message = effects.validate().expect_err(expected);
+            assert!(message.contains(expected), "{expected}: {message}");
+        }
+    }
+
+    #[test]
     fn the_route_context_must_be_bloom_s() {
         let effects = ClaimEffects::moves_nothing();
         let build = |ctx: &Ctx, class: &str, payloads: &[PayloadSignItem]| {

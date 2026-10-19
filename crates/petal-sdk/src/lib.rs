@@ -1770,6 +1770,28 @@ mod account_tests {
     }
 
     #[test]
+    fn a_selected_wallet_must_be_one_safe_segment() {
+        struct Status;
+        impl RouteIdentity for Status {
+            const PATH: &'static str = "status.json";
+            const CANONICAL_PATH: &'static str = "status.json";
+            const PARAMS: &'static [(&'static str, usize)] = &[];
+        }
+        // Bloom never selects either wallet; the check keeps one that did out
+        // of every account path. `..` agrees with its own capture, so only the
+        // segment check refuses it.
+        let refused = route_invalid("selected wallet is not a single path segment");
+        let dots = ctx("swaps/../0/new", "..", 0);
+        assert_eq!(wallet_account(&dots).unwrap_err(), refused);
+        // A capture is one segment, so a wallet containing `/` can only arrive
+        // on a route with no `[wallet]` capture to compare it with.
+        let nested = RouteCtx::new("status.json")
+            .account("a/b", 0)
+            .bind::<Status>();
+        assert_eq!(wallet_account(&nested).unwrap_err(), refused);
+    }
+
+    #[test]
     fn a_caller_supplied_wallet_param_cannot_shadow_the_capture() {
         // Bloom never builds this context: its runner refuses caller params
         // that collide with trusted ones. If one did arrive, `route_param`
