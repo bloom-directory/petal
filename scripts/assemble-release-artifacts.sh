@@ -3,8 +3,26 @@
 # the repository root). A relative directory is taken from the caller's
 # working directory. The directory is replaced, so it must be new, empty, or
 # hold only a previous run's artifacts.
+#
+# contract.txt's wit_digest comes from the working tree's contract crate and
+# the archive from HEAD, so the script refuses to run while wit/ or src/
+# differs from HEAD, untracked files included. --allow-dirty skips that check,
+# as it does for cargo package; only tests use it.
 set -eu
 
+usage() {
+  echo "usage: assemble-release-artifacts.sh [--allow-dirty] [directory]" >&2
+  exit 2
+}
+allow_dirty=
+if [ "${1:-}" = --allow-dirty ]; then
+  allow_dirty=1
+  shift
+fi
+[ $# -le 1 ] || usage
+case ${1:-} in
+  -?*) usage ;;
+esac
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 case ${1:-} in
   '') out=$root/dist ;;
@@ -12,6 +30,15 @@ case ${1:-} in
   *) out=$PWD/$1 ;;
 esac
 cd "$root"
+
+if [ -z "$allow_dirty" ]; then
+  dirty=$(git status --porcelain --untracked-files=all -- wit src)
+  if [ -n "$dirty" ]; then
+    echo "assemble-release-artifacts: wit/ or src/ differs from HEAD, so the wit_digest would describe the working tree, not the archived WIT; commit or stash:" >&2
+    printf '%s\n' "$dirty" >&2
+    exit 1
+  fi
+fi
 
 refuse() {
   echo "assemble-release-artifacts: refusing to replace $out, $*" >&2
