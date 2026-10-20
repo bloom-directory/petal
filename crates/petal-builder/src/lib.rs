@@ -640,7 +640,15 @@ fn validate_locked_graph(
             .unwrap_or_default()
     };
     let tested = packages(original);
-    for package in packages(generated) {
+    let resolved = packages(generated);
+    let identity = |package: &toml::Value| {
+        (
+            package.get("name").cloned(),
+            package.get("version").cloned(),
+            package.get("source").cloned(),
+        )
+    };
+    for package in &resolved {
         let name = package
             .get("name")
             .and_then(toml::Value::as_str)
@@ -648,13 +656,71 @@ fn validate_locked_graph(
         if wrappers.contains(name) && package.get("source").is_none() {
             continue;
         }
-        if !tested.contains(&package) {
+        let original = tested.iter().find(|old| identity(old) == identity(package));
+        if original.is_none_or(|old| old.get("checksum") != package.get("checksum")) {
             return Err(format!(
                 "component dependency {name} differs from the tested route Cargo.lock; declare wrapper dependencies in the route workspace, then explicitly refresh and test its lockfile"
             ));
         }
+        let dependencies = |package: &toml::Value| {
+            package
+                .get("dependencies")
+                .and_then(toml::Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let old_dependencies = dependencies(original.unwrap())
+            .iter()
+            .map(|dependency| lock_dependency_identity(dependency, &tested))
+            .collect::<Result<Vec<_>, _>>()?;
+        for dependency in dependencies(package) {
+            if !old_dependencies.contains(&lock_dependency_identity(&dependency, &resolved)?) {
+                return Err(format!(
+                    "component dependency edges for {name} differ from the tested route Cargo.lock; refresh and test the route workspace explicitly"
+                ));
+            }
+        }
     }
     Ok(())
+}
+
+fn lock_dependency_identity(
+    dependency: &toml::Value,
+    packages: &[toml::Value],
+) -> Result<(String, String, Option<String>), String> {
+    let text = dependency.as_str().ok_or("invalid lockfile dependency")?;
+    let mut parts = text.split_whitespace();
+    let name = parts.next().ok_or("empty lockfile dependency")?;
+    let version = parts.next();
+    let source = parts.next().map(|source| source.trim_matches(['(', ')']));
+    let matches = packages
+        .iter()
+        .filter(|package| {
+            package.get("name").and_then(toml::Value::as_str) == Some(name)
+                && version.is_none_or(|version| {
+                    package.get("version").and_then(toml::Value::as_str) == Some(version)
+                })
+                && source.is_none_or(|source| {
+                    package.get("source").and_then(toml::Value::as_str) == Some(source)
+                })
+        })
+        .collect::<Vec<_>>();
+    if matches.len() != 1 {
+        return Err(format!("ambiguous lockfile dependency {text}"));
+    }
+    let package = matches[0];
+    Ok((
+        name.into(),
+        package
+            .get("version")
+            .and_then(toml::Value::as_str)
+            .ok_or("missing locked version")?
+            .into(),
+        package
+            .get("source")
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned),
+    ))
 }
 
 fn build_workspace(
