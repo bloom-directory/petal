@@ -239,12 +239,23 @@ Keep three scopes distinct:
 
 Make each route's metadata capabilities the authority it intentionally needs
 at runtime, within the ceiling inferred from its compiled imports. Make the
-package ceiling the union of capabilities the Petal intentionally uses. A
-capability a route declares but `[caps].allowed` omits is caught by no build
-step when the route does not import it, for example `bloom:vfs.write` on a
-route that only reads: `petal build`, `petal check`, `bloom petals build` and
-install all pass, and every lookup and read of that route then fails with
-`invalid: … metadata requires missing petal.toml cap <cap>`.
+package ceiling the union of capabilities the Petal intentionally uses.
+
+Bloom derives `bloom:vfs.read` and `bloom:vfs.write` from the individual
+`bloom:vfs/readwrite` functions a component imports, while `petal check` counts
+any `bloom:vfs/readwrite` import as both. So a route with parameters that
+declares `bloom:vfs.write` but imports only read functions passes
+`petal build`, `petal check`, `bloom petals build` and install, then fails
+every call with
+`invalid: … metadata requires missing petal.toml cap bloom:vfs.write`, even
+when `[caps].allowed` lists it: the message names `petal.toml`, but the check
+is against the route's imports. Remove the capability from the route's
+metadata. If such a route also imports `bloom:sign`, `bloom petals build` and
+install check its metadata against `[caps].allowed` as well, but it still
+fails the same way at runtime. A route without parameters is checked against
+`[caps].allowed` at build and install only, and Bloom silently drops any
+metadata capability its imports lack.
+
 Refactoring shared dispatch into local handlers often removes imports through
 dead-code elimination, so revisit both scopes after architectural changes.
 
@@ -310,10 +321,12 @@ maximum_lifetime_ms = 86400000
 ```
 
 Every listed class must also appear in `[sign].allowed_intents`. Declare all
-three bounds; a component may later request a narrower subset but never widen
-one. `allowed_crypto_suites` takes exactly the Broker `CryptoSuite` values:
-`secp256k1-keccak256-recoverable` (what EVM chains verify),
-`secp256k1-sha256-recoverable` (off-chain use only; no chain accepts it) and
+three bounds. A component may later request fewer operation classes or crypto
+suites, or a shorter lifetime, never more; `allowed_routes` always applies as
+declared, plus the declaring route itself. `allowed_crypto_suites` takes
+exactly the Broker `CryptoSuite` values: `secp256k1-keccak256-recoverable`
+(what EVM chains verify), `secp256k1-sha256-recoverable` (for verifiers that
+hash with SHA-256; no EVM or Solana transaction or message format uses it) and
 `ed25519-message` (the only suite a Solana wallet permits).
 
 ## Preserve write semantics
@@ -409,13 +422,21 @@ bloom petals uninstall <name-or-hash-prefix>
 
 Know what an install changes:
 
-- The package hash covers every file under the package root except `.git`,
-  `.jj` and `target`. Rebuilding unchanged sources gives the same hash, but any
-  changed or added file, including a stray archive or note in the root, gives a
-  new one. Wallet policy allows Petal packages by hash
-  (`allowed_petal_packages`), so the owner approves a policy update for a new
-  hash before its routes can sign, derive keys or stage transactions for that
-  wallet; reads do not need it.
+- The package hash covers every file under the package root except the
+  top-level `.git` and `.jj` directories and every directory named `target`, at
+  any depth. Those are left out of the package itself, so never name a route
+  directory `target`; a `.git` file, as in a Git worktree, is included. Any
+  changed or added file, including a stray archive or note in the root, gives
+  a new hash. So does building the same sources in another directory or with
+  another toolchain, such as another clone, CI or a GitHub source install: the
+  compiled components embed the checkout's absolute path and depend on the Rust
+  and `wasm-tools` versions. Only a rebuild in the same checkout with the same
+  toolchain can reproduce the hash, and even then `petal build` re-resolves
+  dependencies on every build, so a newer compatible crate release can change
+  it. Wallet policy
+  allows Petal packages by hash (`allowed_petal_packages`), so the owner
+  approves a policy update for a new hash before its routes can sign, derive
+  keys or stage transactions for that wallet; reads do not need it.
 - A new hash starts with an empty private store, unless it is a signed
   successor in an authenticated lineage. Bloom then copies the predecessor's
   store bytes on first use, with no migration hook, so a successor must read
@@ -423,7 +444,8 @@ Know what an install changes:
   including settings and secrets.
 - A signing route is authorized only for the operation classes its installer
   provenance record lists. Without that record the write fails with a plain
-  permission error; for `sign_payload`, Machine's log names the reason
+  permission error; for `sign_payload` with the exact selector, Machine's log
+  names the reason
   (`installer provenance does not authorize <class>`). See
   [Troubleshoot a bare `permission denied`](#troubleshoot-a-bare-permission-denied).
 - `--force` is not a reinstall flag. It replaces or removes a package while
@@ -451,6 +473,10 @@ that signs, enroll it before launching:
 bloom init triad-enroll-developer-petal-provenance <developer-root>/config <root>
 ```
 
+The command exists only in the `triad-dev-harness` build of `bloom` that
+`scripts/triad-dev-launch.sh` builds (`<bloom-checkout>/target/debug/bloom`); a
+packaged `bloom` does not have it.
+
 Enrollment hashes the package directory the way `bloom petals install` does,
 from the components already built under `petal/<name>/`, so run `petal build`
 first and install the same files afterwards. Any file changed or added under
@@ -468,9 +494,11 @@ a route that maps it to `-2` gives a bare `permission denied`, while SDK
 helpers such as `petal::read_store` return `-4`, which reaches the caller as
 `backend: denied` (EIO on the mount). Work through the candidates:
 
-- **Route shape.** A `[wallet]` not immediately followed by `[index]`, or an
-  `[index]` not immediately preceded by `[wallet]`, installs without error, but
-  Bloom refuses every call to it at dispatch and logs nothing. The route still
+- **Route shape.** A `[wallet]` not immediately followed by `[index]`, an
+  `[index]` not immediately preceded by `[wallet]`, or a suffixed capture such
+  as `[index].json` draws a `warning: route …` from `petal build` and
+  `petal check` but installs without error. Bloom then refuses every call to it
+  at dispatch and logs nothing. The route still
   appears in directory listings, so a listed file can be unreadable. The
   exception is a directory route ending at `[wallet]` with
   `[wallet]/[index]/...` routes beneath it: Bloom lists the accounts itself, so
@@ -482,28 +510,36 @@ helpers such as `petal::read_store` return `-4`, which reaches the caller as
   id names that policy update instead. It becomes `permission denied` only when
   the route returns `-2` for it, and then its message is lost, so record the
   pending state in a readable file. After the owner approves, retry the exact
-  same write. A retry with a changed payload is a new request with its own
-  approval. A retry that keeps the payload but changes its `action`, advisory or
-  claim is refused (`exact signing retry differs from its persisted operation
-  identity`). A retry before the owner approves is refused (`approval is not
-  active`), and one five minutes after the first attempt opens a new ceremony.
+  same write. A retry that changes the payload or the claim, including the
+  claim's nonce or effects, is a new request with its own approval. A retry
+  that keeps the claim but changes its `action` or `advisory` is refused
+  (`exact signing retry differs from its persisted operation identity`). A
+  retry before the owner approves is refused (`approval is not active`), and
+  one five minutes after the first attempt opens a new ceremony.
   Do not pass the pending action id back as `approval_hint`; a hint other than
   the derived request id is refused.
-- **One live ceremony per wallet.** While an owner ceremony is pending, any
-  other signing request on that wallet is refused with
-  `CEREMONY_RATE_LIMITED: wallet already has a live ceremony; retry after <ms>`.
-  Finish or wait out the pending ceremony before the next signing write.
+- **One live ceremony per wallet.** While an owner ceremony is pending, a
+  signing request on that wallet that needs a new ceremony is refused with
+  `CEREMONY_RATE_LIMITED`
+  (`wallet already has a live ceremony; retry after <n> ms`). The same code
+  also reports a cancellation backoff and the rolling per-wallet quota. The
+  route sees only a denial. Machine's `petal.sign_payload_denied` line carries
+  the code, in `reason` with the full message on the exact path and in
+  `protocol_error_code` on the reusable path; Broker's `rpc.completed` carries
+  the code only. Finish or wait out the pending ceremony before the next
+  signing write.
 - **Signing refused.** Missing installer provenance for the operation class, a
   wallet policy that does not allow the package hash or a destination, an
   approval that is not yet active, spent or expired, or a reused approval hint.
   For `sign_payload`, Machine logs most of these at WARN as
-  `petal.sign_payload_denied`, with `wallet` and `operation_class`, usually
-  `package_hash`, `route` and `request_id`, and a `reason` or
-  `protocol_error_code`. `sign_payload_batch` refusals are not logged under
-  that name. A batch refused by Machine, for example for missing installer
-  provenance, leaves no log line at all; Broker errors on the exact path appear
-  at ERROR as `petal exact batch signing failed`, and the reusable path logs
-  nothing.
+  `petal.sign_payload_denied`. On the exact path the line carries `wallet` and
+  `operation_class`, usually with `package_hash`, `route`, `request_id` and a
+  `reason`; when Broker refuses a reusable request, it carries only
+  `package_hash`, `route` and `protocol_error_code`. `sign_payload_batch`
+  refusals are not logged under that name. A batch refused by Machine, for
+  example for missing installer provenance, leaves no log line at all; Broker
+  errors on the exact path appear at ERROR as
+  `petal exact batch signing failed`, and the reusable path logs nothing.
   Refusals checked inside the route runtime, such as an operation class outside
   the route's `sign_intent` or `[sign].allowed_intents`, a signing route without
   `[wallet]/[index]`, or a wallet that differs from the routed one, are not
@@ -544,9 +580,17 @@ Broker refusals also appear in the Broker log as `broker.authority_rejected`,
 `broker.signer_operation_rejected`, or `rpc.completed` with a
 `protocol_error_code` such as `CEREMONY_RATE_LIMITED`: `<log-dir>/broker.log` on
 a developer triad, `/private/var/log/bloom/<uid>/broker.jsonl` on macOS, and
-`journalctl -t bloom-broker-<uid> -o cat` on Linux. Route-shape refusals and the
-unlogged denials above leave nothing in either log, so check the route pattern,
-its declared capabilities and its manifest grants first.
+`journalctl -t bloom-broker-<uid> -o cat` on Linux. Broker's JSON Lines carry
+the event name under `.fields.event`, not `.fields.message`:
+
+```sh
+jq -cR 'fromjson? | select(.fields.event == "broker.authority_rejected")' \
+  /private/var/log/bloom/<uid>/broker.jsonl
+```
+
+Route-shape refusals and the unlogged denials above leave nothing in either
+log, so check the route pattern, its declared capabilities and its manifest
+grants first.
 
 ## Review checklist
 

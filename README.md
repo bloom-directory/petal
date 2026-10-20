@@ -79,6 +79,7 @@ binaries. Git tags identify source provenance but are not the terminal Cargo
 dependency channel.
 
 `scripts/release-check.sh` runs the release gates and assembles the canonical
-WIT archive, contract provenance, and SHA-256 checksums under `dist/`. A pushed
+WIT archive, contract provenance, the Petal development skill, and SHA-256
+checksums under `dist/`. A pushed
 version tag publishes those artifacts through GitHub Releases. crates.io
 publication is performed in dependency order: contract, SDK, builder, CLI.
