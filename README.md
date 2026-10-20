@@ -70,7 +70,8 @@ or a version requirement such as `=0.1.0`. `petal build`, `petal check` and
   `[replace]`, which generated route components ignore.
 
 The component build starts from the route workspace's committed lockfile and
-resolves wrapper packages offline. It refuses dependency changes before compiling.
+resolves wrapper packages without accepting dependency graph changes. Missing
+locked sources may be fetched; provision them first to use Cargo's offline mode.
 Declare any additional wrapper dependencies in the route workspace so route
 tests and generated components exercise the same graph.
 

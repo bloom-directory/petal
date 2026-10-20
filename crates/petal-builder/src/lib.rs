@@ -443,11 +443,17 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     reuse_route_lockfile(&root, &workspace, config, &routes)?;
     let artifacts = build_workspace(&workspace, &routes, config.jobs)?;
 
-    let staging = build_root.join("staging").join(&config.name);
-    if staging.exists() {
-        fs::remove_dir_all(&staging).map_err(display_err("remove", &staging))?;
-    }
-    fs::create_dir_all(&staging).map_err(display_err("create", &staging))?;
+    let generation = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let staging = build_root.join("staging").join(format!(
+        "{}-{}-{generation}",
+        config.name,
+        std::process::id()
+    ));
+    fs::create_dir_all(staging.parent().unwrap()).map_err(display_err("create", &build_root))?;
+    fs::create_dir(&staging).map_err(display_err("create", &staging))?;
     let mut failures = Vec::new();
     for route in &routes {
         let result = (|| {
@@ -540,19 +546,8 @@ fn generate_workspace(
             "[workspace]\nresolver = \"2\"\nmembers = [\n{members}\n]\n\n[profile.release]\nopt-level = 3\ndebug = false\nstrip = \"none\"\ndebug-assertions = false\noverflow-checks = false\nlto = false\npanic = \"unwind\"\nincremental = false\ncodegen-units = 16\nrpath = false\n"
         ),
     )?;
-    let wanted = routes
-        .iter()
-        .map(|r| r.package.as_str())
-        .collect::<BTreeSet<_>>();
     let members_dir = workspace.join("members");
     fs::create_dir_all(&members_dir).map_err(display_err("create", &members_dir))?;
-    for entry in fs::read_dir(&members_dir).map_err(display_err("read", &members_dir))? {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        if path.is_dir() && !wanted.contains(path.file_name().and_then(OsStr::to_str).unwrap_or(""))
-        {
-            fs::remove_dir_all(&path).map_err(display_err("prune", &path))?;
-        }
-    }
     for route in routes {
         let dir = members_dir.join(&route.package);
         let sdk = route_sdk_dependency(root, config)?.to_string();
@@ -603,10 +598,10 @@ fn reuse_route_lockfile(
         )
     })?;
     fs::write(generated.join("Cargo.lock"), &seed).map_err(display_err("seed", generated))?;
-    // Cargo adds only the generated wrapper packages. Resolve offline from the
-    // tested lock, then reject any dependency graph change before compilation.
+    // Cargo adds the generated wrapper packages from the tested lock. Missing
+    // locked sources may be fetched; graph changes are refused before compilation.
     let output = Command::new("cargo")
-        .args(["metadata", "--offline", "--format-version=1"])
+        .args(["metadata", "--format-version=1"])
         .arg("--manifest-path")
         .arg(generated.join("Cargo.toml"))
         .output()
@@ -1786,9 +1781,15 @@ fn path_from_member(member: &Path, target: &Path) -> Result<String, String> {
 }
 
 fn replace_dir(staging: &Path, destination: &Path) -> Result<(), String> {
-    let backup = destination.with_extension("petal-builder-backup");
+    // The fresh generation owns this sibling name under target/, outside the
+    // package tree. Preserve previous output rather than recursively deleting
+    // it: unrelated files cannot disappear or enter the new runtime tree.
+    let backup = staging.with_extension("previous");
     if backup.exists() {
-        fs::remove_dir_all(&backup).map_err(display_err("remove", &backup))?;
+        return Err(format!(
+            "refusing to overwrite retained output {}",
+            backup.display()
+        ));
     }
     let had_destination = destination.exists();
     if had_destination {
@@ -1802,7 +1803,7 @@ fn replace_dir(staging: &Path, destination: &Path) -> Result<(), String> {
         return Err(format!("install {}: {error}", destination.display()));
     }
     if backup.exists() {
-        fs::remove_dir_all(&backup).map_err(display_err("remove", &backup))?;
+        eprintln!("previous output retained at {}", backup.display());
     }
     Ok(())
 }
@@ -1930,6 +1931,44 @@ mod tests {
         generated["package"].as_array_mut().unwrap()[0]["checksum"] =
             toml::Value::String("tampered".into());
         assert!(validate_locked_graph(&original, &generated, &wrappers).is_err());
+    }
+
+    #[test]
+    fn component_graph_prunes_dev_dependencies_without_switching_existing_versions() {
+        let original: toml::Table = toml::from_str("version = 4\n[[package]]\nname = \"route\"\nversion = \"0.1.0\"\ndependencies = [\"dependency 1.0.0\", \"dev\"]\n[[package]]\nname = \"dependency\"\nversion = \"1.0.0\"\n[[package]]\nname = \"dependency\"\nversion = \"2.0.0\"\n[[package]]\nname = \"dev\"\nversion = \"1.0.0\"\n").unwrap();
+        let mut generated = original.clone();
+        generated["package"].as_array_mut().unwrap()[0]["dependencies"] =
+            toml::Value::Array(vec![toml::Value::String("dependency 1.0.0".into())]);
+        validate_locked_graph(&original, &generated, &BTreeSet::new()).unwrap();
+        generated["package"].as_array_mut().unwrap()[0]["dependencies"] =
+            toml::Value::Array(vec![toml::Value::String("dependency 2.0.0".into())]);
+        assert!(
+            validate_locked_graph(&original, &generated, &BTreeSet::new())
+                .unwrap_err()
+                .contains("dependency edges for route")
+        );
+    }
+
+    #[test]
+    fn replacing_components_removes_stale_output_and_preserves_unrelated_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("target/generation");
+        let output = tmp.path().join("petal/demo");
+        fs::create_dir_all(&staging).unwrap();
+        fs::create_dir_all(&output).unwrap();
+        fs::write(staging.join("new.wasm"), b"new component").unwrap();
+        fs::write(output.join("old.wasm"), b"stale component").unwrap();
+        fs::write(output.join("notes.txt"), b"preserve me").unwrap();
+        replace_dir(&staging, &output).unwrap();
+        assert!(output.join("new.wasm").is_file());
+        assert!(!output.join("old.wasm").exists());
+        assert_eq!(
+            fs::read(staging.with_extension("previous").join("notes.txt")).unwrap(),
+            b"preserve me"
+        );
+        let missing = tmp.path().join("target/missing");
+        assert!(replace_dir(&missing, &output).is_err());
+        assert_eq!(fs::read(output.join("new.wasm")).unwrap(), b"new component");
     }
 
     #[test]
