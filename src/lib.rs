@@ -14,6 +14,14 @@ pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
 pub const BUILD_MANIFEST_SCHEMA: &str = "bloom.petal.build-manifest.v1";
 pub const PACKAGE_DIGEST_PREFIX: &[u8] = b"bloom.petal.package.v1\0";
 
+/// The reserved route captures for a wallet-scoped route. Bloom only grants a
+/// Petal wallet authority on a route that declares these two adjacently, so the
+/// names are part of the contract rather than a convention. They were spelled
+/// as bare literals in the SDK, the builder and nine sites in Bloom's router
+/// before living here.
+pub const WALLET_CAPTURE: &str = "[wallet]";
+pub const ACCOUNT_INDEX_CAPTURE: &str = "[index]";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostInterface {
     RouteTypes,

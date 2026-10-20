@@ -86,20 +86,26 @@ module tree. Every `.rs` file below it becomes a separately compiled component:
   `markets/<slug>/book.json`;
 - a bracketed segment such as `[slug]` is available through
   `petal::param(ctx, "slug")`;
-- `[wallet]` is reserved for a Bloom wallet id under `/wallets/<id>`, and
-  an account-bound route must follow it immediately with `[index]`, the
-  numbered account, for example `intents/[wallet]/[index]/new`. Bloom resolves
-  both against its own wallet projection before the route runs. It refuses a
-  `[wallet]` that is not immediately followed by `[index]`, and an `[index]`
-  that is not immediately preceded by `[wallet]`. A suffixed capture such as
-  `[index].json` is not `[index]`, so `[wallet]/[index].json.rs` is refused
-  too, although `petal build`, `petal check` and `bloom petals build` all
-  accept it. An unknown wallet or account number is `not found`, never
-  `permission denied`. Read the wallet with
-  `petal::wallet_param(ctx)`; the host also supplies the trusted
-  `bloom.wallet` and `bloom.account` parameters. There is no implicit
-  account 0, and every account, including 0, has its own private store. Use a
-  distinct parameter such as `[account]` for an on-chain address;
+- `[wallet]` and `[index]` are reserved for the route's own Bloom wallet and
+  numbered account, and Bloom grants wallet authority only to the exact
+  adjacent segments `<feature>/[wallet]/[index]/...`, for example
+  `intents/[wallet]/[index]/new`, resolving both against its own wallet
+  projection before the route runs. It refuses any other shape before the
+  Petal runs: a `[wallet]` not immediately followed by `[index]`, such as
+  `[wallet]/[account]`, an `[index]` not immediately preceded by `[wallet]`,
+  and a suffixed capture, so `[wallet]/[index].json.rs` is refused too.
+  `petal build` and `petal check` warn about such a shape but still succeed,
+  and `bloom petals build` accepts it. An unknown wallet or account number is
+  `not found`, never `permission denied`. Read the pair with
+  `petal::wallet_account(ctx)`, which reads the trusted `bloom.wallet` and
+  `bloom.account` parameters the host supplies. There is no implicit
+  account 0, and every account, including 0, has its own private store;
+- `<feature>/[wallet]/$index.rs` above those routes is
+  `petal::account_listing!()`, because Bloom lists the accounts itself;
+- the account's own on-chain address comes from Bloom's account projection,
+  through `address_evm()` or `address_sol()` on the `petal::WalletAccount`, or
+  its `address_evm_path()` or `address_sol_path()` leaf; never capture it as a
+  route segment;
 - `$list.rs` is unsupported; use `$index.rs`.
 
 Directory contents are explicit. Use `list` for a fixed child list,
@@ -110,10 +116,19 @@ does not happen automatically.
 
 Validate parameters for their domain before using them in URLs, storage keys,
 or VFS paths. Before interpolating a value into a URL, enforce its strict
-domain grammar or encode it as a URL path segment. Use `petal::is_safe_segment`
-for VFS or storage path segments; it is not sufficient URL validation. Do not
-assume supplied context parameters are safe merely because the source filename
-uses brackets.
+domain grammar or encode it as a URL path segment. Do not assume supplied
+context parameters are safe merely because the source filename uses brackets.
+
+- The route's own wallet and account come from `petal::wallet_account(ctx)`,
+  which reads the pair Bloom resolved before dispatch. Build paths under it
+  with its bounded `path()`.
+- A wallet id from a request body or stored state goes through
+  `petal::validate_wallet_segment` before it becomes a VFS path segment or a
+  store key. `petal::validate_wallet_id` is wider, admitting `.` and `/`, and
+  is only for the wire boundary.
+- `petal::is_safe_segment` judges one segment and admits `/`, so it is not a
+  wallet-id check. Split any multi-segment value on `/` and check each part.
+  It is not URL validation either.
 
 ## Select the local handler and spec
 
