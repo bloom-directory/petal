@@ -403,6 +403,7 @@ pub mod sdk {
     const SECRET_NS: &str = "secrets";
 
     pub fn http_fetch(req: &HttpRequest, max_bytes: usize) -> Result<HttpResponse, SdkError> {
+        set_host_reason(None);
         let resp = http::fetch(&http::Request {
             method: req.method.clone(),
             url: req.url.clone(),
@@ -426,6 +427,7 @@ pub mod sdk {
     }
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
+        set_host_reason(None);
         let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
             .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
@@ -433,6 +435,7 @@ pub mod sdk {
     }
 
     pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
+        set_host_reason(None);
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
         let request_jcs = serde_jcs::to_vec(request)
             .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))?;
@@ -442,6 +445,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
+        set_host_reason(None);
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         let request = sign::PayloadSignRequest {
             wallet: req.wallet.clone(),
@@ -467,6 +471,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<SignBatchOutcome, SdkError> {
+        set_host_reason(None);
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         super::validate_payload_batch(&req.payloads)?;
         let request = sign::PayloadBatchSignRequest {
@@ -515,6 +520,7 @@ pub mod sdk {
     }
 
     pub fn tx_stage(req: &EvmTransaction) -> Result<StagedTransaction, SdkError> {
+        set_host_reason(None);
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         tx::stage(&tx::EvmTransaction {
             wallet: req.wallet.clone(),
@@ -536,6 +542,7 @@ pub mod sdk {
         outbox_id: &str,
         acknowledge_warnings: bool,
     ) -> Result<StagedTransaction, SdkError> {
+        set_host_reason(None);
         super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::confirm(wallet, chain_name, outbox_id, acknowledge_warnings)
             .map(staged_transaction)
@@ -547,6 +554,7 @@ pub mod sdk {
         chain_name: &str,
         outbox_id: &str,
     ) -> Result<OutboxInspection, SdkError> {
+        set_host_reason(None);
         super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::inspect(wallet, chain_name, outbox_id)
             .map(|inspection| OutboxInspection {
@@ -563,6 +571,7 @@ pub mod sdk {
         method: &str,
         params_json: &str,
     ) -> Result<String, SdkError> {
+        set_host_reason(None);
         chain::call(&chain::Request {
             chain: chain_name.into(),
             method: method.into(),
@@ -573,6 +582,7 @@ pub mod sdk {
     }
 
     pub fn store_get(key: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
+        set_host_reason(None);
         let namespace = namespace_for_key(key, false);
         let Some(bytes) = store::get(namespace, key).map_err(host_err)? else {
             return Err(SdkError::Host(HostStatus::NotFound));
@@ -586,26 +596,31 @@ pub mod sdk {
     }
 
     pub fn store_put(key: &str, value: &[u8], secret: bool) -> Result<(), SdkError> {
+        set_host_reason(None);
         let namespace = namespace_for_key(key, secret);
         store::put(namespace, key, value, namespace == SECRET_NS).map_err(host_err)
     }
 
     pub fn store_put_new(key: &str, value: &[u8], secret: bool) -> Result<(), SdkError> {
+        set_host_reason(None);
         let namespace = namespace_for_key(key, secret);
         store::put_new(namespace, key, value, namespace == SECRET_NS).map_err(host_err)
     }
 
     pub fn store_del(key: &str) -> Result<(), SdkError> {
+        set_host_reason(None);
         let namespace = namespace_for_key(key, false);
         store::delete(namespace, key).map_err(host_err)
     }
 
     pub fn store_del_if_value(key: &str, expected: &[u8]) -> Result<(), SdkError> {
+        set_host_reason(None);
         let namespace = namespace_for_key(key, false);
         store::delete_if_value(namespace, key, expected).map_err(host_err)
     }
 
     pub fn store_list(prefix: &str, max_bytes: usize) -> Result<Vec<String>, SdkError> {
+        set_host_reason(None);
         let namespace = namespace_for_key(prefix, false);
         let keys = store::list(namespace, prefix).map_err(host_err)?;
         let size = keys.iter().map(|key| key.len()).sum::<usize>();
@@ -616,6 +631,7 @@ pub mod sdk {
     }
 
     pub fn vfs_read(path: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
+        set_host_reason(None);
         let bytes = vfs::read(path).map_err(host_err)?;
         if bytes.len() > max_bytes {
             return Err(SdkError::Host(HostStatus::BufferTooSmall {
@@ -626,10 +642,12 @@ pub mod sdk {
     }
 
     pub fn vfs_write(path: &str, body: &[u8]) -> Result<(), SdkError> {
+        set_host_reason(None);
         vfs::write(path, body).map_err(host_err)
     }
 
     pub fn vfs_list(path: &str, max_bytes: usize) -> Result<Vec<String>, SdkError> {
+        set_host_reason(None);
         let _ = vfs::lookup(path).map_err(host_err)?;
         let entries = vfs::list(path).map_err(host_err)?;
         let size = entries.iter().map(|entry| entry.name.len()).sum::<usize>();
@@ -640,19 +658,23 @@ pub mod sdk {
     }
 
     pub fn now_ms() -> u64 {
+        set_host_reason(None);
         env::now_ms().unwrap_or(0)
     }
 
     pub fn try_now_ms() -> Result<u64, SdkError> {
+        set_host_reason(None);
         env::now_ms().map_err(host_err)
     }
 
     pub fn random_bytes(len: usize) -> Result<Vec<u8>, SdkError> {
+        set_host_reason(None);
         let len = u32::try_from(len).map_err(|_| SdkError::Host(HostStatus::Invalid))?;
         env::random_bytes(len).map_err(host_err)
     }
 
     pub fn runtime_setting(key: &str) -> Result<Option<String>, SdkError> {
+        set_host_reason(None);
         env::setting(key).map_err(host_err)
     }
 
@@ -749,6 +771,29 @@ pub mod sdk {
         }
 
         #[test]
+        fn backend_words_do_not_reclassify_the_error_or_leave_a_reason() {
+            host_err("denied: previous policy".into());
+            let message = "backend: invalid response: permission information not found";
+            assert_eq!(host_err(message.into()), SdkError::Message(message.into()));
+            assert_eq!(take_host_reason(), None);
+        }
+
+        #[test]
+        fn sdk_local_failure_clears_a_previous_host_reason() {
+            host_err("denied: previous policy".into());
+            assert!(super::request_key(b"{}").is_err());
+            assert_eq!(take_host_reason(), None);
+        }
+
+        #[test]
+        fn classified_reason_is_bounded_without_splitting_utf8() {
+            host_err(format!("invalid: {}", "é".repeat(600)));
+            let reason = take_host_reason().unwrap();
+            assert_eq!(reason.chars().count(), 512);
+            assert!(reason.chars().all(|c| c == 'é'));
+        }
+
+        #[test]
         fn an_unclassified_host_error_still_reaches_the_route_intact() {
             let _ = take_host_reason();
             let error = host_err("backend: broker unreachable".into());
@@ -770,7 +815,7 @@ pub mod sdk {
             let _ = take_host_reason();
             host_err("denied: old policy refusal".into());
             host_err("backend: broker unreachable".into());
-            assert_eq!(take_host_reason().as_deref(), Some("broker unreachable"));
+            assert_eq!(take_host_reason(), None);
             assert_eq!(take_host_reason(), None);
         }
     }
@@ -821,26 +866,25 @@ pub mod sdk {
     }
 
     fn host_err(message: String) -> SdkError {
-        // The host writes `<label>: <reason>`. Keep the reason; a message that
-        // is only a label has nothing to add.
-        set_host_reason(
-            message
-                .split_once(": ")
-                .map(|(_, reason)| reason.to_string())
-                .filter(|reason| !reason.is_empty()),
-        );
-        let lower = message.to_ascii_lowercase();
-        if lower.contains("not found") {
-            SdkError::Host(HostStatus::NotFound)
-        } else if lower.contains("denied") || lower.contains("permission") {
-            SdkError::Host(HostStatus::Denied)
-        } else if lower.contains("invalid") {
-            SdkError::Host(HostStatus::Invalid)
-        } else {
-            // Unclassified messages already reach the route intact. The slot
-            // is still replaced above, so nothing older survives this call.
-            SdkError::Message(message)
+        set_host_reason(None);
+        let (label, reason) = message.split_once(": ").unwrap_or((&message, ""));
+        let status = match label.to_ascii_lowercase().as_str() {
+            "not found" => HostStatus::NotFound,
+            "denied" | "permission denied" => HostStatus::Denied,
+            "invalid" => HostStatus::Invalid,
+            // Words in a backend explanation are not a status prefix.
+            _ => return SdkError::Message(message),
+        };
+        if !reason.is_empty() {
+            set_host_reason(Some(
+                reason
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(512)
+                    .collect(),
+            ));
         }
+        SdkError::Host(status)
     }
 }
 
