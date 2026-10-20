@@ -51,12 +51,12 @@ contract release.
 
 ## Pinning the SDK
 
-A Petal pins the SDK in two places. `[sdk]` in `petal-build.toml` is what the
-generated route components build against. The `bloom-petal-sdk` dependency in
-`route/Cargo.toml`, resolved in `route/Cargo.lock`, is what the shared route
-crate and its host-side tests build against.
+A Petal pins the SDK in the route crate's Cargo dependencies, including renamed
+or workspace-inherited dependencies. Generated components use that same source
+and feature selection. `[sdk]` in `petal-build.toml` is optional transitional
+validation: remove it, or keep it equal to the route dependency.
 
-`[sdk]` must be an exact pin: a git `rev` that is a full 40-character commit,
+The route SDK must be an exact pin: a git `rev` that is a full 40-character commit,
 or a version requirement such as `=0.1.0`. `petal build`, `petal check` and
 `petal package` then refuse a Petal when:
 
@@ -69,7 +69,12 @@ or a version requirement such as `=0.1.0`. `petal build`, `petal check` and
 - the route crate or its workspace overrides the SDK with `[patch]` or
   `[replace]`, which generated route components ignore.
 
-To upgrade, change every pin to the same version or commit, then refresh the
+The component build starts from the route workspace's committed lockfile and
+resolves wrapper packages offline. It refuses dependency changes before compiling.
+Declare any additional wrapper dependencies in the route workspace so route
+tests and generated components exercise the same graph.
+
+To upgrade, change the route SDK pin (and any remaining transitional pins), then refresh the
 lockfile:
 
 ```sh

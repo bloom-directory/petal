@@ -35,6 +35,7 @@ pub struct BuildConfig {
     pub routes: PathBuf,
     pub output: PathBuf,
     pub route_crate: RouteCrate,
+    #[serde(default)]
     pub sdk: SdkDependency,
     #[serde(default)]
     pub dependencies: BTreeMap<String, toml::Value>,
@@ -63,6 +64,18 @@ pub struct SdkDependency {
     pub git: Option<String>,
     #[serde(default)]
     pub rev: Option<String>,
+}
+
+impl Default for SdkDependency {
+    fn default() -> Self {
+        Self {
+            package: default_sdk_package(),
+            version: None,
+            path: None,
+            git: None,
+            rev: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -125,7 +138,13 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<BuildConfig, String> {
     validate_relative(&config.output, "output")?;
     validate_relative(&config.route_crate.path, "route_crate.path")?;
     validate_alias(&config.route_crate.alias)?;
-    validate_sdk(&config.sdk)?;
+    if config.sdk.version.is_some()
+        || config.sdk.path.is_some()
+        || config.sdk.git.is_some()
+        || config.sdk.rev.is_some()
+    {
+        validate_sdk(&config.sdk)?;
+    }
     Ok(config)
 }
 
@@ -421,7 +440,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     let build_root = root.join("target/petal-routes");
     let workspace = build_root.join("workspace");
     generate_workspace(&root, &workspace, &routes, config)?;
-    generate_lockfile(&workspace)?;
+    reuse_route_lockfile(&root, &workspace, config, &routes)?;
     let artifacts = build_workspace(&workspace, &routes, config.jobs)?;
 
     let staging = build_root.join("staging").join(&config.name);
@@ -536,7 +555,7 @@ fn generate_workspace(
     }
     for route in routes {
         let dir = members_dir.join(&route.package);
-        let sdk = dependency_toml(&config.sdk, root)?;
+        let sdk = route_sdk_dependency(root, config)?.to_string();
         let route_path = root.join(&config.route_crate.path);
         let route_path = path_from_member(&dir, &route_path)?;
         let mut dependencies = String::new();
@@ -568,13 +587,74 @@ fn generate_workspace(
     Ok(())
 }
 
-fn generate_lockfile(workspace: &Path) -> Result<(), String> {
-    command(
-        Command::new("cargo")
-            .arg("generate-lockfile")
-            .arg("--manifest-path")
-            .arg(workspace.join("Cargo.toml")),
-    )
+fn reuse_route_lockfile(
+    root: &Path,
+    generated: &Path,
+    config: &BuildConfig,
+    routes: &[Route],
+) -> Result<(), String> {
+    let route_dir = root.join(&config.route_crate.path);
+    let manifest = read_toml(&route_dir.join("Cargo.toml"))?;
+    let original = workspace_dir(root, &route_dir, &manifest)?.join("Cargo.lock");
+    let seed = fs::read(&original).map_err(|error| {
+        format!(
+            "read {}: {error}; commit the route workspace lockfile before building components",
+            original.display()
+        )
+    })?;
+    fs::write(generated.join("Cargo.lock"), &seed).map_err(display_err("seed", generated))?;
+    // Cargo adds only the generated wrapper packages. Resolve offline from the
+    // tested lock, then reject any dependency graph change before compilation.
+    let output = Command::new("cargo")
+        .args(["metadata", "--offline", "--format-version=1"])
+        .arg("--manifest-path")
+        .arg(generated.join("Cargo.toml"))
+        .output()
+        .map_err(|error| format!("resolve component graph: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "component dependencies must be provisioned in the route workspace first; refresh and test its Cargo.lock explicitly:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let old: toml::Table =
+        toml::from_str(std::str::from_utf8(&seed).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+    let new = read_toml(&generated.join("Cargo.lock"))?;
+    let wrappers = routes
+        .iter()
+        .map(|route| route.package.as_str())
+        .collect::<BTreeSet<_>>();
+    validate_locked_graph(&old, &new, &wrappers)
+}
+
+fn validate_locked_graph(
+    original: &toml::Table,
+    generated: &toml::Table,
+    wrappers: &BTreeSet<&str>,
+) -> Result<(), String> {
+    let packages = |lock: &toml::Table| {
+        lock.get("package")
+            .and_then(toml::Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let tested = packages(original);
+    for package in packages(generated) {
+        let name = package
+            .get("name")
+            .and_then(toml::Value::as_str)
+            .ok_or("lock package missing name")?;
+        if wrappers.contains(name) && package.get("source").is_none() {
+            continue;
+        }
+        if !tested.contains(&package) {
+            return Err(format!(
+                "component dependency {name} differs from the tested route Cargo.lock; declare wrapper dependencies in the route workspace, then explicitly refresh and test its lockfile"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn build_workspace(
@@ -1004,25 +1084,84 @@ fn validate_sdk(sdk: &SdkDependency) -> Result<(), String> {
     Ok(())
 }
 
-fn dependency_toml(sdk: &SdkDependency, root: &Path) -> Result<String, String> {
-    let mut table = toml::map::Map::new();
-    table.insert("package".into(), toml::Value::String(sdk.package.clone()));
-    if let Some(version) = &sdk.version {
-        table.insert("version".into(), toml::Value::String(version.clone()));
-    }
-    if let Some(path) = &sdk.path {
+/// Resolve the route's actual SDK dependency, preserving feature selection.
+/// `[sdk]` is only an optional migration assertion; it never drives compilation.
+fn route_sdk_dependency(root: &Path, config: &BuildConfig) -> Result<toml::Value, String> {
+    let crate_dir = root.join(&config.route_crate.path);
+    let manifest = read_toml(&crate_dir.join("Cargo.toml"))?;
+    let workspace = workspace_dir(root, &crate_dir, &manifest)?;
+    let workspace_manifest = read_toml(&workspace.join("Cargo.toml"))?;
+    let mut matches = Vec::new();
+    for (key, value) in manifest
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flatten()
+    {
+        let inherited = value.get("workspace").and_then(toml::Value::as_bool) == Some(true);
+        let dependency = if inherited {
+            workspace_manifest
+                .get("workspace")
+                .and_then(|v| v.get("dependencies"))
+                .and_then(|v| v.get(key))
+                .ok_or_else(|| format!("missing workspace dependency {key}"))?
+        } else {
+            value
+        };
+        if dependency_package(key, dependency) != config.sdk.package {
+            continue;
+        }
+        let mut table = match dependency {
+            toml::Value::String(version) => {
+                toml::Table::from_iter([("version".into(), toml::Value::String(version.clone()))])
+            }
+            toml::Value::Table(table) => table.clone(),
+            _ => return Err("SDK dependency must be a version or table".into()),
+        };
+        if inherited {
+            for field in ["features", "default-features"] {
+                if let Some(local) = value.get(field) {
+                    if field == "features" {
+                        let existing = table
+                            .entry(field)
+                            .or_insert_with(|| toml::Value::Array(Vec::new()));
+                        existing
+                            .as_array_mut()
+                            .ok_or("SDK features must be an array")?
+                            .extend(
+                                local
+                                    .as_array()
+                                    .ok_or("SDK features must be an array")?
+                                    .iter()
+                                    .cloned(),
+                            );
+                    } else {
+                        table.insert(field.into(), local.clone());
+                    }
+                }
+            }
+        }
+        if table.get("optional").and_then(toml::Value::as_bool) == Some(true) {
+            return Err("route SDK dependency must not be optional".into());
+        }
+        if let Some(path) = table.get("path").and_then(toml::Value::as_str) {
+            let base = if inherited { &workspace } else { &crate_dir };
+            let path = resolve_sdk_path(base, Path::new(path))?;
+            table.insert(
+                "path".into(),
+                toml::Value::String(path.to_string_lossy().into_owned()),
+            );
+        }
         table.insert(
-            "path".into(),
-            toml::Value::String(root.join(path).to_string_lossy().into_owned()),
+            "package".into(),
+            toml::Value::String(config.sdk.package.clone()),
         );
+        matches.push(toml::Value::Table(table));
     }
-    if let Some(git) = &sdk.git {
-        table.insert("git".into(), toml::Value::String(git.clone()));
+    if matches.len() != 1 {
+        return Err("route crate must declare exactly one bloom-petal-sdk dependency".into());
     }
-    if let Some(rev) = &sdk.rev {
-        table.insert("rev".into(), toml::Value::String(rev.clone()));
-    }
-    Ok(toml::Value::Table(table).to_string())
+    Ok(matches.remove(0))
 }
 
 /// The crates.io index, in the forms Cargo writes to a lockfile.
@@ -1367,7 +1506,33 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
 pub fn check_sdk_pin(root: impl AsRef<Path>, config: &BuildConfig) -> Result<(), String> {
     let root = root.as_ref();
     let package = &config.sdk.package;
-    let expected = configured_sdk_source(root, &config.sdk)?;
+    let resolved = route_sdk_dependency(root, config)?;
+    let expected = dependency_source(root, package, &resolved)?;
+    match &expected {
+        SdkSource::Git {
+            rev: Some(rev),
+            other_ref: None,
+            ..
+        } if is_full_commit(rev) => {}
+        SdkSource::Version {
+            requirement,
+            registry: None,
+        } if is_exact_version(requirement) => {}
+        SdkSource::Path(_) => {}
+        _ => {
+            return Err(format!(
+                "route SDK requires an immutable source, got {expected}"
+            ));
+        }
+    }
+    if (config.sdk.version.is_some() || config.sdk.path.is_some() || config.sdk.git.is_some())
+        && configured_sdk_source(root, &config.sdk)? != expected
+    {
+        return Err(format!(
+            "SDK pinned inconsistently: [sdk] {}; route/Cargo.toml SDK {expected}. Update the route dependency and remove or align [sdk].",
+            configured_sdk_source(root, &config.sdk)?
+        ));
+    }
     let sdk_repo = match &expected {
         SdkSource::Git { url, .. } => Some(url.clone()),
         _ => None,
@@ -1647,6 +1812,61 @@ mod tests {
     }
 
     #[test]
+    fn sdk_source_without_build_pin_preserves_workspace_features() {
+        let (tmp, mut config) = pin_fixture(
+            SdkDependency::default(),
+            "[dependencies]\nrenamed = { workspace = true, features = [\"consumer\"] }\n",
+            None,
+        );
+        fs::write(tmp.path().join("Cargo.toml"), format!(
+            "[workspace]\nmembers = [\"route\"]\n[workspace.dependencies]\nrenamed = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\", default-features = false, features = [\"shared\"] }}\n"
+        )).unwrap();
+        check_sdk_pin(tmp.path(), &config).unwrap();
+        let dependency = route_sdk_dependency(tmp.path(), &config).unwrap();
+        assert_eq!(dependency["rev"].as_str(), Some(REV_A));
+        assert_eq!(dependency["default-features"].as_bool(), Some(false));
+        assert_eq!(
+            dependency["features"].as_array().unwrap(),
+            &vec![
+                toml::Value::String("shared".into()),
+                toml::Value::String("consumer".into())
+            ]
+        );
+        config.sdk = git_sdk(REV_B);
+        assert!(
+            check_sdk_pin(tmp.path(), &config)
+                .unwrap_err()
+                .contains("pinned inconsistently")
+        );
+    }
+
+    #[test]
+    fn component_graph_may_add_wrappers_but_not_re_resolve_dependencies() {
+        let original: toml::Table = toml::from_str("version = 4\n[[package]]\nname = \"dependency\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"abc\"\n").unwrap();
+        let mut generated = original.clone();
+        generated["package"]
+            .as_array_mut()
+            .unwrap()
+            .push(toml::Value::Table(toml::Table::from_iter([
+                ("name".into(), toml::Value::String("wrapper".into())),
+                ("version".into(), toml::Value::String("0.1.0".into())),
+            ])));
+        let wrappers = BTreeSet::from(["wrapper"]);
+        validate_locked_graph(&original, &generated, &wrappers).unwrap();
+        generated["package"].as_array_mut().unwrap()[0]["version"] =
+            toml::Value::String("1.1.0".into());
+        assert!(
+            validate_locked_graph(&original, &generated, &wrappers)
+                .unwrap_err()
+                .contains("dependency differs")
+        );
+        generated = original.clone();
+        generated["package"].as_array_mut().unwrap()[0]["checksum"] =
+            toml::Value::String("tampered".into());
+        assert!(validate_locked_graph(&original, &generated, &wrappers).is_err());
+    }
+
+    #[test]
     fn sdk_pin_agrees_across_build_config_manifest_and_lockfile() {
         let manifest = format!(
             "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\" }}\n"
@@ -1663,10 +1883,7 @@ mod tests {
         let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
         let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
         assert!(error.contains(&format!("rev {REV_A}")), "{error}");
-        assert!(
-            error.contains("route/Cargo.toml [dependencies] petal"),
-            "{error}"
-        );
+        assert!(error.contains("route/Cargo.toml SDK"), "{error}");
         assert!(error.contains(&format!("rev {REV_B}")), "{error}");
     }
 
@@ -1808,15 +2025,9 @@ mod tests {
         );
         fs::write(tmp.path().join("Cargo.toml"), workspace(REV_B)).unwrap();
         let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
-        assert!(
-            error.contains("from Cargo.toml [workspace.dependencies]"),
-            "{error}"
-        );
+        assert!(error.contains("route/Cargo.toml SDK"), "{error}");
         assert!(error.contains(&format!("rev {REV_B}")), "{error}");
-        assert!(
-            error.contains("cargo update --manifest-path Cargo.toml"),
-            "{error}"
-        );
+        assert!(error.contains("remove or align [sdk]"), "{error}");
 
         // The lockfile lives at the workspace root and is checked there.
         fs::write(tmp.path().join("Cargo.toml"), workspace(REV_A)).unwrap();
@@ -1863,7 +2074,7 @@ mod tests {
 
         let (tmp, config) = pin_fixture(
             package_config().sdk,
-            "[dev_dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.2.0\" }\n",
+            "[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.1.0\" }\n[dev_dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.2.0\" }\n",
             None,
         );
         let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
@@ -1937,7 +2148,7 @@ mod tests {
         );
         let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
         assert!(
-            error.contains("[dependencies] bloom-petal-sdk: version =0.2.0"),
+            error.contains("route/Cargo.toml SDK version =0.2.0"),
             "{error}"
         );
 
@@ -1947,7 +2158,11 @@ mod tests {
             "[dependencies]\npetal = { package = \"other\", version = \"9\" }\nserde = \"1\"\n",
             None,
         );
-        check_sdk_pin(tmp.path(), &config).unwrap();
+        assert!(
+            check_sdk_pin(tmp.path(), &config)
+                .unwrap_err()
+                .contains("exactly one")
+        );
     }
 
     #[test]
@@ -2016,9 +2231,13 @@ mod tests {
     }
 
     #[test]
-    fn sdk_pin_allows_a_route_crate_without_the_sdk() {
+    fn sdk_pin_requires_a_route_crate_sdk_source() {
         let (tmp, config) = pin_fixture(git_sdk(REV_A), "[dependencies]\nserde = \"1\"\n", None);
-        check_sdk_pin(tmp.path(), &config).unwrap();
+        assert!(
+            check_sdk_pin(tmp.path(), &config)
+                .unwrap_err()
+                .contains("exactly one")
+        );
     }
 
     #[test]
