@@ -63,6 +63,14 @@ credentials. Machine's HTTP URL redaction is tracked in
 [Bloom #364](https://github.com/bloom-directory/bloom/pull/364). Adopt that host
 fix before enabling richer errors in consumers that perform HTTP requests.
 
+For the transport regression, run
+`sh scripts/check-component-errors.sh "$MACHINE_CHECKOUT"` against a committed
+Machine checkout. It builds the opted-in conformance component and checks two
+distinct synthetic refusals through the actual Machine VM, including retaining
+the first explanation after another operation. It grants no signing authority.
+The existing CI workflow exposes this check through manual dispatch with one
+full `machine_ref`; ordinary CI also builds the opted-in component.
+
 ## Packaging a Petal
 
 After building route components, create the platform-neutral archive consumed
