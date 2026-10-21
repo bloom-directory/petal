@@ -1,0 +1,27 @@
+{
+  "sdk_revision": "5cd13f0b05a39065b1dd3ac5b08bc43bc975d1ef",
+  "machine_revision": "79fa71d38b9685bdba4585c72ea80ddccbd935f8",
+  "component_sha256": "401318d951360e6893588a310796692594d057652dae6f5e6afda1fb84ceb03a",
+  "feature": "host-error-detail",
+  "compiled_error_forwarding": true,
+  "errors": [
+    "denied: owner cancelled this request",
+    "invalid: message evidence is malformed"
+  ],
+  "dispatch_codes": [
+    -2,
+    -3
+  ],
+  "earlier_reason_preserved": true,
+  "authorized_in_test": false,
+  "limits": "Actual compiled component and Machine VM; synthetic host errors, no Broker, Signer, credentials or funds.",
+  "verification": {
+    "exit_status": 0,
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "duration_seconds": 0.13,
+    "adapter": "Test-only module added to an archived Machine checkout; VM implementation unchanged."
+  }
+}
