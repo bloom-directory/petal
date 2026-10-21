@@ -48,6 +48,7 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out")" ]; then
   [ -f "$out/SHA256SUMS" ] || refuse "which holds no previous artifacts"
   for entry in "$out"/* "$out"/.[!.]* "$out"/..?*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
+    [ ! -d "$entry" ] || refuse "which holds directory ${entry##*/}"
     case ${entry##*/} in
       SHA256SUMS | SKILL.md | contract.txt | petal-wit-*.tar.gz | .DS_Store) ;;
       *) refuse "which holds ${entry##*/}, not a release artifact" ;;
@@ -71,10 +72,18 @@ if [ -z "$digest" ]; then
   exit 1
 fi
 
-# Replace the directory only once everything that builds has succeeded.
-rm -rf "$out"
+# Replace only validated artifact files once everything that builds has succeeded.
+# A directory with an artifact's name is never recursive-cleanup authority.
+if [ -d "$out" ]; then
+  for entry in "$out"/* "$out"/.[!.]* "$out"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    rm -f -- "$entry"
+  done
+fi
 mkdir -p "$out"
-git archive --format=tar.gz --prefix="$wit/" -o "$out/$wit.tar.gz" HEAD:wit/route
+# A subtree archive otherwise uses wall-clock time. Bind it to its source commit.
+archive_time=$(git show -s --format=%cI HEAD)
+git archive --format=tar.gz --mtime="$archive_time" --prefix="$wit/" -o "$out/$wit.tar.gz" HEAD:wit/route
 cat >"$out/contract.txt" <<EOF
 source_commit: $commit
 contract: $contract
