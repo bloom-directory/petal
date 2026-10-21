@@ -428,13 +428,18 @@ bloom petals uninstall <name-or-hash-prefix>
 
 Know what an install changes:
 
-- The package hash covers every file under the package root except the
-  top-level `.git` and `.jj` directories and every directory named `target`, at
-  any depth. Those are left out of the package itself, so never name a route
-  directory `target`; a `.git` file, as in a Git worktree, is included. Any
-  changed or added input file, including a stray archive or note, changes the
-  hash. Pass a deliberate runtime tree or a validated runtime archive, rather
-  than the whole development checkout, when that is what you intend to ship.
+- When Bloom hashes a package directory (`bloom petals build`, or
+  `bloom petals install <root>`), it covers every file under the root except
+  the top-level `.git` and `.jj` directories and every directory named
+  `target`, at any depth. Those are left out of the package itself, so never
+  name a route directory `target`; a `.git` file, as in a Git worktree, is
+  included. `petal package` also leaves out the top-level `artifacts/`
+  directory and every `*.petal.tar` and `*.petal.tar.gz` file, so the archive
+  it writes, and the hash Bloom computes when it installs that archive, do not
+  include them. Any other changed or added file, such as a stray note, changes
+  the hash either way; a stray archive changes only the directory's hash.
+  Pass a deliberate runtime tree or a validated runtime archive, rather than
+  the whole development checkout, when that is what you intend to ship.
   Reproducibility depends on the pinned builder, dependency graph, compiler
   and flags: compare actual component, composed-package and archive bytes
   across directories instead of inferring identity from source commits or

@@ -32,8 +32,8 @@ cmp "$skill" "$tmp/bloom-petal-contract-$version/$skill" ||
 # also runs on uncommitted work, so there it lets the assembler use a dirty
 # tree and warns about it below; an uncommitted contract bump still fails until
 # it is committed.
-dirty=$(git status --porcelain --untracked-files=all -- wit src
-  git ls-files -v -- wit src | grep '^[a-zS]' || true
+dirty=$(git status --porcelain --untracked-files=all
+  git ls-files -v | grep '^[a-zS]' || true
   info_attributes=$(git rev-parse --git-path info/attributes)
   [ ! -s "$info_attributes" ] || echo "$info_attributes")
 assemble() {
@@ -95,9 +95,19 @@ cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
 # the step it is about.
 real_git=$(command -v git)
 real_shasum=$(command -v shasum)
+real_cargo=$(command -v cargo)
+# no_stage_left <what> <output>: the staging directory lives inside the output.
 no_stage_left() {
-  for entry in "$tmp"/.assemble-release-artifacts.*; do
+  for entry in "$2"/.assemble-release-artifacts.*; do
     [ ! -e "$entry" ] || fail "$1 left $entry"
+  done
+}
+# remove_stage <output>: clear a staging directory a failed run kept on purpose.
+remove_stage() {
+  for entry in "$1"/.assemble-release-artifacts.*; do
+    [ -d "$entry" ] || continue
+    rm -f "$entry"/*
+    rmdir "$entry"
   done
 }
 
@@ -112,7 +122,7 @@ status=0
 [ "$status" != 0 ] || fail "the assembler succeeded although its checksum step failed"
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
   fail "a failure after staging lost the previous artifacts"
-no_stage_left "a failure after staging"
+no_stage_left "a failure after staging" "$tmp/stale"
 
 # The output is checked again just before the previous artifacts are deleted:
 # a file that appears in it during the build is refused, not deleted.
@@ -127,7 +137,42 @@ status=0
 rm -f "$tmp/stale/notes.txt"
 (cd "$tmp/stale" && shasum -a 256 -c --quiet SHA256SUMS) ||
   fail "a refusal just before deletion lost the previous artifacts"
-no_stage_left "a refusal just before deletion"
+no_stage_left "a refusal just before deletion" "$tmp/stale"
+
+# Renaming the output or replacing it with a symbolic link cannot redirect the
+# assembler. During the build, before it enters the output, the swap is
+# noticed and refused; once it is inside, it keeps writing to the directory it
+# checked. Either way the other directory is left alone.
+for when in build staging; do
+  mkdir "$tmp/swap-$when" "$tmp/victim-$when" "$tmp/stub-$when"
+  printf 'previous\n' >"$tmp/victim-$when/contract.txt"
+  : >"$tmp/victim-$when/SHA256SUMS"
+  case $when in
+    build) command=cargo real=$real_cargo ;;
+    staging) command=shasum real=$real_shasum ;;
+  esac
+  printf '#!/bin/sh\nif [ ! -e "%s/swap-%s.real" ]; then\n  mv "%s/swap-%s" "%s/swap-%s.real"\n  ln -s "victim-%s" "%s/swap-%s"\nfi\nexec "%s" "$@"\n' \
+    "$tmp" "$when" "$tmp" "$when" "$tmp" "$when" "$when" "$tmp" "$when" "$real" >"$tmp/stub-$when/$command"
+  chmod +x "$tmp/stub-$when/$command"
+  status=0
+  (PATH=$tmp/stub-$when:$PATH; export PATH; assemble "$tmp/swap-$when") 2>"$tmp/swap.err" || status=$?
+  [ -e "$tmp/swap-$when.real" ] || fail "the $when swap stub never ran"
+  [ "$(cat "$tmp/victim-$when/contract.txt")" = previous ] &&
+    [ ! -e "$tmp/victim-$when/SKILL.md" ] ||
+    fail "swapping the output during $when redirected the assembler into another directory"
+  no_stage_left "a swap during $when" "$tmp/victim-$when"
+  case $when in
+    build)
+      [ "$status" = 1 ] && grep -q 'changed while the artifacts were built' "$tmp/swap.err" ||
+        fail "a swap during the build was not refused: exit $status, $(cat "$tmp/swap.err")"
+      ;;
+    staging)
+      [ "$status" = 0 ] || fail "a swap after entering the output failed: exit $status, $(cat "$tmp/swap.err")"
+      cmp "$tmp/swap-$when.real/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+        fail "a swap after entering the output kept the artifacts out of the directory that was checked"
+      ;;
+  esac
+done
 
 # A failure while the new artifacts are moved in keeps them in the staging
 # directory and says so, and a rerun recovers the output.
@@ -140,13 +185,12 @@ status=0
 [ "$status" = 1 ] && grep -q 'the new artifacts are in' "$tmp/mv.err" ||
   fail "a failure while moving the artifacts in was not reported: exit $status, $(cat "$tmp/mv.err")"
 kept=
-for entry in "$tmp"/.assemble-release-artifacts.*; do
+for entry in "$tmp/stale"/.assemble-release-artifacts.*; do
   [ -d "$entry" ] && kept=$entry
 done
 [ -n "$kept" ] && (cd "$kept" && shasum -a 256 -c --quiet SHA256SUMS) ||
   fail "a failure while moving the artifacts in did not keep them"
-rm -f "$kept"/*
-rmdir "$kept"
+remove_stage "$tmp/stale"
 assemble "$tmp/stale"
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
   fail "a rerun did not recover from a failure while moving the artifacts in"
@@ -154,7 +198,7 @@ cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
 # A failure while the previous artifacts are deleted keeps SHA256SUMS, so a
 # rerun still accepts the output and recovers it.
 mkdir "$tmp/rmstub"
-printf '#!/bin/sh\ncase "$*" in\n  */stale/contract.txt) : >"%s/rmstub/ran"; exit 1 ;;\nesac\nexec "%s" "$@"\n' "$tmp" "$(command -v rm)" >"$tmp/rmstub/rm"
+printf '#!/bin/sh\ncase "$*" in\n  */contract.txt) : >"%s/rmstub/ran"; exit 1 ;;\nesac\nexec "%s" "$@"\n' "$tmp" "$(command -v rm)" >"$tmp/rmstub/rm"
 chmod +x "$tmp/rmstub/rm"
 status=0
 (PATH=$tmp/rmstub:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/rm.err" || status=$?
@@ -163,11 +207,7 @@ status=0
   fail "a failure while deleting the previous artifacts was not reported: exit $status, $(cat "$tmp/rm.err")"
 [ -f "$tmp/stale/SHA256SUMS" ] ||
   fail "a failure while deleting the previous artifacts removed SHA256SUMS before the others"
-for entry in "$tmp"/.assemble-release-artifacts.*; do
-  [ -d "$entry" ] || continue
-  rm -f "$entry"/*
-  rmdir "$entry"
-done
+remove_stage "$tmp/stale"
 assemble "$tmp/stale"
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
   fail "a rerun did not recover from a failure while deleting the previous artifacts"
@@ -212,7 +252,7 @@ grep -qx "wit_digest: $digest" "$tmp/dist/contract.txt" ||
   fail "contract.txt does not carry wit_digest $digest"
 # petal inspect hashes the working tree's WIT; the archive holds HEAD's.
 [ -z "$dirty" ] ||
-  echo "test-release-artifacts: wit/ or src/ has uncommitted changes, or the repository has an info/attributes; contract.txt's wit_digest may not describe the archived WIT" >&2
+  echo "test-release-artifacts: the working tree differs from HEAD, or the repository has an info/attributes; contract.txt's wit_digest may not describe the archived WIT" >&2
 
 # The release artifact is HEAD's skill, byte for byte, whatever the working
 # tree holds.
@@ -228,24 +268,26 @@ elif ! cmp -s "$tmp/bloom-petal-contract-$version/$skill" "$tmp/dist/SKILL.md"; 
   echo "test-release-artifacts: $skill has uncommitted changes; the packaged crate and the release artifact differ" >&2
 fi
 
-# Without --allow-dirty, the assembler refuses a tree whose WIT inputs differ
-# from HEAD, that hides changes from git, or whose repository info/attributes
-# would change the archive, before it touches a previous run's artifacts; it
-# also refuses a symbolic link as its output, with or without a trailing
-# slash. This runs it in a scratch repository, so each refusal comes
-# before it needs cargo. The subshell drops the caller's git environment,
-# config and attributes: run from a hook or `git rebase -x`, GIT_DIR and
-# GIT_INDEX_FILE would otherwise point these commands at the caller's
-# repository.
+# Without --allow-dirty, the assembler refuses a working tree that differs from
+# HEAD anywhere (the CLI source included), that hides changes from git, or
+# whose repository info/attributes would change the archive, before it touches
+# a previous run's artifacts; it also refuses a symbolic link as its output,
+# with or without a trailing slash. This runs it in a scratch repository, so
+# each refusal comes before it needs cargo. The subshell drops the caller's git
+# environment, config and attributes: run from a hook or `git rebase -x`,
+# GIT_DIR and GIT_INDEX_FILE would otherwise point these commands at the
+# caller's repository.
 (
   # git rev-parse --local-env-vars does not list GIT_ATTR_SOURCE.
   unset $(git rev-parse --local-env-vars) GIT_ATTR_SOURCE
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1
   repo=$tmp/guard
-  mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev"
+  mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev" \
+    "$repo/crates/petal-cli/src"
   cp scripts/assemble-release-artifacts.sh "$repo/scripts/"
   printf 'package bloom:route@0.0.0;\n' >"$repo/wit/route/route.wit"
   : >"$repo/src/lib.rs"
+  : >"$repo/crates/petal-cli/src/main.rs"
   printf 'previous\n' >"$repo/prev/contract.txt"
   : >"$repo/prev/SHA256SUMS"
   git -C "$repo" init -q --template=
@@ -254,30 +296,34 @@ fi
   git -C "$repo" config user.name test
   git -C "$repo" config user.email test@example.invalid
   git -C "$repo" config commit.gpgsign false
-  git -C "$repo" add scripts wit src
+  git -C "$repo" add scripts wit src crates
   git -C "$repo" commit -qm init
-  for change in modified staged untracked assume-unchanged skip-worktree; do
+  # prev/ is an untracked output inside the repository, which the guard
+  # leaves out; every refusal below is about the change that case makes.
+  mkdir -p "$repo/.git/info"
+  for change in modified cli staged untracked assume-unchanged skip-worktree; do
     case $change in
       modified) printf '// change\n' >>"$repo/wit/route/route.wit" ;;
+      cli) printf '// change\n' >>"$repo/crates/petal-cli/src/main.rs" ;;
       staged) printf '// change\n' >>"$repo/src/lib.rs" && git -C "$repo" add src/lib.rs ;;
       untracked) mkdir -p "$repo/wit/route/deps/new" && printf 'package a:b;\n' >"$repo/wit/route/deps/new/new.wit" ;;
-      *) git -C "$repo" update-index "--$change" wit/route/route.wit && printf '// change\n' >>"$repo/wit/route/route.wit" ;;
+      assume-unchanged) git -C "$repo" update-index --assume-unchanged wit/route/route.wit && printf '// change\n' >>"$repo/wit/route/route.wit" ;;
+      skip-worktree) git -C "$repo" update-index --skip-worktree crates/petal-cli/src/main.rs && printf '// change\n' >>"$repo/crates/petal-cli/src/main.rs" ;;
     esac
     status=0
     "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
-    [ "$status" = 1 ] && grep -q '^assemble-release-artifacts: wit/ or src/' "$tmp/guard.err" ||
-      fail "the assembler did not refuse a $change WIT input: exit $status, $(cat "$tmp/guard.err")"
+    [ "$status" = 1 ] && grep -q -e 'the working tree differs from HEAD' -e 'git is told to ignore changes to' "$tmp/guard.err" ||
+      fail "the assembler did not refuse a $change input: exit $status, $(cat "$tmp/guard.err")"
     [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
-      fail "the assembler replaced the previous artifacts despite a $change WIT input"
+      fail "the assembler replaced the previous artifacts despite a $change input"
     git -C "$repo" update-index --no-assume-unchanged wit/route/route.wit
-    git -C "$repo" update-index --no-skip-worktree wit/route/route.wit
-    git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit src/lib.rs
+    git -C "$repo" update-index --no-skip-worktree crates/petal-cli/src/main.rs
+    git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit src/lib.rs crates/petal-cli/src/main.rs
     if [ -f "$repo/wit/route/deps/new/new.wit" ]; then
       rm -f "$repo/wit/route/deps/new/new.wit"
       rmdir "$repo/wit/route/deps/new" "$repo/wit/route/deps"
     fi
   done
-  mkdir -p "$repo/.git/info"
   printf '*.wit export-ignore\n' >"$repo/.git/info/attributes"
   status=0
   "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
@@ -297,10 +343,12 @@ fi
   [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
     fail "the assembler replaced the previous artifacts despite a replace ref"
   git -C "$repo" replace -d "$blob" >/dev/null
+  # The symbolic link is itself an untracked file, so these runs skip the
+  # working-tree guard with --allow-dirty; the output checks still apply.
   ln -s prev "$repo/link"
   for name in link link/; do
     status=0
-    "$repo/scripts/assemble-release-artifacts.sh" "$repo/$name" 2>"$tmp/guard.err" || status=$?
+    "$repo/scripts/assemble-release-artifacts.sh" --allow-dirty "$repo/$name" 2>"$tmp/guard.err" || status=$?
     [ "$status" = 1 ] && grep -q 'symbolic link' "$tmp/guard.err" ||
       fail "the assembler did not refuse the symbolic link $name as its output: exit $status, $(cat "$tmp/guard.err")"
     [ -L "$repo/link" ] && [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
