@@ -111,8 +111,10 @@ and runtime documents do. This deliberately changes older source-tree package
 hashes: publish a new immutable package and preserve its predecessor lineage.
 Machine assigns a separate final identity when composing the installed package.
 
-Component builds remap checkout and Cargo cache paths and omit symbol names at
-compile time. Two different checkout directories with identical compiler and
+Component builds remap checkout and Cargo cache paths, omit symbol names and
+use one codegen unit at compile time. Multiple units produced path-dependent
+empty-function ordering on Rust 1.99.1 even after remapping. Two different
+checkout directories with identical compiler and
 locked inputs produce the same tested components. Explicit target-specific
 Cargo rustflags keep their normal precedence; include equivalent path remapping
 if you replace the default flags.
