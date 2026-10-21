@@ -48,6 +48,44 @@ sleep 2
 assemble "$tmp/repeated"
 cmp "$tmp/dist/SHA256SUMS" "$tmp/repeated/SHA256SUMS" ||
   fail "release artifacts changed when only build time changed"
+
+# The output must be named directly. A final . or .. is refused, and the
+# previous artifacts stay.
+for name in "$tmp/dist/." "$tmp/dist/sub/.."; do
+  status=0
+  assemble "$name" 2>"$tmp/dot.err" || status=$?
+  [ "$status" = 2 ] || fail "the assembler accepted $name as its output: exit $status"
+done
+(cd "$tmp/dist" && shasum -a 256 -c --quiet SHA256SUMS) ||
+  fail "a refused output lost its previous artifacts"
+
+# Assembling over a previous run replaces exactly its artifact files, stale
+# ones and AppleDouble companions included.
+mkdir "$tmp/stale"
+for name in SHA256SUMS SKILL.md contract.txt petal-wit-0.0.0.tar.gz .DS_Store ._SKILL.md; do
+  printf 'stale\n' >"$tmp/stale/$name"
+done
+assemble "$tmp/stale"
+listed=$(ls -A "$tmp/stale" | LC_ALL=C sort | tr '\n' ' ')
+expected=$(ls -A "$tmp/dist" | LC_ALL=C sort | tr '\n' ' ')
+[ "$listed" = "$expected" ] ||
+  fail "assembling over a previous run left '$listed', expected '$expected'"
+cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+  fail "assembling over a previous run gave different artifacts"
+
+# A failure after the artifacts are staged keeps the previous ones and leaves
+# no staging directory. The stub only fails the assembler's own checksum step.
+mkdir "$tmp/stub"
+printf '#!/bin/sh\nexit 1\n' >"$tmp/stub/shasum"
+chmod +x "$tmp/stub/shasum"
+status=0
+(PATH=$tmp/stub:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/stub.err" || status=$?
+[ "$status" != 0 ] || fail "the assembler succeeded although its checksum step failed"
+cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+  fail "a failure after staging lost the previous artifacts"
+for entry in "$tmp"/.assemble-release-artifacts.*; do
+  [ ! -e "$entry" ] || fail "a failure after staging left $entry"
+done
 inspect=$(cargo run --quiet -p bloom-petal-cli -- inspect)
 contract=$(printf '%s\n' "$inspect" | awk '/^contract:/ { print $2 }')
 digest=$(printf '%s\n' "$inspect" | awk '/^wit_digest:/ { print $2 }')
@@ -81,14 +119,15 @@ fi
 
 # Without --allow-dirty, the assembler refuses a tree whose WIT inputs differ
 # from HEAD, or that hides changes from git, before it touches a previous run's
-# artifacts; it also refuses a symbolic link as its output. This runs it in a
-# scratch repository, so each refusal comes before it needs cargo. The
-# subshell drops the caller's git environment and config: run from a hook or
-# `git rebase -x`, GIT_DIR and GIT_INDEX_FILE would otherwise point these
-# commands at the caller's repository.
+# artifacts; it also refuses a symbolic link as its output, with or without a
+# trailing slash. This runs it in a scratch repository, so each refusal comes
+# before it needs cargo. The subshell drops the caller's git environment,
+# config and attributes: run from a hook or `git rebase -x`, GIT_DIR and
+# GIT_INDEX_FILE would otherwise point these commands at the caller's
+# repository.
 (
   unset $(git rev-parse --local-env-vars)
-  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1
   repo=$tmp/guard
   mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev"
   cp scripts/assemble-release-artifacts.sh "$repo/scripts/"
@@ -98,6 +137,7 @@ fi
   : >"$repo/prev/SHA256SUMS"
   git -C "$repo" init -q --template=
   git -C "$repo" config core.excludesFile /dev/null
+  git -C "$repo" config core.attributesFile /dev/null
   git -C "$repo" config user.name test
   git -C "$repo" config user.email test@example.invalid
   git -C "$repo" config commit.gpgsign false
@@ -125,12 +165,14 @@ fi
     fi
   done
   ln -s prev "$repo/link"
-  status=0
-  "$repo/scripts/assemble-release-artifacts.sh" "$repo/link" 2>"$tmp/guard.err" || status=$?
-  [ "$status" = 1 ] && grep -q 'symbolic link' "$tmp/guard.err" ||
-    fail "the assembler did not refuse a symbolic link as its output: exit $status, $(cat "$tmp/guard.err")"
-  [ -L "$repo/link" ] && [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
-    fail "the assembler replaced a symbolic link or its target"
+  for name in link link/; do
+    status=0
+    "$repo/scripts/assemble-release-artifacts.sh" "$repo/$name" 2>"$tmp/guard.err" || status=$?
+    [ "$status" = 1 ] && grep -q 'symbolic link' "$tmp/guard.err" ||
+      fail "the assembler did not refuse the symbolic link $name as its output: exit $status, $(cat "$tmp/guard.err")"
+    [ -L "$repo/link" ] && [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+      fail "the assembler replaced a symbolic link or its target"
+  done
 )
 
 # An artifact-named directory in the output is refused, not deleted.

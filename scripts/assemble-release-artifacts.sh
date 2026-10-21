@@ -1,10 +1,14 @@
 #!/bin/sh
 # Assemble the release artifacts for HEAD into a directory (default: dist at
 # the repository root). A relative directory is taken from the caller's
-# working directory. The directory is replaced, so it must be new, empty, or
-# hold only a previous run's artifacts, and not a symbolic link. The artifacts
-# are written beside it and moved in at the end, so a failure leaves a previous
-# run's artifacts as they were.
+# working directory, and must name the directory itself, not end in . or ..
+# The directory is replaced, so it must be new, empty, or hold only a previous
+# run's artifacts, and not a symbolic link. The artifacts are written beside it
+# and moved in at the end, so its parent must be writable, and a failure leaves
+# a previous run's artifacts as they were.
+#
+# The WIT archive takes its timestamps from HEAD's commit time, which needs git
+# 2.40 or later.
 #
 # contract.txt's wit_digest comes from the working tree's contract crate and
 # the archive from HEAD, so the script refuses to run while wit/ or src/
@@ -37,6 +41,13 @@ esac
 while [ "$out" != / ] && [ "${out%/}" != "$out" ]; do
   out=${out%/}
 done
+# A final . or .. would put the staging directory inside the output.
+case $out in
+  */. | */..)
+    echo "assemble-release-artifacts: name the output directory itself, not $out" >&2
+    exit 2
+    ;;
+esac
 cd "$root"
 
 if [ -z "$allow_dirty" ]; then
@@ -60,23 +71,32 @@ refuse() {
   echo "assemble-release-artifacts: refusing to replace $out, $*" >&2
   exit 1
 }
-if [ -L "$out" ]; then
-  refuse "which is a symbolic link"
-fi
-if [ -e "$out" ] && [ ! -d "$out" ]; then
-  refuse "which is not a directory"
-fi
-if [ -e "$out" ] && [ -n "$(ls -A "$out")" ]; then
-  [ -f "$out/SHA256SUMS" ] || refuse "which holds no previous artifacts"
-  for entry in "$out"/* "$out"/.[!.]* "$out"/..?*; do
-    [ -e "$entry" ] || [ -L "$entry" ] || continue
-    [ ! -d "$entry" ] || refuse "which holds directory ${entry##*/}"
-    case ${entry##*/} in
-      SHA256SUMS | SKILL.md | contract.txt | petal-wit-*.tar.gz | .DS_Store) ;;
-      *) refuse "which holds ${entry##*/}, not a release artifact" ;;
-    esac
-  done
-fi
+# The output must be a real directory holding nothing, or only a previous
+# run's artifacts. This runs before the build and again just before the
+# previous artifacts are replaced.
+check_out() {
+  if [ -L "$out" ]; then
+    refuse "which is a symbolic link"
+  fi
+  if [ -e "$out" ] && [ ! -d "$out" ]; then
+    refuse "which is not a directory"
+  fi
+  if [ -e "$out" ] && [ -n "$(ls -A "$out")" ]; then
+    [ -f "$out/SHA256SUMS" ] || refuse "which holds no previous artifacts"
+    for entry in "$out"/* "$out"/.[!.]* "$out"/..?*; do
+      [ -e "$entry" ] || [ -L "$entry" ] || continue
+      [ ! -d "$entry" ] || refuse "which holds directory ${entry##*/}"
+      case ${entry##*/} in
+        SHA256SUMS | SKILL.md | contract.txt | petal-wit-*.tar.gz | .DS_Store) ;;
+        # macOS writes these AppleDouble files beside the artifacts on volumes
+        # without extended attributes, such as FAT or SMB.
+        ._SHA256SUMS | ._SKILL.md | ._contract.txt | ._petal-wit-*.tar.gz | ._.DS_Store) ;;
+        *) refuse "which holds ${entry##*/}, not a release artifact" ;;
+      esac
+    done
+  fi
+}
+check_out
 
 # Name the archive after the package its WIT declares, so a contract bump
 # cannot ship under the previous version.
@@ -86,6 +106,10 @@ if [ -z "$contract" ]; then
   exit 1
 fi
 wit=petal-wit-${contract#bloom:route@}
+if ! git archive --format=tar --mtime=@0 HEAD:wit/route >/dev/null 2>&1; then
+  echo "assemble-release-artifacts: git archive does not support --mtime; this needs git 2.40 or later" >&2
+  exit 1
+fi
 commit=$(git rev-parse HEAD)
 inspect=$(cargo run --quiet -p bloom-petal-cli -- inspect)
 digest=$(printf '%s\n' "$inspect" | awk '/^wit_digest:/ { print $2 }')
@@ -111,9 +135,15 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-# A subtree archive otherwise uses wall-clock time. Bind it to its source commit.
-archive_time=$(git show -s --format=%cI HEAD)
-git archive --format=tar.gz --mtime="$archive_time" --prefix="$wit/" -o "$stage/$wit.tar.gz" HEAD:wit/route
+# A subtree archive otherwise uses wall-clock time, so bind it to HEAD's commit
+# time. --no-show-signature keeps a signature check out of that value, and the
+# pinned settings keep the caller's git config and attributes out of the bytes.
+archive_time=@$(git log -1 --no-show-signature --format=%ct HEAD)
+GIT_ATTR_NOSYSTEM=1 git -c core.autocrlf=false -c core.eol=lf \
+  -c core.attributesFile=/dev/null -c tar.umask=0002 \
+  -c tar.tar.gz.command='git archive gzip' \
+  archive --format=tar.gz --mtime="$archive_time" --prefix="$wit/" \
+  -o "$stage/$wit.tar.gz" HEAD:wit/route
 cat >"$stage/contract.txt" <<EOF
 source_commit: $commit
 contract: $contract
@@ -122,6 +152,7 @@ EOF
 git show HEAD:skills/bloom-petal-development/SKILL.md >"$stage/SKILL.md"
 (cd "$stage" && shasum -a 256 contract.txt "$wit.tar.gz" SKILL.md >SHA256SUMS)
 
+check_out
 if [ -d "$out" ]; then
   for entry in "$out"/* "$out"/.[!.]* "$out"/..?*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
@@ -130,5 +161,9 @@ if [ -d "$out" ]; then
 fi
 mkdir -p "$out"
 for name in SHA256SUMS contract.txt SKILL.md "$wit.tar.gz"; do
-  mv -- "$stage/$name" "$out/$name"
+  mv -- "$stage/$name" "$out/$name" || {
+    trap - EXIT
+    echo "assemble-release-artifacts: $out is incomplete; the remaining artifacts are in $stage" >&2
+    exit 1
+  }
 done

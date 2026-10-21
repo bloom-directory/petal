@@ -33,9 +33,10 @@ repository with a fresh scaffold.
 ## Resolve the product and trust contract
 
 WIT defines the portable component interface. Bloom's installer provenance,
-wallet policy and Broker review profiles are separate host semantics. Another
-host implementing the same WIT does not acquire Bloom's trust or verification
-guarantees. State the tested host combination when demonstrating signing.
+wallet policy and Broker's transaction review and approval ceremonies are
+separate host semantics. Another host implementing the same WIT does not
+acquire Bloom's trust or verification guarantees. State the tested host
+combination when demonstrating signing.
 
 Before coding, write down or recover these decisions from the user's request,
 the target repository, and its domain/API documentation:
@@ -437,13 +438,18 @@ Know what an install changes:
   Reproducibility depends on the pinned builder, dependency graph, compiler
   and flags: compare actual component, composed-package and archive bytes
   across directories instead of inferring identity from source commits or
-  checkout locations. Older builders can embed paths or re-resolve compatible
-  dependencies; the current builder's checks and evidence determine its
-  guarantees. Use Machine's actual composed result for publication and
-  proposed authority records; generation does not enroll them. Wallet policy
-  allows Petal packages by hash (`allowed_petal_packages`), so the owner
-  approves a policy update for a new hash before its routes can sign, derive
-  keys or stage transactions for that wallet; reads do not need it.
+  checkout locations. The `petal build` released with this contract runs
+  `cargo generate-lockfile` on every build, so a newer compatible crate release
+  can change the components, and its components embed the absolute paths of
+  the checkout, the Cargo home and the Rust toolchain. Building the same
+  sources in another directory or on another machine, such as another clone,
+  CI or a GitHub source install, therefore gives a new hash. Use the hash
+  Machine reports for the package it built (`bloom petals build`) when
+  publishing and when proposing installer provenance or wallet policy;
+  building does not enroll it. Wallet policy allows Petal packages by hash
+  (`allowed_petal_packages`), so the owner approves a policy update for a new
+  hash before its routes can sign, derive keys or stage transactions for that
+  wallet; reads do not need it.
 - A new hash starts with an empty private store, unless it is a signed
   successor in an authenticated lineage. Bloom then copies the predecessor's
   store bytes on first use, with no migration hook, so a successor must read
