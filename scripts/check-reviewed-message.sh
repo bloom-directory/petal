@@ -8,9 +8,16 @@ signer=${2:?supply the selected signer address; this preview grants no authority
 fixture=${3:-}
 broker=$(CDPATH= cd -- "$broker" && pwd)
 revision=$(git -C "$broker" rev-parse HEAD)
+if ! git -C "$broker" diff --quiet HEAD -- Cargo.toml Cargo.lock crates; then
+  printf 'Broker source differs from HEAD; commit the tested source before previewing a recorded revision.\n' >&2
+  exit 1
+fi
+sdk_revision=$(git -C "$root" rev-parse HEAD)
+producer=supplied_fixture
 scratch=$(mktemp -d)
 printf 'Decoder test evidence retained at %s\n' "$scratch" >&2
 if [ -z "$fixture" ]; then
+  producer=generated_sdk_example
   fixture=$scratch/producer.json
   (cd "$root" && cargo run --locked --quiet -p bloom-petal-sdk --features evm-messages --example reviewed_message) > "$fixture"
 fi
@@ -32,11 +39,13 @@ if ! cargo test --locked --manifest-path "$scratch/broker/Cargo.toml" -p bloom-b
   printf 'Broker decoder check failed; inspect %s/decoder-test.log\n' "$scratch" >&2
   exit 1
 fi
-python3 - "$scratch/readings.json" "$revision" <<'PY'
-import json, sys
+python3 - "$scratch/readings.json" "$revision" "$sdk_revision" "$fixture" "$producer" <<'PY'
+import hashlib, json, sys
 from pathlib import Path
 readings = json.loads(Path(sys.argv[1]).read_text())
-print(json.dumps({'broker_revision': sys.argv[2], 'decoded': True,
+print(json.dumps({'broker_revision': sys.argv[2], 'sdk_revision': sys.argv[3],
+    'fixture_sha256': hashlib.sha256(Path(sys.argv[4]).read_bytes()).hexdigest(),
+    'producer': sys.argv[5], 'decoded': True,
     'authorized_in_test': False, 'review': readings,
     'limits': 'Actual Broker message reader; no Machine installation, policy, owner approval, signature or settlement.'}, indent=2))
 PY
