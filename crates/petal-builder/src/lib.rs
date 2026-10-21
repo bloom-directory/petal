@@ -1564,13 +1564,19 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
             let Some(locked) = source.strip_prefix("git+") else {
                 return false;
             };
-            let locked = locked.split('#').next().unwrap_or(locked);
+            let Some((locked, commit)) = locked.split_once('#') else {
+                return false;
+            };
             let (locked_url, query) = locked.split_once('?').unwrap_or((locked, ""));
             let locked_rev = query
                 .split('&')
                 .find_map(|pair| pair.strip_prefix("rev="))
                 .map(percent_decode);
-            normalize_git_url(locked_url) == *url && locked_rev.as_deref() == rev.as_deref()
+            normalize_git_url(locked_url) == *url
+                && locked_rev.as_deref() == rev.as_deref()
+                && rev
+                    .as_deref()
+                    .is_some_and(|expected| commit.eq_ignore_ascii_case(expected))
         }
     }
 }
@@ -1999,6 +2005,20 @@ mod tests {
         let missing = tmp.path().join("target/missing");
         assert!(replace_dir(&missing, &output).is_err());
         assert_eq!(fs::read(output.join("new.wasm")).unwrap(), b"new component");
+    }
+
+    #[test]
+    fn sdk_pin_refuses_a_lockfile_that_names_the_pin_but_resolves_another_commit() {
+        let manifest = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\" }}\n"
+        );
+        let lock = git_lock(REV_A).replace(&format!("#{REV_A}"), &format!("#{REV_B}"));
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, Some(&lock));
+        assert!(
+            check_sdk_pin(tmp.path(), &config)
+                .unwrap_err()
+                .contains("Cargo.lock resolves bloom-petal-sdk")
+        );
     }
 
     #[test]
