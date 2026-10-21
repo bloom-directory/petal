@@ -221,6 +221,14 @@ pub fn package(
     for path in ["petal.toml", "README.md", "AGENTS.md", "petal"] {
         collect_package_files(&root, &root.join(path), &mut files)?;
     }
+    // Generated scaffolds point AGENTS.md at this pinned authoring document.
+    // Retain it when present, including rejecting linked or unreadable copies.
+    let skill = root.join("SKILL.md");
+    match fs::symlink_metadata(&skill) {
+        Ok(_) => collect_package_files(&root, &skill, &mut files)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("inspect {}: {error}", skill.display())),
+    }
     files.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
     let package_hash = package_hash(&files);
     let bytes = files.iter().map(|file| file.bytes.len() as u64).sum();

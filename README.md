@@ -104,7 +104,8 @@ archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
 the same clean package tree produces identical bytes. It refuses to overwrite
 an existing output. It includes the complete `petal/` runtime tree, `petal.toml`,
-`README.md` and `AGENTS.md`. The configured output must be `petal/<name>`.
+`README.md`, `AGENTS.md`, and the pinned `SKILL.md` when present. The configured
+output must be `petal/<name>`.
 Unrelated development files do not change runtime identity; code, capabilities
 and runtime documents do. This deliberately changes older source-tree package
 hashes: publish a new immutable package and preserve its predecessor lineage.
