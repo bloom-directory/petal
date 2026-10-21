@@ -279,7 +279,8 @@ pub enum HostStatus {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SdkError {
     Host(HostStatus),
-    /// A classified host failure with its bounded explanation.
+    /// A classified host failure with its bounded explanation. Hosts must
+    /// supply caller-safe detail: bounding text cannot redact unknown secrets.
     HostReason {
         status: HostStatus,
         reason: String,
