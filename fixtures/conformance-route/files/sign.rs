@@ -1,12 +1,10 @@
-use sha2::{Digest as _, Sha256};
-
 fn sign(ctx: &petal::Ctx, body: &[u8]) -> Result<petal::DispatchResponse, petal::DispatchResponse> {
     let claim = petal::ClaimOrigin::from_ctx(ctx)?.claim(
         "conformance.sign",
         petal::CryptoSuite::Secp256k1Sha256Recoverable,
         &[petal::PayloadSignItem {
             preimage: body.to_vec(),
-            claimed_hash: Sha256::digest(body).into(),
+            claimed_hash: crate::sha256(body),
         }],
         &petal::ClaimEffects::moves_nothing(),
         petal::ClaimNonce::Derived,
