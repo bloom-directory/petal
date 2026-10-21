@@ -57,7 +57,7 @@ print(json.dumps({'broker_revision': sys.argv[2], 'sdk_revision': sys.argv[3],
     'fixture_sha256': hashlib.sha256(Path(sys.argv[4]).read_bytes()).hexdigest(),
     'producer': sys.argv[5], 'decoded': True,
     'negative_checks': ['changed payload', 'changed hash', 'unsupported kind',
-        'changed personal/EIP-712 message where applicable'],
+        'changed personal/EIP-712 message where applicable', 'changed typed chain where applicable'],
     'diagnostic_adapter': 'Test-only fixture module added to an archived Broker source copy; reader implementation unchanged.',
     'authorized_in_test': False, 'review': readings,
     'limits': 'Actual Broker message reader; no Machine installation, policy, owner approval, signature or settlement.'}, indent=2))

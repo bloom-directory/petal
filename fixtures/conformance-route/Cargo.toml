@@ -11,3 +11,4 @@ crate-type = ["rlib"]
 
 [dependencies]
 petal = { package = "bloom-petal-sdk", path = "../../crates/petal-sdk", features = ["evm-messages"] }
+serde_json = "1"

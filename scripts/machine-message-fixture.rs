@@ -145,10 +145,14 @@ async fn compiled_constructor_reaches_actual_machine_host() {
     let vfs = Vfs::builder()
         .mount("petals", Arc::new(PetalRouter::new(runner, host.clone())))
         .build();
-    let path = VfsPath::parse("petals/conformance/personal/alice/1/sign").unwrap();
-    vfs.write(&path, "Bloom component é".as_bytes())
-        .await
-        .unwrap();
+    for format in ["personal", "typed"] {
+        let path = VfsPath::parse(&format!("petals/conformance/{format}/alice/1/sign")).unwrap();
+        let before = host.0.lock().unwrap().len();
+        assert!(vfs.write(&path, b"arbitrary input").await.is_err());
+        assert_eq!(host.0.lock().unwrap().len(), before);
+        vfs.write(&path, b"sign").await.unwrap();
+        vfs.write(&path, b"sign").await.unwrap();
+    }
     let stage = VfsPath::parse("petals/conformance/stage/alice/1/self-call").unwrap();
     assert!(vfs.write(&stage, b"").await.is_err());
     assert!(
@@ -174,39 +178,43 @@ async fn compiled_constructor_reaches_actual_machine_host() {
             1
         );
     }
-    vfs.write(&path, "Bloom component é".as_bytes())
-        .await
-        .unwrap();
     let requests = host.0.lock().unwrap();
-    assert_eq!(requests.len(), 2);
-    let request = &requests[0];
-    assert_eq!(request, &requests[1], "retry changed signing identity");
-    assert_eq!(
-        request
-            .context
-            .as_ref()
-            .unwrap()
-            .trusted_account()
-            .unwrap()
-            .number,
-        1
-    );
-    assert_eq!(request.operation_class, "conformance.personal");
-    let claim: serde_json::Value = serde_json::from_slice(&request.petal_use_claim_jcs).unwrap();
-    assert_eq!(
-        claim["package_hash"],
-        request.context.as_ref().unwrap().package_hash
-    );
-    assert_eq!(claim["route"], request.context.as_ref().unwrap().route_id);
-    let witness: serde_json::Value =
-        serde_json::from_slice(request.action.as_ref().unwrap()).unwrap();
-    fs::write(
-        evidence.join("producer.json"),
-        serde_json::to_vec_pretty(&serde_json::json!([{
+    assert_eq!(requests.len(), 4);
+    let mut fixtures = Vec::new();
+    for (pair, class) in requests
+        .chunks_exact(2)
+        .zip(["conformance.personal", "conformance.typed"])
+    {
+        let request = &pair[0];
+        assert_eq!(request, &pair[1], "retry changed signing identity");
+        assert_eq!(
+            request
+                .context
+                .as_ref()
+                .unwrap()
+                .trusted_account()
+                .unwrap()
+                .number,
+            1
+        );
+        assert_eq!(request.operation_class, class);
+        let claim: serde_json::Value =
+            serde_json::from_slice(&request.petal_use_claim_jcs).unwrap();
+        assert_eq!(
+            claim["package_hash"],
+            request.context.as_ref().unwrap().package_hash
+        );
+        assert_eq!(claim["route"], request.context.as_ref().unwrap().route_id);
+        let witness: serde_json::Value =
+            serde_json::from_slice(request.action.as_ref().unwrap()).unwrap();
+        fixtures.push(serde_json::json!({
             "preimage_hex":hex::encode(&request.preimage),
             "hash_hex":hex::encode(request.claimed_hash), "witness":witness
-        }]))
-        .unwrap(),
+        }));
+    }
+    fs::write(
+        evidence.join("producer.json"),
+        serde_json::to_vec_pretty(&fixtures).unwrap(),
     )
     .unwrap();
 }

@@ -6,6 +6,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 machine=${1:?usage: check-component-message.sh MACHINE_CHECKOUT BROKER_CHECKOUT SIGNER_ADDRESS}
 broker=${2:?supply actual Broker source}
 signer=${3:?supply selected signer address for public review}
+mode=${4:-decode}
+case "$mode" in decode|--authorize) ;; *) printf 'Expected decode or --authorize.\n' >&2; exit 1 ;; esac
 machine=$(CDPATH= cd -- "$machine" && pwd)
 if ! git -C "$machine" diff --quiet HEAD -- Cargo.toml Cargo.lock crates; then
   printf 'Commit the Machine source before recording its revision.\n' >&2
@@ -32,7 +34,7 @@ name = "conformance"
 [caps]
 allowed = ["bloom:sign", "bloom:tx.outbox", "bloom:vfs.read"]
 [sign]
-allowed_intents = ["conformance.sign", "conformance.personal"]
+allowed_intents = ["conformance.sign", "conformance.personal", "conformance.typed"]
 EOF
   printf '# Public component fixture\nNo authorization or signature.\n' > "$package/README.md"
   printf '# Fixture\nUse only for bounded component checks.\n' > "$package/AGENTS.md"
@@ -48,6 +50,16 @@ if ! cargo test --locked --manifest-path "$scratch/machine/Cargo.toml" -p bloom-
 fi
 [ "$(git -C "$root" rev-parse HEAD)" = "$sdk_revision" ] || { printf 'SDK revision changed during the check.\n' >&2; exit 1; }
 sh "$root/scripts/check-reviewed-message.sh" "$broker" "$signer" "$scratch/producer.json" > "$scratch/broker-review.json"
+if [ "$mode" = --authorize ]; then
+  authorization_root=$(mktemp -d /tmp/pm80-auth.XXXXXX)
+  BLOOM_PM80_POLYMARKET_ROOT="$scratch/package-a" bash \
+    "$machine/scripts/test-polymarket-authorization.sh" "$authorization_root" sdk-message \
+    > "$scratch/authorization.log" 2>&1 || {
+      printf 'Real authorization failed; inspect %s/authorization.log\n' "$scratch" >&2
+      exit 1
+    }
+  cp "$authorization_root/authorization-result.json" "$scratch/authorization-result.json"
+fi
 python3 - "$scratch" "$revision" "$sdk_revision" <<'PY'
 import hashlib, json, sys
 from pathlib import Path
@@ -69,6 +81,13 @@ result = {'machine_revision':sys.argv[2], 'sdk_revision':sys.argv[3], 'built':Tr
     'decoder':decoder,
     'authorized_in_test':False,
     'limits':'Test-only Machine/Broker adapters; captured host, synthetic account projection, no daemon authorization, custody signature, chain submission or settlement.'}
+if (root/'authorization-result.json').exists():
+    authorization = json.loads((root/'authorization-result.json').read_text())
+    assert authorization['package_hash'] == result['composition']['package_hash']
+    assert authorization['formats'] == ['personal', 'typed']
+    assert authorization['authorized_in_test'] and authorization['signed_operations'] == 2
+    result.update(authorized_in_test=True, authorization=authorization,
+        limits='Disposable developer software owner and real installer/Machine/Broker/Signer; independent decoder adapters; no physical ceremony, funds, chain submission or settlement.')
 (root/'component-result.json').write_text(json.dumps(result, indent=2)+'\n')
 print(json.dumps(result, indent=2))
 PY

@@ -57,6 +57,11 @@ fn producer_bytes_match_actual_broker_reading() {
             *field = serde_json::Value::String(format!("{field} changed"));
             assert!(read_fixture(&changed, signer).is_err());
         }
+        if fixture.witness["kind"] == "eip712" {
+            let mut changed = fixture.clone();
+            changed.witness["typed_data"]["domain"]["chainId"] = "0x2".into();
+            assert!(read_fixture(&changed, signer).is_err());
+        }
         readings.push(review);
     }
     fs::write(

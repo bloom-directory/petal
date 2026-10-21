@@ -151,6 +151,7 @@ name = "bloom-petal-conformance-route"
 version = "0.1.0"
 dependencies = [
  "bloom-petal-sdk",
+ "serde_json",
 ]
 
 [[package]]
