@@ -436,8 +436,11 @@ Know what an install changes:
   included. `petal package` also leaves out the top-level `artifacts/`
   directory and every `*.petal.tar` and `*.petal.tar.gz` file, so the archive
   it writes, and the hash Bloom computes when it installs that archive, do not
-  include them. Any other changed or added file, such as a stray note, changes
-  the hash either way; a stray archive changes only the directory's hash.
+  include them. A stray `*.petal.tar` or `*.petal.tar.gz`, or a file under the
+  top-level `artifacts/`, therefore changes only the directory's hash
+  (`bloom petals build` regenerates `artifacts/routes/` and
+  `artifacts/build-manifest.json` before it hashes them). Any other changed or
+  added file, such as a stray note or `.zip`, changes the hash either way.
   Pass a deliberate runtime tree or a validated runtime archive, rather than
   the whole development checkout, when that is what you intend to ship.
   Reproducibility depends on the pinned builder, dependency graph, compiler

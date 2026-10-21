@@ -36,6 +36,9 @@ dirty=$(git status --porcelain --untracked-files=all
   git ls-files -v | grep '^[a-zS]' || true
   info_attributes=$(git rev-parse --git-path info/attributes)
   [ ! -s "$info_attributes" ] || echo "$info_attributes")
+if [ -n "${CI:-}" ] && [ -n "$dirty" ]; then
+  fail "CI's working tree differs from HEAD after the earlier checks, so a release would refuse it: $dirty"
+fi
 assemble() {
   if [ -z "$dirty" ]; then
     scripts/assemble-release-artifacts.sh "$@"
@@ -139,64 +142,93 @@ rm -f "$tmp/stale/notes.txt"
   fail "a refusal just before deletion lost the previous artifacts"
 no_stage_left "a refusal just before deletion" "$tmp/stale"
 
-# Renaming the output or replacing it with a symbolic link cannot redirect the
-# assembler. During the build, before it enters the output, the swap is
-# noticed and refused; once it is inside, it keeps writing to the directory it
-# checked. Either way the other directory is left alone.
-for when in build staging; do
+# Renaming the output or replacing it, or a directory above it, with a
+# symbolic link cannot redirect the assembler: it enters the output before the
+# build and keeps writing to the directory it checked, and the other directory
+# is left alone.
+mkdir -p "$tmp/anc/out" "$tmp/anc-victim/out" "$tmp/stub-ancestor"
+cp "$tmp/dist"/* "$tmp/anc/out/"
+printf 'previous\n' >"$tmp/anc-victim/out/contract.txt"
+printf 'previous sums\n' >"$tmp/anc-victim/out/SHA256SUMS"
+printf '#!/bin/sh\nif [ ! -e "%s/anc.real" ]; then\n  mv "%s/anc" "%s/anc.real"\n  ln -s anc-victim "%s/anc"\nfi\nexec "%s" "$@"\n' \
+  "$tmp" "$tmp" "$tmp" "$tmp" "$real_cargo" >"$tmp/stub-ancestor/cargo"
+chmod +x "$tmp/stub-ancestor/cargo"
+status=0
+(PATH=$tmp/stub-ancestor:$PATH; export PATH; assemble "$tmp/anc/out") 2>"$tmp/swap.err" || status=$?
+[ -e "$tmp/anc.real" ] || fail "the ancestor swap stub never ran"
+[ "$status" = 0 ] && cmp "$tmp/anc.real/out/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+  fail "a swap of the output's parent during the build moved the artifacts: exit $status, $(cat "$tmp/swap.err")"
+[ "$(ls -A "$tmp/anc-victim/out" | LC_ALL=C sort | tr '\n' ' ')" = "SHA256SUMS contract.txt " ] &&
+  [ "$(cat "$tmp/anc-victim/out/SHA256SUMS")" = "previous sums" ] ||
+  fail "a swap of the output's parent during the build redirected the assembler into another directory"
+for when in build export staging; do
   mkdir "$tmp/swap-$when" "$tmp/victim-$when" "$tmp/stub-$when"
+  # A previous run's artifacts, so the deletion step runs too.
+  cp "$tmp/dist"/* "$tmp/swap-$when/"
   printf 'previous\n' >"$tmp/victim-$when/contract.txt"
-  : >"$tmp/victim-$when/SHA256SUMS"
+  printf 'previous sums\n' >"$tmp/victim-$when/SHA256SUMS"
   case $when in
-    build) command=cargo real=$real_cargo ;;
-    staging) command=shasum real=$real_shasum ;;
+    build) command=cargo real=$real_cargo only= ;;
+    # git show exports SKILL.md into the stage after the build and before the
+    # stage is checksummed.
+    export) command=git real=$real_git only='[ "$3" = show ] && ' ;;
+    staging) command=shasum real=$real_shasum only= ;;
   esac
-  printf '#!/bin/sh\nif [ ! -e "%s/swap-%s.real" ]; then\n  mv "%s/swap-%s" "%s/swap-%s.real"\n  ln -s "victim-%s" "%s/swap-%s"\nfi\nexec "%s" "$@"\n' \
-    "$tmp" "$when" "$tmp" "$when" "$tmp" "$when" "$when" "$tmp" "$when" "$real" >"$tmp/stub-$when/$command"
+  printf '#!/bin/sh\nif %s[ ! -e "%s/swap-%s.real" ]; then\n  mv "%s/swap-%s" "%s/swap-%s.real"\n  ln -s "victim-%s" "%s/swap-%s"\nfi\nexec "%s" "$@"\n' \
+    "$only" "$tmp" "$when" "$tmp" "$when" "$tmp" "$when" "$when" "$tmp" "$when" "$real" >"$tmp/stub-$when/$command"
   chmod +x "$tmp/stub-$when/$command"
   status=0
   (PATH=$tmp/stub-$when:$PATH; export PATH; assemble "$tmp/swap-$when") 2>"$tmp/swap.err" || status=$?
   [ -e "$tmp/swap-$when.real" ] || fail "the $when swap stub never ran"
-  [ "$(cat "$tmp/victim-$when/contract.txt")" = previous ] &&
-    [ ! -e "$tmp/victim-$when/SKILL.md" ] ||
+  [ "$(ls -A "$tmp/victim-$when" | LC_ALL=C sort | tr '\n' ' ')" = "SHA256SUMS contract.txt " ] &&
+    [ "$(cat "$tmp/victim-$when/contract.txt")" = previous ] &&
+    [ "$(cat "$tmp/victim-$when/SHA256SUMS")" = "previous sums" ] ||
     fail "swapping the output during $when redirected the assembler into another directory"
   no_stage_left "a swap during $when" "$tmp/victim-$when"
-  case $when in
-    build)
-      [ "$status" = 1 ] && grep -q 'changed while the artifacts were built' "$tmp/swap.err" ||
-        fail "a swap during the build was not refused: exit $status, $(cat "$tmp/swap.err")"
-      ;;
-    staging)
-      [ "$status" = 0 ] || fail "a swap after entering the output failed: exit $status, $(cat "$tmp/swap.err")"
-      cmp "$tmp/swap-$when.real/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
-        fail "a swap after entering the output kept the artifacts out of the directory that was checked"
-      ;;
-  esac
+  [ "$status" = 0 ] || fail "a swap during $when failed: exit $status, $(cat "$tmp/swap.err")"
+  cmp "$tmp/swap-$when.real/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+    fail "a swap during $when kept the artifacts out of the directory that was checked"
 done
 
-# A failure while the new artifacts are moved in keeps them in the staging
-# directory and says so, and a rerun recovers the output.
+# A parent whose name ends in a newline is kept intact when it is resolved.
+nl='
+'
+mkdir "$tmp/nl$nl"
+assemble "$tmp/nl$nl/out"
+cmp "$tmp/nl$nl/out/SHA256SUMS" "$tmp/dist/SHA256SUMS" && [ ! -e "$tmp/nl" ] ||
+  fail "an output under a parent whose name ends in a newline was written elsewhere"
+
+# A failure while the new artifacts are moved in keeps the rest in the staging
+# directory and says so. SHA256SUMS comes back first, so the output still reads
+# as a previous run's: deleting the staging directory and rerunning recovers it.
 mkdir "$tmp/mvstub"
-printf '#!/bin/sh\n: >"%s/mvstub/ran"\nexit 1\n' "$tmp" >"$tmp/mvstub/mv"
+printf '#!/bin/sh\nif [ -e "%s/mvstub/first" ]; then\n  : >"%s/mvstub/ran"\n  exit 1\nfi\n: >"%s/mvstub/first"\nexec "%s" "$@"\n' \
+  "$tmp" "$tmp" "$tmp" "$(command -v mv)" >"$tmp/mvstub/mv"
 chmod +x "$tmp/mvstub/mv"
 status=0
 (PATH=$tmp/mvstub:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/mv.err" || status=$?
 [ -f "$tmp/mvstub/ran" ] || fail "the failing mv stub never ran"
-[ "$status" = 1 ] && grep -q 'the new artifacts are in' "$tmp/mv.err" ||
+[ "$status" = 1 ] && grep -q 'Delete that directory, then rerun' "$tmp/mv.err" ||
   fail "a failure while moving the artifacts in was not reported: exit $status, $(cat "$tmp/mv.err")"
+[ -f "$tmp/stale/SHA256SUMS" ] ||
+  fail "a failure while moving the artifacts in left the output without SHA256SUMS"
 kept=
 for entry in "$tmp/stale"/.assemble-release-artifacts.*; do
   [ -d "$entry" ] && kept=$entry
 done
-[ -n "$kept" ] && (cd "$kept" && shasum -a 256 -c --quiet SHA256SUMS) ||
+[ -n "$kept" ] && [ -f "$kept/contract.txt" ] ||
   fail "a failure while moving the artifacts in did not keep them"
+status=0
+assemble "$tmp/stale" 2>"$tmp/rerun.err" || status=$?
+[ "$status" = 1 ] && grep -q 'delete it and rerun' "$tmp/rerun.err" ||
+  fail "a rerun with the kept staging directory did not say how to recover: exit $status, $(cat "$tmp/rerun.err")"
 remove_stage "$tmp/stale"
 assemble "$tmp/stale"
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
   fail "a rerun did not recover from a failure while moving the artifacts in"
 
-# A failure while the previous artifacts are deleted keeps SHA256SUMS, so a
-# rerun still accepts the output and recovers it.
+# A failure while the previous artifacts are deleted keeps SHA256SUMS, so
+# deleting the staging directory and rerunning recovers the output.
 mkdir "$tmp/rmstub"
 printf '#!/bin/sh\ncase "$*" in\n  */contract.txt) : >"%s/rmstub/ran"; exit 1 ;;\nesac\nexec "%s" "$@"\n' "$tmp" "$(command -v rm)" >"$tmp/rmstub/rm"
 chmod +x "$tmp/rmstub/rm"
@@ -207,6 +239,10 @@ status=0
   fail "a failure while deleting the previous artifacts was not reported: exit $status, $(cat "$tmp/rm.err")"
 [ -f "$tmp/stale/SHA256SUMS" ] ||
   fail "a failure while deleting the previous artifacts removed SHA256SUMS before the others"
+status=0
+assemble "$tmp/stale" 2>"$tmp/rerun.err" || status=$?
+[ "$status" = 1 ] && grep -q 'delete it and rerun' "$tmp/rerun.err" ||
+  fail "a rerun with the kept staging directory did not say how to recover: exit $status, $(cat "$tmp/rerun.err")"
 remove_stage "$tmp/stale"
 assemble "$tmp/stale"
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
@@ -340,9 +376,22 @@ fi
   "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
   ! grep -q 'declares no bloom:route package' "$tmp/guard.err" ||
     fail "the assembler read a replaced WIT object instead of HEAD's"
+  ! grep -q -e refusing -e 'differs from HEAD' -e 'told to ignore' "$tmp/guard.err" ||
+    fail "the guard refused a clean tree with an untracked output inside it: $(cat "$tmp/guard.err")"
   [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
     fail "the assembler replaced the previous artifacts despite a replace ref"
   git -C "$repo" replace -d "$blob" >/dev/null
+  mkdir "$tmp/headmove"
+  printf '#!/bin/sh\n: >"%s/headmove/ran"\ngit commit -q --allow-empty -m moved\necho "wit_digest: 0"\n' "$tmp" >"$tmp/headmove/cargo"
+  chmod +x "$tmp/headmove/cargo"
+  status=0
+  (PATH=$tmp/headmove:$PATH; export PATH; "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev") 2>"$tmp/guard.err" || status=$?
+  [ -f "$tmp/headmove/ran" ] || fail "the HEAD-moving cargo stub never ran"
+  [ "$status" = 1 ] && grep -q 'HEAD moved' "$tmp/guard.err" ||
+    fail "the assembler did not refuse a HEAD that moved during the build: exit $status, $(cat "$tmp/guard.err")"
+  [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+    fail "the assembler replaced the previous artifacts although HEAD moved"
+  git -C "$repo" reset -q --soft HEAD~1
   # The symbolic link is itself an untracked file, so these runs skip the
   # working-tree guard with --allow-dirty; the output checks still apply.
   ln -s prev "$repo/link"
@@ -366,3 +415,14 @@ assemble "$tmp/directory-guard" 2>"$tmp/directory-guard.err" || status=$?
   fail "artifact-named directory was not refused before replacement"
 [ "$(cat "$tmp/directory-guard/contract.txt")" = previous ] ||
   fail "an invalid output directory lost previous artifacts"
+
+# An output holding artifact names but no SHA256SUMS, such as another skill's
+# directory, is not a previous run's output: it is refused and kept.
+mkdir "$tmp/nosums"
+printf 'mine\n' >"$tmp/nosums/SKILL.md"
+status=0
+assemble "$tmp/nosums" 2>"$tmp/nosums.err" || status=$?
+[ "$status" = 1 ] && grep -q 'holds no previous artifacts' "$tmp/nosums.err" ||
+  fail "an output without SHA256SUMS was not refused: exit $status, $(cat "$tmp/nosums.err")"
+[ "$(cat "$tmp/nosums/SKILL.md")" = mine ] ||
+  fail "a refused output without SHA256SUMS lost its SKILL.md"

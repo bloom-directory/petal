@@ -6,24 +6,30 @@
 #
 # The directory is replaced, so it must be new, empty, or hold only a previous
 # run's artifacts; it may not be a symbolic link, and this user must be able to
-# read and write it. Once the build has succeeded, the script enters the
-# directory and does all its writing and deleting from inside it, so renaming
-# or replacing the path at that point cannot redirect it elsewhere. The new
-# artifacts are staged in a hidden subdirectory and moved into place only once
-# all of them exist: a failure before then leaves a previous run's artifacts as
-# they were, and a failure while they are replaced names the directory that
-# holds the new ones, so a rerun can replace them.
+# read and write it. Before the build, the script enters the directory and
+# does all its writing and deleting from inside it, so renaming or replacing
+# the path, or any directory above it, cannot redirect it elsewhere; a new
+# output is therefore created even if the build then fails. The new artifacts
+# are staged in a hidden subdirectory and moved into place only once all of
+# them exist: a failure before then leaves a previous run's artifacts as they
+# were, and a failure while they are replaced names the directory that holds
+# the new ones, which must be deleted before a rerun replaces them.
 #
 # The WIT archive takes its timestamps from HEAD's commit time, which needs git
 # 2.40 or later.
 #
 # contract.txt's wit_digest comes from `petal inspect`, built from the working
 # tree, while the archive comes from HEAD. So the script refuses to run while
-# any file in the repository differs from HEAD, untracked files included, or is
+# any file git tracks, or would list as untracked, differs from HEAD, or is
 # hidden from git with assume-unchanged or skip-worktree; the output directory
-# itself is exempt. It also refuses a repository info/attributes file, which git
-# archive always applies. --allow-dirty skips these checks, as it does for
-# cargo package; only tests use it.
+# itself is exempt. Files git ignores are not checked, and Cargo configuration
+# outside the repository and the build environment are the caller's to keep
+# clean: this guard catches mistakes, it is not a security boundary. Every read
+# names the commit HEAD pointed at when the script started, and the checks run
+# again after the build, so a HEAD that moves meanwhile is refused. It also
+# refuses a repository info/attributes file, which git archive always applies.
+# --allow-dirty skips these checks, as it does for cargo package; only tests
+# use it.
 set -eu
 
 usage() {
@@ -83,8 +89,18 @@ cd "$root"
 # HEAD's, unseen by git status, so ignore replace refs throughout.
 GIT_NO_REPLACE_OBJECTS=1
 export GIT_NO_REPLACE_OBJECTS
+# Every later read names this commit, so a HEAD that moves, or a repository
+# path that is swapped, while the CLI builds cannot change what is archived.
+commit=$(git rev-parse --verify 'HEAD^{commit}')
 
-if [ -z "$allow_dirty" ]; then
+# guard runs before the build and again after it, so a change made while the
+# CLI builds is refused too.
+guard() {
+  [ -z "$allow_dirty" ] || return 0
+  if [ "$(git rev-parse --verify 'HEAD^{commit}')" != "$commit" ]; then
+    echo "assemble-release-artifacts: HEAD moved from $commit while the artifacts were built; rerun" >&2
+    exit 1
+  fi
   # The output may sit inside the repository, for example dist/; leave it out.
   set -- .
   case $out in
@@ -92,7 +108,7 @@ if [ -z "$allow_dirty" ]; then
   esac
   dirty=$(git status --porcelain --untracked-files=all -- "$@")
   if [ -n "$dirty" ]; then
-    echo "assemble-release-artifacts: the working tree differs from HEAD, so petal inspect, built from it, could report a wit_digest that does not describe HEAD's WIT; commit or stash:" >&2
+    echo "assemble-release-artifacts: the working tree differs from HEAD, so petal inspect, built from it, could report a wit_digest that does not describe HEAD's WIT; commit, stash or remove:" >&2
     printf '%s\n' "$dirty" >&2
     exit 1
   fi
@@ -100,7 +116,7 @@ if [ -z "$allow_dirty" ]; then
   # skip-worktree (S).
   hidden=$(git ls-files -v | grep '^[a-zS]' || true)
   if [ -n "$hidden" ]; then
-    echo "assemble-release-artifacts: the repository has files git is told to ignore changes to, so the guard cannot check them; clear assume-unchanged or skip-worktree:" >&2
+    echo "assemble-release-artifacts: the repository has files git is told to ignore changes to, so the guard cannot check them; clear assume-unchanged or skip-worktree (for a sparse checkout, run git sparse-checkout disable):" >&2
     printf '%s\n' "$hidden" >&2
     exit 1
   fi
@@ -111,7 +127,8 @@ if [ -z "$allow_dirty" ]; then
     echo "assemble-release-artifacts: $info_attributes would change the WIT archive; move it aside" >&2
     exit 1
   fi
-fi
+}
+guard
 
 refuse() {
   echo "assemble-release-artifacts: refusing to replace $out, $*" >&2
@@ -119,8 +136,9 @@ refuse() {
 }
 # check_out <path> [<staging name>]: the output, reached through <path>, must
 # be a real directory holding nothing, or only a previous run's artifacts. This
-# runs on the path before the build, and again on . once the script is inside
-# the output, just before the previous artifacts are replaced.
+# runs on the path first, then on . once the script is inside the output and
+# before the build, and again on . just before the previous artifacts are
+# replaced.
 check_out() {
   if [ -L "$1" ]; then
     refuse "which is a symbolic link"
@@ -140,6 +158,11 @@ check_out() {
     found=1
   done
   [ -n "$found" ] || return 0
+  for entry in "$1"/.assemble-release-artifacts.*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    [ "${entry##*/}" != "${2:-}" ] || continue
+    refuse "which holds ${entry##*/}, the staging directory of an interrupted or concurrent run; once no run is using it, delete it and rerun"
+  done
   [ -f "$1/SHA256SUMS" ] || refuse "which holds no previous artifacts"
   for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
@@ -158,7 +181,7 @@ check_out "$out"
 
 # Name the archive after the package its WIT declares, so a contract bump
 # cannot ship under the previous version.
-contract=$(git show HEAD:wit/route/route.wit | sed -n 's/^package \(bloom:route@[^;]*\);$/\1/p')
+contract=$(git show "$commit:wit/route/route.wit" | sed -n 's/^package \(bloom:route@[^;]*\);$/\1/p')
 if [ -z "$contract" ]; then
   echo "assemble-release-artifacts: HEAD:wit/route/route.wit declares no bloom:route package" >&2
   exit 1
@@ -170,27 +193,28 @@ if ! git archive -h 2>&1 | grep -q -- '--mtime'; then
   echo "assemble-release-artifacts: git archive does not support --mtime; this needs git 2.40 or later" >&2
   exit 1
 fi
-commit=$(git rev-parse HEAD)
 # A subtree archive otherwise uses wall-clock time, so bind it to HEAD's commit
 # time. git reads "@<seconds> +0000" exactly, while a bare @<seconds> below
 # 100000000 is misread as another date. --no-show-signature keeps a signature
 # check out of that value.
-archive_time="@$(git log -1 --no-show-signature --format=%ct HEAD) +0000"
-inspect=$(cargo run --quiet -p bloom-petal-cli -- inspect)
+archive_time="@$(git log -1 --no-show-signature --format=%ct "$commit") +0000"
+
+# Enter the output before the build and stay in it, so the directory checked is
+# the one written: renaming or replacing $out, or any directory above it, from
+# here on cannot send a write or a deletion anywhere else.
+mkdir -p "$out"
+cd -P -- "$out"
+if [ -L "$out" ] || ! [ . -ef "$out" ]; then
+  refuse "which changed while it was checked"
+fi
+check_out .
+inspect=$(cd "$root" && cargo run --quiet -p bloom-petal-cli -- inspect)
 digest=$(printf '%s\n' "$inspect" | awk '/^wit_digest:/ { print $2 }')
 if [ -z "$digest" ]; then
   echo "assemble-release-artifacts: petal inspect reported no wit_digest" >&2
   exit 1
 fi
-
-# Enter the output and confirm it is the directory that was checked. From here
-# on every path is relative to it, so renaming or replacing $out cannot send a
-# write or a deletion anywhere else.
-mkdir -p "$out"
-cd -P -- "$out"
-if [ -L "$out" ] || ! [ . -ef "$out" ]; then
-  refuse "which changed while the artifacts were built"
-fi
+(cd "$root" && guard)
 
 # Stage the new artifacts in a hidden subdirectory, so they replace the previous
 # ones only once all of them exist. Only validated artifact files are ever
@@ -214,21 +238,21 @@ GIT_ATTR_NOSYSTEM=1 git -C "$root" -c core.autocrlf=false -c core.eol=lf \
   -c core.attributesFile=/dev/null -c tar.umask=0002 \
   -c tar.tar.gz.command='git archive gzip' \
   archive --format=tar.gz --mtime="$archive_time" --prefix="$wit/" \
-  HEAD:wit/route >"$stage/$wit.tar.gz"
+  "$commit:wit/route" >"$stage/$wit.tar.gz"
 cat >"$stage/contract.txt" <<EOF
 source_commit: $commit
 contract: $contract
 wit_digest: $digest
 EOF
-git -C "$root" show HEAD:skills/bloom-petal-development/SKILL.md >"$stage/SKILL.md"
-(cd "$stage" && shasum -a 256 contract.txt "$wit.tar.gz" SKILL.md >SHA256SUMS)
+git -C "$root" show "$commit:skills/bloom-petal-development/SKILL.md" >"$stage/SKILL.md"
+(cd -P -- "$stage" && shasum -a 256 contract.txt "$wit.tar.gz" SKILL.md >SHA256SUMS)
 
 check_out . "$stage_name"
 
 # From here on, a failure must keep the staged artifacts and say where they are.
 incomplete() {
   trap - EXIT
-  echo "assemble-release-artifacts: $out may be incomplete; the new artifacts are in $out/$stage_name. Rerun to replace them, then remove $out/$stage_name" >&2
+  echo "assemble-release-artifacts: $out may be incomplete; the new artifacts are in $out/$stage_name. Delete that directory, then rerun to replace them" >&2
   exit 1
 }
 trap incomplete HUP INT TERM
