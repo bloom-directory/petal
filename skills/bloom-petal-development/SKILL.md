@@ -431,14 +431,16 @@ Know what an install changes:
   top-level `.git` and `.jj` directories and every directory named `target`, at
   any depth. Those are left out of the package itself, so never name a route
   directory `target`; a `.git` file, as in a Git worktree, is included. Any
-  changed or added file, including a stray archive or note in the root, gives
-  a new hash. So does building the same sources in another directory or with
-  another toolchain, such as another clone, CI or a GitHub source install: the
-  compiled components embed the checkout's absolute path and depend on the Rust
-  and `wasm-tools` versions. Only a rebuild in the same checkout with the same
-  toolchain can reproduce the hash, and even then `petal build` re-resolves
-  dependencies on every build, so a newer compatible crate release can change
-  it. Wallet policy
+  changed or added input file, including a stray archive or note, changes the
+  hash. Pass a deliberate runtime tree or a validated runtime archive, rather
+  than the whole development checkout, when that is what you intend to ship.
+  Reproducibility depends on the pinned builder, dependency graph, compiler
+  and flags: compare actual component, composed-package and archive bytes
+  across directories instead of inferring identity from source commits or
+  checkout locations. Older builders can embed paths or re-resolve compatible
+  dependencies; the current builder's checks and evidence determine its
+  guarantees. Use Machine's actual composed result for publication and
+  proposed authority records; generation does not enroll them. Wallet policy
   allows Petal packages by hash (`allowed_petal_packages`), so the owner
   approves a policy update for a new hash before its routes can sign, derive
   keys or stage transactions for that wallet; reads do not need it.
