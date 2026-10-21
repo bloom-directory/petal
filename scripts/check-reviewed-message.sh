@@ -38,6 +38,7 @@ EOF
 export PETAL_PUBLIC_FIXTURE=$fixture PETAL_PREVIEW_SIGNER=$signer
 export PETAL_BROKER_READINGS=$scratch/readings.json
 if ! cargo test --locked --manifest-path "$scratch/broker/Cargo.toml" -p bloom-broker --lib \
+  --target-dir "$root/target/host-check" \
   message_review::sdk_message_fixture::producer_bytes_match_actual_broker_reading -- --exact \
   > "$scratch/decoder-test.log" 2>&1; then
   printf 'Broker decoder check failed; inspect %s/decoder-test.log\n' "$scratch" >&2

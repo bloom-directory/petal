@@ -90,6 +90,8 @@ async fn compiled_constructor_reaches_actual_machine_host() {
         evidence.join("composition.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
             "package_hash":first.hash, "routes":routes,
+            "contract":bloom_petals::package::ROUTE_PACKAGE,
+            "wit_digest":bloom_petals::package::contract_wit_digest(),
             "authority":"proposal only; trusted installer enrollment not exercised"
         }))
         .unwrap(),

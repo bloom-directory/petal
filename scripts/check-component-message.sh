@@ -36,7 +36,7 @@ git -C "$machine" archive HEAD | tar -x -C "$scratch/machine"
 cp "$root/scripts/machine-message-fixture.rs" "$scratch/machine/crates/bloom-petals/tests/sdk_message_fixture.rs"
 export PETAL_COMPONENT_EVIDENCE=$scratch
 if ! cargo test --locked --manifest-path "$scratch/machine/Cargo.toml" -p bloom-petals \
-  --test sdk_message_fixture -- --nocapture > "$scratch/machine-test.log" 2>&1; then
+  --target-dir "$root/target/host-check" --test sdk_message_fixture -- --nocapture > "$scratch/machine-test.log" 2>&1; then
   printf 'Machine component check failed; inspect %s/machine-test.log\n' "$scratch" >&2
   exit 1
 fi

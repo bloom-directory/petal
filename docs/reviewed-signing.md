@@ -74,3 +74,26 @@ reader, not arbitrary host versions.
 The real
 PM80 installer/Machine/Broker/Signer harness supplies separate authorization
 evidence; new examples still need their own component and profile acceptance.
+
+To build the constructor as a component and check its actual Machine forwarding,
+run the combined public fixture check:
+
+```sh
+sh scripts/check-component-message.sh "$MACHINE_CHECKOUT" "$BROKER_CHECKOUT" "$SIGNER_ADDRESS"
+```
+
+This builds the checked-in `personal/[wallet]/[index]/sign` component, applies
+Machine's normal compiled metadata and capability validation, compares two
+Machine compositions and archives, captures account 1 and a stable retry through
+the real WASM runner, and passes those captured bytes to the actual Broker
+reader. The result generates package hash, archive digest, route IDs and proposed
+class records from Machine's authoritative result. Those records are proposals;
+they grant no installer authority. Removing the compiled signing capability
+must fail Machine validation.
+
+The test-only adapter uses a synthetic account projection and a capture host
+that returns pending approval. It produces no signature and cannot replace the
+real installer/DaemonPetalHost/Broker/Signer authorization test. The supplied
+checkouts are archived without modification; evidence stays in a fresh retained
+temporary directory. The script currently checks these bounded examples, not
+an arbitrary protocol, and is not yet part of cross-repository CI.
