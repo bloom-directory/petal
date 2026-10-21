@@ -10,7 +10,16 @@ description = "Rust SDK for authoring Bloom Petal route components"
 [lib]
 name = "petal"
 
+[[example]]
+name = "reviewed_message"
+required-features = ["evm-messages"]
+
+[features]
+evm-messages = ["dep:alloy-dyn-abi", "dep:alloy-primitives"]
+
 [dependencies]
+alloy-dyn-abi = { version = "1.7.3", default-features = false, features = ["eip712"], optional = true }
+alloy-primitives = { version = "1.7.3", default-features = false, optional = true }
 getrandom.workspace = true
 serde.workspace = true
 serde_json.workspace = true

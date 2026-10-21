@@ -6,8 +6,10 @@ cd "$root"
 
 scripts/test-install-tools.sh
 cargo fmt --all -- --check
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo build --locked -p bloom-petal-sdk --features evm-messages --target wasm32-unknown-unknown
+cargo run --locked --quiet -p bloom-petal-sdk --features evm-messages --example reviewed_message
 wasm-tools component wit wit/route >/dev/null
 for package in wit/route/deps/*; do
   wasm-tools component wit "$package" >/dev/null

@@ -181,8 +181,8 @@ pub enum ClaimFee {
 }
 
 /// What a signing route declares its payload does. There is deliberately no
-/// default: choose [`ClaimEffects::moves_nothing`] or
-/// [`ClaimEffects::moves_value`].
+/// default: choose [`ClaimEffects::moves_nothing`], [`ClaimEffects::moves_value`]
+/// or the explicitly supported [`ClaimEffects::no_financial_overrides`] profile.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClaimEffects {
     moves_value: bool,
@@ -194,6 +194,18 @@ pub struct ClaimEffects {
 }
 
 impl ClaimEffects {
+    /// Supply no financial overrides to a host profile that independently
+    /// rebuilds the signed facts and explicitly rejects caller overrides.
+    ///
+    /// The PM80 Polymarket prepared-record and delegated Hyperliquid profiles
+    /// require this wire shape. This does NOT assert that the payload moves
+    /// nothing, verifies its effects, or makes an unknown profile safe. The
+    /// corresponding complete public review/use-time evidence is mandatory.
+    /// Use `moves_value` for ordinary caller-declared financial effects.
+    pub fn no_financial_overrides() -> Self {
+        Self::moves_nothing()
+    }
+
     /// The payload moves no value, authorizes no one and pays no fee: for
     /// example a login message, or an order cancellation whose venue charges
     /// nothing. Effects are relative to the signing wallet.
@@ -589,6 +601,29 @@ pub struct PetalClaim {
 }
 
 impl PetalClaim {
+    /// Attach the same public evidence to approval review and, for a delegated
+    /// key, signing use. Protocol-specific evidence remains Petal-owned and
+    /// must match the payload; Broker independently checks that binding.
+    pub fn reviewed_sign_request(
+        &self,
+        wallet: &str,
+        selector: SignSelector,
+        review: Vec<u8>,
+        key_ref_jcs: Option<Vec<u8>>,
+    ) -> Result<PayloadSignRequest, DispatchResponse> {
+        if review.is_empty() {
+            return Err(error(
+                -3,
+                "reviewed signing requires complete public evidence",
+            ));
+        }
+        let mut request = self.sign_request(wallet, selector)?;
+        request.claim_assurance_evidence = key_ref_jcs.as_ref().map(|_| review.clone());
+        request.key_ref_jcs = key_ref_jcs;
+        request.action = Some(review);
+        Ok(request)
+    }
+
     /// The canonical claim bytes.
     pub fn jcs(&self) -> &[u8] {
         &self.jcs
@@ -887,6 +922,42 @@ mod tests {
             .route_id("r000007")
             .package_hash(PACKAGE)
             .bind::<Confirm>()
+    }
+
+    #[test]
+    fn one_public_review_reaches_approval_and_delegated_signing_use() {
+        let claim = petal_use_claim(
+            &ctx(),
+            "example.message",
+            CryptoSuite::Secp256k1Keccak256Recoverable,
+            &[payload(1)],
+            &ClaimEffects::no_financial_overrides(),
+            ClaimNonce::Explicit([9; 16]),
+        )
+        .unwrap();
+        let evidence = br#"{"schema":"public-protocol-evidence"}"#.to_vec();
+        let owner = claim
+            .reviewed_sign_request("alice", SignSelector::Exact, evidence.clone(), None)
+            .unwrap();
+        assert_eq!(owner.action.as_ref(), Some(&evidence));
+        assert_eq!(owner.claim_assurance_evidence, None);
+        let delegated = claim
+            .reviewed_sign_request(
+                "alice",
+                SignSelector::Reusable,
+                evidence.clone(),
+                Some(b"key-ref".to_vec()),
+            )
+            .unwrap();
+        assert_eq!(delegated.action, delegated.claim_assurance_evidence);
+        assert_eq!(delegated.action, Some(evidence));
+        assert_eq!(delegated.preimage, owner.preimage);
+        assert_eq!(delegated.petal_use_claim_jcs, owner.petal_use_claim_jcs);
+        assert!(
+            claim
+                .reviewed_sign_request("alice", SignSelector::Exact, Vec::new(), None)
+                .is_err()
+        );
     }
 
     fn payload(byte: u8) -> PayloadSignItem {

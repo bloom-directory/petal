@@ -20,6 +20,8 @@ fn component_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 getrandom::register_custom_getrandom!(component_getrandom);
 
 mod claim;
+#[cfg(feature = "evm-messages")]
+pub mod evm_messages;
 pub use claim::{
     ClaimAsset, ClaimDebit, ClaimDestination, ClaimEffects, ClaimFee, ClaimNonce, ClaimOrigin,
     CryptoSuite, PetalClaim, petal_use_claim,
