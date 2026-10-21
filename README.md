@@ -103,8 +103,18 @@ petal package \
 archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
 the same clean package tree produces identical bytes. It refuses to overwrite
-an existing output. Generated `.git`, `.jj`, `target`, and `artifacts` trees are
-excluded; route components under the configured Petal output remain canonical.
+an existing output. It includes the complete `petal/` runtime tree, `petal.toml`,
+`README.md` and `AGENTS.md`. The configured output must be `petal/<name>`.
+Unrelated development files do not change runtime identity; code, capabilities
+and runtime documents do. This deliberately changes older source-tree package
+hashes: publish a new immutable package and preserve its predecessor lineage.
+Machine assigns a separate final identity when composing the installed package.
+
+Component builds remap checkout and Cargo cache paths and omit symbol names at
+compile time. Two different checkout directories with identical compiler and
+locked inputs produce the same tested components. Explicit target-specific
+Cargo rustflags keep their normal precedence; include equivalent path remapping
+if you replace the default flags.
 
 Petal repositories should publish with the reusable workflow documented in
 [`docs/releasing-petals.md`](docs/releasing-petals.md). The Petal repository

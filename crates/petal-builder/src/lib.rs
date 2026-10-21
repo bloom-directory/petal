@@ -204,7 +204,23 @@ pub fn package(
         ));
     }
     let mut files = Vec::new();
-    collect_package_files(&root, &root, &out, &mut files)?;
+    let runtime = PathBuf::from("petal").join(&config.name);
+    if config.output != runtime {
+        return Err(format!(
+            "installable package output must be {}, got {}",
+            runtime.display(),
+            config.output.display()
+        ));
+    }
+    if out.starts_with(root.join("petal")) {
+        return Err("archive output must be outside the runtime tree".into());
+    }
+    // These are the host-consumed inputs. Keep all runtime files and the full
+    // security manifest; development reports and source bookkeeping are not
+    // installation identity. Machine composition still assigns its own hash.
+    for path in ["petal.toml", "README.md", "AGENTS.md", "petal"] {
+        collect_package_files(&root, &root.join(path), &mut files)?;
+    }
     files.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
     let package_hash = package_hash(&files);
     let bytes = files.iter().map(|file| file.bytes.len() as u64).sum();
@@ -260,66 +276,33 @@ fn absolute_from(root: &Path, path: &Path) -> PathBuf {
 
 fn collect_package_files(
     root: &Path,
-    dir: &Path,
-    output: &Path,
+    path: &Path,
     files: &mut Vec<PackageFile>,
 ) -> Result<(), String> {
-    let mut entries = fs::read_dir(dir)
-        .map_err(display_err("read", dir))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("read {}: {error}", dir.display()))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path == output {
-            continue;
+    let metadata = fs::symlink_metadata(path).map_err(display_err("inspect", path))?;
+    if metadata.is_dir() {
+        let mut entries = fs::read_dir(path)
+            .map_err(display_err("read", path))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            collect_package_files(root, &entry.path(), files)?;
         }
-        let ty = entry
-            .file_type()
-            .map_err(|error| format!("inspect {}: {error}", path.display()))?;
-        if ty.is_dir() {
-            if should_skip_package_dir(root, &path) {
-                continue;
-            }
-            collect_package_files(root, &path, output, files)?;
-        } else if ty.is_file() {
-            if path
-                .file_name()
-                .and_then(OsStr::to_str)
-                .is_some_and(|name| name.ends_with(".petal.tar") || name.ends_with(".petal.tar.gz"))
-            {
-                continue;
-            }
-            let relative = path
-                .strip_prefix(root)
-                .map_err(|_| format!("package file escaped root: {}", path.display()))?;
-            let relative = package_path(relative)?;
-            validate_ustar_path(&relative)?;
-            files.push(PackageFile {
-                path: relative,
-                bytes: fs::read(&path).map_err(display_err("read", &path))?,
-            });
-        } else {
-            return Err(format!(
-                "Petal package contains non-regular file {}",
-                path.display()
-            ));
-        }
+    } else if metadata.is_file() {
+        let relative = package_path(path.strip_prefix(root).map_err(|error| error.to_string())?)?;
+        validate_ustar_path(&relative)?;
+        files.push(PackageFile {
+            path: relative,
+            bytes: fs::read(path).map_err(display_err("read", path))?,
+        });
+    } else {
+        return Err(format!(
+            "Petal package contains non-regular file {}",
+            path.display()
+        ));
     }
     Ok(())
-}
-
-fn should_skip_package_dir(root: &Path, path: &Path) -> bool {
-    let Ok(relative) = path.strip_prefix(root) else {
-        return false;
-    };
-    matches!(
-        relative
-            .components()
-            .next()
-            .and_then(|component| component.as_os_str().to_str()),
-        Some(".git" | ".jj" | "artifacts" | "target")
-    ) || path.file_name().and_then(OsStr::to_str) == Some("target")
 }
 
 fn package_path(path: &Path) -> Result<String, String> {
@@ -441,7 +424,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     let workspace = build_root.join("workspace");
     generate_workspace(&root, &workspace, &routes, config)?;
     reuse_route_lockfile(&root, &workspace, config, &routes)?;
-    let artifacts = build_workspace(&workspace, &routes, config.jobs)?;
+    let artifacts = build_workspace(&root, &workspace, &routes, config.jobs)?;
 
     let generation = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -543,7 +526,7 @@ fn generate_workspace(
     write_if_changed(
         &workspace.join("Cargo.toml"),
         &format!(
-            "[workspace]\nresolver = \"2\"\nmembers = [\n{members}\n]\n\n[profile.release]\nopt-level = 3\ndebug = false\nstrip = \"none\"\ndebug-assertions = false\noverflow-checks = false\nlto = false\npanic = \"unwind\"\nincremental = false\ncodegen-units = 16\nrpath = false\n"
+            "[workspace]\nresolver = \"2\"\nmembers = [\n{members}\n]\n\n[profile.release]\nopt-level = 3\ndebug = false\nstrip = \"symbols\"\ndebug-assertions = false\noverflow-checks = false\nlto = false\npanic = \"unwind\"\nincremental = false\ncodegen-units = 16\nrpath = false\n"
         ),
     )?;
     let members_dir = workspace.join("members");
@@ -719,6 +702,7 @@ fn lock_dependency_identity(
 }
 
 fn build_workspace(
+    root: &Path,
     workspace: &Path,
     routes: &[Route],
     jobs: Option<usize>,
@@ -739,6 +723,24 @@ fn build_workspace(
     .arg(workspace.parent().unwrap().join("target"))
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());
+    let flags = component_rustflags(root);
+    if std::env::var_os("CARGO_ENCODED_RUSTFLAGS").is_some()
+        || std::env::var_os("RUSTFLAGS").is_some()
+    {
+        cmd.env("CARGO_ENCODED_RUSTFLAGS", flags);
+    } else {
+        // Cargo appends this array to configured build flags. Do not replace
+        // a developer's target-specific flags with an environment override.
+        let flags = flags
+            .to_str()
+            .ok_or("component rustflags must be UTF-8")?
+            .split('\x1f')
+            .collect::<Vec<_>>();
+        cmd.arg("--config").arg(format!(
+            "build.rustflags={}",
+            serde_json::to_string(&flags).map_err(|error| error.to_string())?
+        ));
+    }
     if let Some(jobs) = jobs {
         cmd.arg("--jobs").arg(jobs.to_string());
     }
@@ -799,6 +801,34 @@ fn build_workspace(
         exact.insert(route.package.clone(), files[0].clone());
     }
     Ok(exact)
+}
+
+fn component_rustflags(root: &Path) -> std::ffi::OsString {
+    let mut flags = std::env::var_os("CARGO_ENCODED_RUSTFLAGS").unwrap_or_else(|| {
+        std::env::var("RUSTFLAGS")
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join("\x1f")
+            .into()
+    });
+    let mut remap = |path: &Path, stable: &str| {
+        if !flags.is_empty() {
+            flags.push("\x1f");
+        }
+        flags.push("--remap-path-prefix=");
+        flags.push(path);
+        flags.push("=");
+        flags.push(stable);
+    };
+    remap(root, "/petal");
+    if let Some(cargo_home) = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
+    {
+        remap(&cargo_home, "/cargo");
+    }
+    flags
 }
 
 fn discover_routes(root: &Path) -> Result<Vec<Route>, String> {
@@ -2393,6 +2423,38 @@ mod tests {
             hex_sha256(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn runtime_identity_ignores_development_reports_but_binds_code_and_capabilities() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        let archive = |name: &str| fixture.path().join(format!("dist/{name}.petal.tar.gz"));
+        let original = package(fixture.path(), &package_config(), archive("original")).unwrap();
+        fs::write(fixture.path().join("audit-notes.md"), b"development notes").unwrap();
+        fs::write(fixture.path().join("route/report.txt"), b"not runtime").unwrap();
+        let reported = package(fixture.path(), &package_config(), archive("reported")).unwrap();
+        assert_eq!(original.package_hash, reported.package_hash);
+        assert_eq!(original.sha256, reported.sha256);
+        fs::write(
+            fixture.path().join("petal/demo/status.wasm"),
+            b"changed code",
+        )
+        .unwrap();
+        let code = package(fixture.path(), &package_config(), archive("code")).unwrap();
+        assert_ne!(original.package_hash, code.package_hash);
+        let manifest = fixture.path().join("petal.toml");
+        fs::write(
+            &manifest,
+            format!(
+                "{}\n[caps]\nallowed = [\"bloom:sign\"]\n",
+                fs::read_to_string(&manifest).unwrap()
+            ),
+        )
+        .unwrap();
+        let capabilities =
+            package(fixture.path(), &package_config(), archive("capabilities")).unwrap();
+        assert_ne!(code.package_hash, capabilities.package_hash);
     }
 
     #[test]
