@@ -19,7 +19,7 @@ enum Command {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
-    /// Validate built routes and create a deterministic Bloom-installable archive.
+    /// Build current routes and create a deterministic runtime archive.
     Package {
         #[arg(long, default_value = "petal-build.toml")]
         config: PathBuf,
@@ -62,7 +62,7 @@ fn run() -> Result<(), String> {
         Command::Package { config, root, out } => {
             let config = resolve_config(&root, &config);
             let config = bloom_petal_builder::load_config(&config)?;
-            bloom_petal_builder::check_caps(&root, &config)?;
+            bloom_petal_builder::build(&root, &config)?;
             let report = bloom_petal_builder::package(&root, &config, &out)?;
             println!(
                 "{}",

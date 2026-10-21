@@ -334,8 +334,9 @@ Use the repository's pinned commands and scripts. At minimum:
 
 Do not use a successful host-crate build as evidence that route sources compile;
 route files are independently generated component crates. `petal check` does
-not rebuild, so do not use it against stale artifacts. Packaging checks built
-routes but does not fully validate `petal.toml` policy and does not replace
+not rebuild, so do not use it against stale artifacts. `petal package` rebuilds
+current sources before packaging, but does not fully validate `petal.toml`
+policy and does not replace
 route-level tests or a runtime VFS smoke test.
 
 ## Review checklist

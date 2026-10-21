@@ -17,6 +17,13 @@ jobs:
       - name: Install component tools
         run: scripts/install-tools.sh
       - run: scripts/check.sh
+      - name: Retain public reproducibility result or mismatch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-reproducibility
+          path: ${{ runner.temp }}/petal-repro.*/reproducibility-*
+          if-no-files-found: ignore
 
   first-party-consumers:
     name: First-party consumer (${{ matrix.name }})

@@ -44,15 +44,52 @@ scripts/generate-bindings.sh
 The generated SDK bindings are derived output. `wit/route` is the only
 authoritative WIT tree.
 
-The conformance build emits the WIT digest
-`b1448484d252a4b6cae350df1d28e5102109692acdcd4be9b03bffe097af04f6`.
-Consumer CI must reject a different digest until it intentionally upgrades the
-contract release.
+Read the contract and WIT digest from `petal inspect` using the pinned tooling.
+Release provenance and checksums must describe the WIT shipped with that release;
+a copied digest in authoring documentation is not a compatibility oracle.
+
+## Pinning the SDK
+
+A Petal pins the SDK in the route crate's Cargo dependencies, including renamed
+or workspace-inherited dependencies. Generated components use that same source
+and feature selection. `[sdk]` in `petal-build.toml` is optional transitional
+validation: remove it, or keep it equal to the route dependency.
+
+The route SDK must be an exact pin: a git `rev` that is a full 40-character commit,
+or a version requirement such as `=0.1.0`. `petal build`, `petal check` and
+`petal package` then refuse a Petal when:
+
+- any SDK dependency of the route crate, in any dependency table or inherited
+  from its workspace, differs from `[sdk]`;
+- for a git pin, another crate from the SDK's repository, such as
+  `bloom-petal-contract`, is pinned at a different revision, in the route crate
+  or in `[dependencies]` of `petal-build.toml`;
+- the lockfile resolves any of them from another source or revision;
+- the route crate or its workspace overrides the SDK with `[patch]` or
+  `[replace]`, which generated route components ignore.
+
+The component build starts from the route workspace's committed lockfile and
+resolves wrapper packages without accepting dependency graph changes. Missing
+locked sources may be fetched; provision them first to use Cargo's offline mode.
+Declare any additional wrapper dependencies in the route workspace so route
+tests and generated components exercise the same graph.
+
+To upgrade, change the route SDK pin (and any remaining transitional pins), then refresh the
+lockfile:
+
+```sh
+cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+```
+
+A local checkout can still be tested through a `[patch]` in
+`.cargo/config.toml`, as this repository's consumer CI does. Pins outside
+Cargo are not checked: scripts that install the `petal` CLI, and the release
+workflow's `uses:` reference and `petal-tooling-ref`. Keep them at the same
+commit.
 
 ## Packaging a Petal
 
-After building route components, create the platform-neutral archive consumed
-by Bloom:
+Build current route sources and create a platform-neutral runtime archive:
 
 ```sh
 petal package \
@@ -60,12 +97,27 @@ petal package \
   --out dist/example-v0.1.0.petal.tar.gz
 ```
 
-`petal package` checks every built component before writing the archive. The
+`petal package` rebuilds current sources and checks every generated component
+before writing the archive. It cannot silently package an older build. Machine
+composition and installation still apply the host's authoritative checks. The
 archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
 the same clean package tree produces identical bytes. It refuses to overwrite
-an existing output. Generated `.git`, `.jj`, `target`, and `artifacts` trees are
-excluded; route components under the configured Petal output remain canonical.
+an existing output. It includes the complete `petal/` runtime tree, `petal.toml`,
+`README.md`, `AGENTS.md`, and the pinned `SKILL.md` when present. The configured
+output must be `petal/<name>`.
+Unrelated development files do not change runtime identity; code, capabilities
+and runtime documents do. This deliberately changes older source-tree package
+hashes: publish a new immutable package and preserve its predecessor lineage.
+Machine assigns a separate final identity when composing the installed package.
+
+Component builds remap checkout and Cargo cache paths, omit symbol names and
+use one codegen unit at compile time. Multiple units produced path-dependent
+empty-function ordering on Rust 1.99.1 even after remapping. Two different
+checkout directories with identical compiler and
+locked inputs produce the same tested components. Explicit target-specific
+Cargo rustflags keep their normal precedence; include equivalent path remapping
+if you replace the default flags.
 
 Petal repositories should publish with the reusable workflow documented in
 [`docs/releasing-petals.md`](docs/releasing-petals.md). The Petal repository
