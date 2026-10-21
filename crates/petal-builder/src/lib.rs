@@ -1594,13 +1594,9 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
     }
 }
 
-/// Refuse a Petal whose route crate pins the SDK differently from `[sdk]` in
-/// the build configuration.
-///
-/// Generated route components build against `[sdk]`. The route crate's shared
-/// code and host-side tests build against its own manifest and lockfile. When
-/// they disagree, components and tests run against different SDKs and an SDK
-/// upgrade is half applied. This checks, against `[sdk]`:
+/// Keep generated components on the route crate's authoritative SDK source.
+/// The optional `[sdk]` table is a migration assertion, not another input to
+/// compilation. Check it and the following against the route dependency:
 ///
 /// - every SDK dependency of the route crate, in any dependency table, and any
 ///   `workspace = true` entry resolved from its workspace;
@@ -1795,7 +1791,7 @@ pub fn check_sdk_pin(root: impl AsRef<Path>, config: &BuildConfig) -> Result<(),
         return Ok(());
     }
     Err(format!(
-        "{package} is pinned inconsistently. [sdk] in the build configuration pins {expected}, but:\n{}\nPin every site to the same SDK source, remove any [patch] or [replace] of it, then refresh the lockfile:\n  cargo update --manifest-path {} -p {package}",
+        "{package} is pinned inconsistently with the route SDK {expected}:\n{}\nAlign these sources, remove manifest SDK [patch] or [replace] overrides, then refresh the lockfile:\n  cargo update --manifest-path {} -p {package}",
         disagreements
             .iter()
             .map(|line| format!("  - {line}"))
