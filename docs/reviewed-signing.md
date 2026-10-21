@@ -82,7 +82,8 @@ run the combined public fixture check:
 sh scripts/check-component-message.sh "$MACHINE_CHECKOUT" "$BROKER_CHECKOUT" "$SIGNER_ADDRESS"
 ```
 
-This builds the checked-in `personal/[wallet]/[index]/sign` component, applies
+This builds the checked-in `personal/[wallet]/[index]/sign` and
+`typed/[wallet]/[index]/sign` components, applies
 Machine's normal compiled metadata and capability validation, compares two
 Machine compositions and archives, captures account 1 and a stable retry through
 the real WASM runner, and passes those captured bytes to the actual Broker
@@ -91,16 +92,38 @@ class records from Machine's authoritative result. Those records are proposals;
 they grant no installer authority. Removing the compiled signing capability
 must fail Machine validation.
 
-The test-only adapter uses a synthetic account projection and a capture host
+The default test-only adapter uses a synthetic account projection and a capture host
 that returns pending approval. It produces no signature and cannot replace the
 real installer/DaemonPetalHost/Broker/Signer authorization test. The supplied
 checkouts are archived without modification; evidence stays in a fresh retained
 temporary directory. The script currently checks these bounded examples, not
-an arbitrary protocol. The existing CI workflow also offers this check through
+an arbitrary protocol.
+
+For the stronger authorization check, set `BLOOM_INTEGRATION_MACHINE_BIN`,
+`BLOOM_INTEGRATION_BROKER_BIN`, `BLOOM_INTEGRATION_SIGNER_BIN` and
+`BLOOM_INTEGRATION_DEBUG_DRIVER_BIN` to the selected developer-mode service
+binaries, then append `--authorize` to the same command. Machine must include
+the `sdk-message` case in `scripts/test-polymarket-authorization.sh`. This mode
+uses the actual installer and service boundary with a disposable public test
+mnemonic and software owner. Both formats require approval, reject an
+unenrolled class without an approval hint, and produce signatures recovering
+the selected account-1 owner. Only a passing run reports `authorized_in_test:
+true`. It submits no transaction and does not prove physical-owner acceptance.
+
+On an installed example, write exactly `sign` to its route. The owner reads
+`petal-signing-requests/` through the normal Bloom VFS, opens the pending
+record's ceremony, approves, then retries `sign`. The same record reports
+`signed` after completion. An unapproved retry is refused while its approval
+and request identity remain unchanged. These fixed informational messages
+demonstrate signing; they do not return a reusable signature to the caller.
+Protocol applications must handle `SignOutcome` and their own submission.
+
+The existing CI workflow also offers this check through
 `workflow_dispatch`: supply one full `machine_ref`; its release compatibility
 manifest selects Broker. This diagnostic uses exact revisions without adding
-an unmerged Broker pin to SDK release inputs. It still reports authorization
-as false and does not replace final release conformance.
+an unmerged Broker pin to SDK release inputs. Select `authorize` and supply a
+full reviewed `signer_ref` for real authorization; otherwise authorization is
+false. Neither mode replaces final release conformance.
 
 The fixture also contains `stage/[wallet]/[index]/self-call`. Writing an explicit
 chain name stages a zero-value, empty-data call to the selected account's own

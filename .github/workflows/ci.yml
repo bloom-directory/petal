@@ -10,13 +10,22 @@ on:
         description: Full Machine commit whose compatibility manifest selects Broker
         required: true
         type: string
+      authorize:
+        description: Also exercise actual disposable installer and signing authority
+        required: false
+        default: false
+        type: boolean
+      signer_ref:
+        description: Full reviewed Signer commit required for authorization mode
+        required: false
+        type: string
 
 jobs:
   supported-component-boundary:
     name: Compiled SDK component and actual host readers
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
     defaults:
@@ -24,6 +33,7 @@ jobs:
         working-directory: sdk
     env:
       MACHINE_REF: ${{ inputs.machine_ref }}
+      SIGNER_REF: ${{ inputs.signer_ref }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,14 +68,46 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - name: Require an immutable Signer input for authorization
+        if: inputs.authorize
+        shell: bash
+        run: '[[ "$SIGNER_REF" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v7
+        if: inputs.authorize
+        with:
+          repository: bloom-directory/bloom-signer
+          ref: ${{ inputs.signer_ref }}
+          path: signer
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk -> target
       - run: scripts/install-tools.sh --wasm-tools-only
-      - name: Validate, forward and independently decode the public examples
+      - name: Prepare disposable Linux service manager
+        if: inputs.authorize
         run: |
+          sudo loginctl enable-linger "$(id -un)"
+          sudo systemctl start "user@$(id -u).service"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      - name: Build selected developer authority services
+        if: inputs.authorize
+        run: |
+          cargo build --locked --manifest-path ../broker/Cargo.toml -p bloom-broker -p bloom-broker-debug-driver --features bloom-broker/triad-dev-harness
+          cargo build --locked --manifest-path ../signer/Cargo.toml -p bloom-signer --features triad-dev-harness
+          cargo build --locked --manifest-path ../machine/Cargo.toml -p bloom --no-default-features --features mount,triad-dev-harness
+      - name: Validate, forward and independently decode the public examples
+        env:
+          AUTHORIZE: ${{ inputs.authorize }}
+          BLOOM_INTEGRATION_MACHINE_BIN: ${{ github.workspace }}/machine/target/debug/bloom
+          BLOOM_INTEGRATION_BROKER_BIN: ${{ github.workspace }}/broker/target/debug/bloom-broker
+          BLOOM_INTEGRATION_DEBUG_DRIVER_BIN: ${{ github.workspace }}/broker/target/debug/bloom-broker-debug-driver
+          BLOOM_INTEGRATION_SIGNER_BIN: ${{ github.workspace }}/signer/target/debug/bloom-signer
+        run: |
+          mode=decode
+          if [ "$AUTHORIZE" = true ]; then mode=--authorize; fi
           sh scripts/check-component-message.sh "$GITHUB_WORKSPACE/machine" \
-            "$GITHUB_WORKSPACE/broker" 0x0000000000000000000000000000000000000001
+            "$GITHUB_WORKSPACE/broker" 0x0000000000000000000000000000000000000001 "$mode"
       - name: Retain bounded public fixture evidence
         if: always()
         uses: actions/upload-artifact@v4
