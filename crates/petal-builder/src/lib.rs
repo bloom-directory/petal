@@ -687,7 +687,11 @@ fn lock_dependency_identity(
                     package.get("version").and_then(toml::Value::as_str) == Some(version)
                 })
                 && source.is_none_or(|source| {
-                    package.get("source").and_then(toml::Value::as_str) == Some(source)
+                    package
+                        .get("source")
+                        .and_then(toml::Value::as_str)
+                        .map(|locked| locked.split('#').next().unwrap_or(locked))
+                        == Some(source)
                 })
         })
         .collect::<Vec<_>>();
@@ -2026,6 +2030,26 @@ mod tests {
             check_sdk_pin(tmp.path(), &config)
                 .unwrap_err()
                 .contains("Cargo.lock resolves bloom-petal-sdk")
+        );
+    }
+
+    #[test]
+    fn locked_git_edges_resolve_to_the_full_commit_without_switching_sources() {
+        let source = format!("git+{SDK_GIT}?rev={REV_A}");
+        let registry = "registry+https://github.com/rust-lang/crates.io-index";
+        let original: toml::Table = toml::from_str(&format!(
+            "version = 4\n[[package]]\nname = \"route\"\nversion = \"0.1.0\"\ndependencies = [\"dependency 1.0.0 ({source})\"]\n[[package]]\nname = \"dependency\"\nversion = \"1.0.0\"\nsource = \"{source}#{REV_A}\"\n[[package]]\nname = \"dependency\"\nversion = \"1.0.0\"\nsource = \"{registry}\"\n"
+        )).unwrap();
+        validate_locked_graph(&original, &original, &BTreeSet::new()).unwrap();
+        let mut changed = original.clone();
+        changed["package"].as_array_mut().unwrap()[0]["dependencies"] =
+            toml::Value::Array(vec![toml::Value::String(format!(
+                "dependency 1.0.0 ({registry})"
+            ))]);
+        assert!(
+            validate_locked_graph(&original, &changed, &BTreeSet::new())
+                .unwrap_err()
+                .contains("dependency edges for route")
         );
     }
 
