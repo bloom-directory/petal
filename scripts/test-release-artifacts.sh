@@ -33,7 +33,9 @@ cmp "$skill" "$tmp/bloom-petal-contract-$version/$skill" ||
 # tree and warns about it below; an uncommitted contract bump still fails until
 # it is committed.
 dirty=$(git status --porcelain --untracked-files=all -- wit src
-  git ls-files -v -- wit src | grep '^[a-zS]' || true)
+  git ls-files -v -- wit src | grep '^[a-zS]' || true
+  info_attributes=$(git rev-parse --git-path info/attributes)
+  [ ! -s "$info_attributes" ] || echo "$info_attributes")
 assemble() {
   if [ -z "$dirty" ]; then
     scripts/assemble-release-artifacts.sh "$@"
@@ -49,15 +51,30 @@ assemble "$tmp/repeated"
 cmp "$tmp/dist/SHA256SUMS" "$tmp/repeated/SHA256SUMS" ||
   fail "release artifacts changed when only build time changed"
 
-# The output must be named directly. A final . or .. is refused, and the
+# The output must be named directly. A final . or .., or a .. in a path whose
+# parent does not exist yet, is refused before anything is created, and the
 # previous artifacts stay.
-for name in "$tmp/dist/." "$tmp/dist/sub/.."; do
+for name in "$tmp/dist/." "$tmp/dist/sub/.." "$tmp/dist/missing/../../dist"; do
   status=0
   assemble "$name" 2>"$tmp/dot.err" || status=$?
-  [ "$status" = 2 ] || fail "the assembler accepted $name as its output: exit $status"
+  [ "$status" = 2 ] && grep -q -e 'name the output directory itself' -e 'must already exist' "$tmp/dot.err" ||
+    fail "the assembler accepted $name as its output: exit $status, $(cat "$tmp/dot.err")"
 done
+[ ! -e "$tmp/dist/missing" ] || fail "a refused output path created $tmp/dist/missing"
 (cd "$tmp/dist" && shasum -a 256 -c --quiet SHA256SUMS) ||
   fail "a refused output lost its previous artifacts"
+
+# The caller's git config and global attributes do not change the artifacts.
+mkdir -p "$tmp/xdg/git"
+printf '* text eol=crlf\n' >"$tmp/xdg/git/attributes"
+(
+  XDG_CONFIG_HOME=$tmp/xdg
+  GIT_CONFIG_PARAMETERS="'core.autocrlf'='true' 'tar.umask'='0022' 'tar.tar.gz.command'='gzip -9n'"
+  export XDG_CONFIG_HOME GIT_CONFIG_PARAMETERS
+  assemble "$tmp/hostile"
+)
+cmp "$tmp/dist/SHA256SUMS" "$tmp/hostile/SHA256SUMS" ||
+  fail "the caller's git config or attributes changed the release artifacts"
 
 # Assembling over a previous run replaces exactly its artifact files, stale
 # ones and AppleDouble companions included.
@@ -73,19 +90,113 @@ expected=$(ls -A "$tmp/dist" | LC_ALL=C sort | tr '\n' ' ')
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
   fail "assembling over a previous run gave different artifacts"
 
+# The stubs below replace one command for a single assembler run, in a
+# subshell. Each records that it ran, so a test cannot pass by never reaching
+# the step it is about.
+real_git=$(command -v git)
+real_shasum=$(command -v shasum)
+no_stage_left() {
+  for entry in "$tmp"/.assemble-release-artifacts.*; do
+    [ ! -e "$entry" ] || fail "$1 left $entry"
+  done
+}
+
 # A failure after the artifacts are staged keeps the previous ones and leaves
-# no staging directory. The stub only fails the assembler's own checksum step.
+# no staging directory.
 mkdir "$tmp/stub"
-printf '#!/bin/sh\nexit 1\n' >"$tmp/stub/shasum"
+printf '#!/bin/sh\n: >"%s/stub/ran"\nexit 1\n' "$tmp" >"$tmp/stub/shasum"
 chmod +x "$tmp/stub/shasum"
 status=0
 (PATH=$tmp/stub:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/stub.err" || status=$?
+[ -f "$tmp/stub/ran" ] || fail "the failing checksum stub never ran"
 [ "$status" != 0 ] || fail "the assembler succeeded although its checksum step failed"
 cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
   fail "a failure after staging lost the previous artifacts"
+no_stage_left "a failure after staging"
+
+# The output is checked again just before the previous artifacts are deleted:
+# a file that appears in it during the build is refused, not deleted.
+mkdir "$tmp/appear"
+printf '#!/bin/sh\nprintf x >"%s/stale/notes.txt"\nexec "%s" "$@"\n' "$tmp" "$real_shasum" >"$tmp/appear/shasum"
+chmod +x "$tmp/appear/shasum"
+status=0
+(PATH=$tmp/appear:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/appear.err" || status=$?
+[ "$status" = 1 ] && grep -q 'holds notes.txt' "$tmp/appear.err" ||
+  fail "a file that appeared during the build was not refused: exit $status, $(cat "$tmp/appear.err")"
+[ -f "$tmp/stale/notes.txt" ] || fail "a file that appeared during the build was deleted"
+rm -f "$tmp/stale/notes.txt"
+(cd "$tmp/stale" && shasum -a 256 -c --quiet SHA256SUMS) ||
+  fail "a refusal just before deletion lost the previous artifacts"
+no_stage_left "a refusal just before deletion"
+
+# A failure while the new artifacts are moved in keeps them in the staging
+# directory and says so, and a rerun recovers the output.
+mkdir "$tmp/mvstub"
+printf '#!/bin/sh\n: >"%s/mvstub/ran"\nexit 1\n' "$tmp" >"$tmp/mvstub/mv"
+chmod +x "$tmp/mvstub/mv"
+status=0
+(PATH=$tmp/mvstub:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/mv.err" || status=$?
+[ -f "$tmp/mvstub/ran" ] || fail "the failing mv stub never ran"
+[ "$status" = 1 ] && grep -q 'the new artifacts are in' "$tmp/mv.err" ||
+  fail "a failure while moving the artifacts in was not reported: exit $status, $(cat "$tmp/mv.err")"
+kept=
 for entry in "$tmp"/.assemble-release-artifacts.*; do
-  [ ! -e "$entry" ] || fail "a failure after staging left $entry"
+  [ -d "$entry" ] && kept=$entry
 done
+[ -n "$kept" ] && (cd "$kept" && shasum -a 256 -c --quiet SHA256SUMS) ||
+  fail "a failure while moving the artifacts in did not keep them"
+rm -f "$kept"/*
+rmdir "$kept"
+assemble "$tmp/stale"
+cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+  fail "a rerun did not recover from a failure while moving the artifacts in"
+
+# A failure while the previous artifacts are deleted keeps SHA256SUMS, so a
+# rerun still accepts the output and recovers it.
+mkdir "$tmp/rmstub"
+printf '#!/bin/sh\ncase "$*" in\n  */stale/contract.txt) : >"%s/rmstub/ran"; exit 1 ;;\nesac\nexec "%s" "$@"\n' "$tmp" "$(command -v rm)" >"$tmp/rmstub/rm"
+chmod +x "$tmp/rmstub/rm"
+status=0
+(PATH=$tmp/rmstub:$PATH; export PATH; assemble "$tmp/stale") 2>"$tmp/rm.err" || status=$?
+[ -f "$tmp/rmstub/ran" ] || fail "the failing rm stub never ran"
+[ "$status" = 1 ] && grep -q 'the new artifacts are in' "$tmp/rm.err" ||
+  fail "a failure while deleting the previous artifacts was not reported: exit $status, $(cat "$tmp/rm.err")"
+[ -f "$tmp/stale/SHA256SUMS" ] ||
+  fail "a failure while deleting the previous artifacts removed SHA256SUMS before the others"
+for entry in "$tmp"/.assemble-release-artifacts.*; do
+  [ -d "$entry" ] || continue
+  rm -f "$entry"/*
+  rmdir "$entry"
+done
+assemble "$tmp/stale"
+cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
+  fail "a rerun did not recover from a failure while deleting the previous artifacts"
+
+# An output this user cannot read or write is refused, not half-replaced.
+# root can read and write anything, so this only runs as another user.
+if [ "$(id -u)" != 0 ]; then
+  for mode in 300 500; do
+    mkdir "$tmp/locked-$mode"
+    chmod "$mode" "$tmp/locked-$mode"
+    status=0
+    assemble "$tmp/locked-$mode" 2>"$tmp/locked.err" || status=$?
+    chmod 700 "$tmp/locked-$mode"
+    [ "$status" = 1 ] && grep -q 'cannot read and write' "$tmp/locked.err" ||
+      fail "an output with mode $mode was not refused: exit $status, $(cat "$tmp/locked.err")"
+  done
+fi
+
+# A git without git archive --mtime is refused before anything is built, with
+# a message that names the version it needs.
+mkdir "$tmp/oldgit"
+printf '#!/bin/sh\nif [ "$1" = archive ] && [ "$2" = -h ]; then\n  : >"%s/oldgit/ran"\n  echo "usage: git archive [<options>] <tree-ish> [<path>...]"\n  exit 129\nfi\nexec "%s" "$@"\n' "$tmp" "$real_git" >"$tmp/oldgit/git"
+chmod +x "$tmp/oldgit/git"
+status=0
+(PATH=$tmp/oldgit:$PATH; export PATH; assemble "$tmp/oldgit-out") 2>"$tmp/oldgit.err" || status=$?
+[ -f "$tmp/oldgit/ran" ] || fail "the old-git stub never ran"
+[ "$status" = 1 ] && grep -q 'needs git 2.40 or later' "$tmp/oldgit.err" ||
+  fail "a git without archive --mtime was not refused: exit $status, $(cat "$tmp/oldgit.err")"
+[ ! -e "$tmp/oldgit-out" ] || fail "a refused old git still created $tmp/oldgit-out"
 inspect=$(cargo run --quiet -p bloom-petal-cli -- inspect)
 contract=$(printf '%s\n' "$inspect" | awk '/^contract:/ { print $2 }')
 digest=$(printf '%s\n' "$inspect" | awk '/^wit_digest:/ { print $2 }')
@@ -101,7 +212,7 @@ grep -qx "wit_digest: $digest" "$tmp/dist/contract.txt" ||
   fail "contract.txt does not carry wit_digest $digest"
 # petal inspect hashes the working tree's WIT; the archive holds HEAD's.
 [ -z "$dirty" ] ||
-  echo "test-release-artifacts: wit/ or src/ has uncommitted changes; contract.txt's wit_digest describes the working tree, not the archived WIT" >&2
+  echo "test-release-artifacts: wit/ or src/ has uncommitted changes, or the repository has an info/attributes; contract.txt's wit_digest may not describe the archived WIT" >&2
 
 # The release artifact is HEAD's skill, byte for byte, whatever the working
 # tree holds.
@@ -118,15 +229,17 @@ elif ! cmp -s "$tmp/bloom-petal-contract-$version/$skill" "$tmp/dist/SKILL.md"; 
 fi
 
 # Without --allow-dirty, the assembler refuses a tree whose WIT inputs differ
-# from HEAD, or that hides changes from git, before it touches a previous run's
-# artifacts; it also refuses a symbolic link as its output, with or without a
-# trailing slash. This runs it in a scratch repository, so each refusal comes
+# from HEAD, that hides changes from git, or whose repository info/attributes
+# would change the archive, before it touches a previous run's artifacts; it
+# also refuses a symbolic link as its output, with or without a trailing
+# slash. This runs it in a scratch repository, so each refusal comes
 # before it needs cargo. The subshell drops the caller's git environment,
 # config and attributes: run from a hook or `git rebase -x`, GIT_DIR and
 # GIT_INDEX_FILE would otherwise point these commands at the caller's
 # repository.
 (
-  unset $(git rev-parse --local-env-vars)
+  # git rev-parse --local-env-vars does not list GIT_ATTR_SOURCE.
+  unset $(git rev-parse --local-env-vars) GIT_ATTR_SOURCE
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1
   repo=$tmp/guard
   mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev"
@@ -164,6 +277,26 @@ fi
       rmdir "$repo/wit/route/deps/new" "$repo/wit/route/deps"
     fi
   done
+  mkdir -p "$repo/.git/info"
+  printf '*.wit export-ignore\n' >"$repo/.git/info/attributes"
+  status=0
+  "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
+  [ "$status" = 1 ] && grep -q 'info/attributes' "$tmp/guard.err" ||
+    fail "the assembler did not refuse a repository info/attributes: exit $status, $(cat "$tmp/guard.err")"
+  [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+    fail "the assembler replaced the previous artifacts despite a repository info/attributes"
+  rm -f "$repo/.git/info/attributes"
+  # A replace ref is ignored: the assembler reads HEAD's own WIT, so it gets
+  # past the contract check and stops only where it needs cargo.
+  blob=$(git -C "$repo" rev-parse HEAD:wit/route/route.wit)
+  git -C "$repo" replace "$blob" "$(printf 'replaced\n' | git -C "$repo" hash-object -w --stdin)"
+  status=0
+  "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
+  ! grep -q 'declares no bloom:route package' "$tmp/guard.err" ||
+    fail "the assembler read a replaced WIT object instead of HEAD's"
+  [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+    fail "the assembler replaced the previous artifacts despite a replace ref"
+  git -C "$repo" replace -d "$blob" >/dev/null
   ln -s prev "$repo/link"
   for name in link link/; do
     status=0

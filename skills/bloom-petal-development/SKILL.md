@@ -443,13 +443,18 @@ Know what an install changes:
   can change the components, and its components embed the absolute paths of
   the checkout, the Cargo home and the Rust toolchain. Building the same
   sources in another directory or on another machine, such as another clone,
-  CI or a GitHub source install, therefore gives a new hash. Use the hash
-  Machine reports for the package it built (`bloom petals build`) when
-  publishing and when proposing installer provenance or wallet policy;
-  building does not enroll it. Wallet policy allows Petal packages by hash
-  (`allowed_petal_packages`), so the owner approves a policy update for a new
-  hash before its routes can sign, derive keys or stage transactions for that
-  wallet; reads do not need it.
+  CI or a GitHub source install, therefore gives a new hash. Propose
+  installer provenance and wallet policy only for the hash of the exact
+  package that will be installed: the hash `bloom petals build` reports for
+  the package directory you will install as it is (or for the archive it
+  writes with `--out`), or, for a release built by the reusable release
+  workflow, the `package_hash` in its `petal-release.json`. That is the
+  package hash of the published archive's contents, not its `archive_sha256`,
+  and Bloom checks it when it installs a release pinned in its built-in
+  catalog. Building does not enroll a hash. Wallet policy allows Petal
+  packages by hash (`allowed_petal_packages`), so the owner approves a policy
+  update for a new hash before its routes can sign, derive keys or stage
+  transactions for that wallet; reads do not need it.
 - A new hash starts with an empty private store, unless it is a signed
   successor in an authenticated lineage. Bloom then copies the predecessor's
   store bytes on first use, with no migration hook, so a successor must read
@@ -465,8 +470,11 @@ Know what an install changes:
   `package_replaced`, and only Exact recovery remains.
 - A GitHub source package may declare `[source]` and `[build].command`. Bloom
   runs that command natively with the installing user's privileges and does
-  not sandbox it, so keep the build non-interactive, reproducible and
-  dependency-light, and test installs by tag and by immutable commit.
+  not sandbox it, so keep the build non-interactive and dependency-light, and
+  test installs by tag and by immutable commit. Bloom builds each install in a
+  fresh temporary checkout, so with this builder its hash differs on every
+  install and cannot be approved in advance; publish a release archive, and
+  install that archive, when the hash must be known before install.
 
 Exercise the installed tree both through direct VFS
 (`bloom vfs ls|cat|write /petals/<name>/...`) and through a mounted daemon:
