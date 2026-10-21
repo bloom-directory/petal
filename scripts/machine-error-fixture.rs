@@ -40,9 +40,9 @@ async fn compiled_sdk_preserves_each_host_error_reason() {
     let wasm = std::fs::read(std::env::var_os("PETAL_ERROR_COMPONENT").unwrap()).unwrap();
     let vm = PetalVm::new().unwrap();
     let mut messages = vec![];
-    for (body, expected) in [
-        ("cancelled", "denied: owner cancelled this request"),
-        ("malformed", "invalid: message evidence is malformed"),
+    for (body, expected_code, expected) in [
+        ("cancelled", -2, "denied: owner cancelled this request"),
+        ("malformed", -3, "invalid: message evidence is malformed"),
     ] {
         let output = vm
             .dispatch_component_route(
@@ -64,7 +64,7 @@ async fn compiled_sdk_preserves_each_host_error_reason() {
             .unwrap();
         match output.response {
             DispatchResponse::Error { code, message } => {
-                assert_eq!(code, 500);
+                assert_eq!(code, expected_code);
                 assert_eq!(message, expected);
                 messages.push(message);
             }

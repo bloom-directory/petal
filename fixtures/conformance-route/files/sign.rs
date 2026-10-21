@@ -17,10 +17,15 @@ petal::route_file!(
             key_ref_jcs: None,
         }) {
             Ok(_) => petal::DispatchResponse::Write,
-            Err(error) => petal::DispatchResponse::Error {
-                code: 500,
-                message: error.message(),
-            },
+            Err(error) => petal::error(
+                match error.host_status() {
+                    Some(petal::HostStatus::NotFound) => -1,
+                    Some(petal::HostStatus::Denied) => -2,
+                    Some(petal::HostStatus::Invalid) => -3,
+                    _ => -4,
+                },
+                error.message(),
+            ),
         }
     }
 );
