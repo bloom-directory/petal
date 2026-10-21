@@ -22,7 +22,7 @@ if ! git -C "$root" diff --quiet HEAD -- Cargo.toml Cargo.lock crates scripts; t
   sdk_dirty=true
 fi
 producer=supplied_fixture
-scratch=$(mktemp -d)
+scratch=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/petal-decoder.XXXXXX")
 printf 'Decoder test evidence retained at %s\n' "$scratch" >&2
 if [ -z "$fixture" ]; then
   producer=generated_sdk_example

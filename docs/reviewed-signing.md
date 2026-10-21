@@ -96,7 +96,11 @@ that returns pending approval. It produces no signature and cannot replace the
 real installer/DaemonPetalHost/Broker/Signer authorization test. The supplied
 checkouts are archived without modification; evidence stays in a fresh retained
 temporary directory. The script currently checks these bounded examples, not
-an arbitrary protocol, and is not yet part of cross-repository CI.
+an arbitrary protocol. The existing CI workflow also offers this check through
+`workflow_dispatch`: supply one full `machine_ref`; its release compatibility
+manifest selects Broker. This diagnostic uses exact revisions without adding
+an unmerged Broker pin to SDK release inputs. It still reports authorization
+as false and does not replace final release conformance.
 
 The fixture also contains `stage/[wallet]/[index]/self-call`. Writing an explicit
 chain name stages a zero-value, empty-data call to the selected account's own

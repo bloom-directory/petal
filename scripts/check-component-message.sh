@@ -17,7 +17,7 @@ if [ -n "$(git -C "$root" status --porcelain --untracked-files=all -- Cargo.toml
   printf 'Commit the SDK component/check sources before recording their revision.\n' >&2
   exit 1
 fi
-scratch=$(mktemp -d)
+scratch=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/petal-component.XXXXXX")
 printf 'Component check evidence retained at %s\n' "$scratch" >&2
 cd "$root"
 cargo run --locked --quiet -p bloom-petal-cli -- build --config fixtures/petal-build.toml > "$scratch/build.log"

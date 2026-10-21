@@ -4,8 +4,79 @@ on:
   pull_request:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      machine_ref:
+        description: Full Machine commit whose compatibility manifest selects Broker
+        required: true
+        type: string
 
 jobs:
+  supported-component-boundary:
+    name: Compiled SDK component and actual host readers
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdk
+    env:
+      MACHINE_REF: ${{ inputs.machine_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: sdk
+          persist-credentials: false
+      - name: Require an immutable Machine input
+        shell: bash
+        run: '[[ "$MACHINE_REF" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v7
+        with:
+          repository: bloom-directory/bloom
+          ref: ${{ inputs.machine_ref }}
+          path: machine
+          persist-credentials: false
+      - name: Read Broker from the Machine compatibility manifest
+        id: broker
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, tomllib
+          manifest = pathlib.Path('../machine/packaging/triad/release/compatibility-v1.toml')
+          revision = tomllib.loads(manifest.read_text())['revisions']['broker_commit']
+          assert re.fullmatch('[0-9a-f]{40}', revision), 'Expected a full Broker commit'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'revision={revision}\n')
+          PY
+      - uses: actions/checkout@v7
+        with:
+          repository: bloom-directory/bloom-broker
+          ref: ${{ steps.broker.outputs.revision }}
+          path: broker
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk -> target
+      - run: scripts/install-tools.sh --wasm-tools-only
+      - name: Validate, forward and independently decode the public examples
+        run: |
+          sh scripts/check-component-message.sh "$GITHUB_WORKSPACE/machine" \
+            "$GITHUB_WORKSPACE/broker" 0x0000000000000000000000000000000000000001
+      - name: Retain bounded public fixture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supported-component-boundary
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/petal-component.*/component-result.json
+            ${{ runner.temp }}/petal-component.*/machine-test.log
+            ${{ runner.temp }}/petal-decoder.*/decoder-test.log
+
   test:
     runs-on: ubuntu-latest
     steps:
