@@ -8,6 +8,10 @@ signer=${2:?supply the selected signer address; this preview grants no authority
 fixture=${3:-}
 broker=$(CDPATH= cd -- "$broker" && pwd)
 revision=$(git -C "$broker" rev-parse HEAD)
+if [ ! -f "$broker/crates/bloom-broker/src/message_review.rs" ]; then
+  printf 'Broker checkout lacks the PM80 message-review reader; select a supported revision.\n' >&2
+  exit 1
+fi
 if ! git -C "$broker" diff --quiet HEAD -- Cargo.toml Cargo.lock crates; then
   printf 'Broker source differs from HEAD; commit the tested source before previewing a recorded revision.\n' >&2
   exit 1

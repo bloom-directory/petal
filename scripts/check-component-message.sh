@@ -13,7 +13,7 @@ if ! git -C "$machine" diff --quiet HEAD -- Cargo.toml Cargo.lock crates; then
 fi
 revision=$(git -C "$machine" rev-parse HEAD)
 sdk_revision=$(git -C "$root" rev-parse HEAD)
-if ! git -C "$root" diff --quiet HEAD -- Cargo.toml Cargo.lock crates fixtures scripts; then
+if [ -n "$(git -C "$root" status --porcelain --untracked-files=all -- Cargo.toml Cargo.lock crates fixtures scripts src wit templates)" ]; then
   printf 'Commit the SDK component/check sources before recording their revision.\n' >&2
   exit 1
 fi
@@ -21,6 +21,7 @@ scratch=$(mktemp -d)
 printf 'Component check evidence retained at %s\n' "$scratch" >&2
 cd "$root"
 cargo run --locked --quiet -p bloom-petal-cli -- build --config fixtures/petal-build.toml > "$scratch/build.log"
+cargo run --locked --quiet -p bloom-petal-cli -- inspect > "$scratch/sdk-contract.txt"
 for side in a b; do
   package=$scratch/package-$side
   mkdir -p "$package/petal/conformance"
@@ -53,7 +54,10 @@ from pathlib import Path
 root = Path(sys.argv[1])
 decoder = json.loads((root/'broker-review.json').read_text())
 assert decoder['sdk_revision'] == sys.argv[3] and not decoder['sdk_worktree_dirty']
+sdk_contract = dict(line.split(': ', 1) for line in (root/'sdk-contract.txt').read_text().splitlines())
+assert set(sdk_contract) == {'contract', 'wit_digest'}
 result = {'machine_revision':sys.argv[2], 'sdk_revision':sys.argv[3], 'built':True,
+    'sdk_contract':sdk_contract,
     'structurally_valid':True, 'compiled_capability_refusal':True,
     'wasm_forwarded':True, 'account':1, 'retry_identity_preserved':True,
     'transaction_staging_forwarded':True, 'transaction_confirmed':False,
