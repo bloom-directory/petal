@@ -61,7 +61,9 @@ sh scripts/check-reviewed-message.sh "$BROKER_CHECKOUT" "$SIGNER_ADDRESS"
 ```
 
 The command uses a fresh retained source copy and the real reader's normal
-output. It compares the rebuilt preimage and hash, refuses unsupported review
+output. It compares the rebuilt preimage and hash, checks changed payload/hash
+and unsupported-kind refusals, and checks changed evidence for the personal and
+EIP-712 examples. It refuses unsupported review
 formats, identifies the Broker commit, and reports `authorized_in_test: false`.
 It does not modify the supplied checkout. An optional third argument selects an
 existing public producer fixture instead of generating the supported example.

@@ -13,6 +13,10 @@ if ! git -C "$broker" diff --quiet HEAD -- Cargo.toml Cargo.lock crates; then
   exit 1
 fi
 sdk_revision=$(git -C "$root" rev-parse HEAD)
+sdk_dirty=false
+if ! git -C "$root" diff --quiet HEAD -- Cargo.toml Cargo.lock crates scripts; then
+  sdk_dirty=true
+fi
 producer=supplied_fixture
 scratch=$(mktemp -d)
 printf 'Decoder test evidence retained at %s\n' "$scratch" >&2
@@ -39,13 +43,16 @@ if ! cargo test --locked --manifest-path "$scratch/broker/Cargo.toml" -p bloom-b
   printf 'Broker decoder check failed; inspect %s/decoder-test.log\n' "$scratch" >&2
   exit 1
 fi
-python3 - "$scratch/readings.json" "$revision" "$sdk_revision" "$fixture" "$producer" <<'PY'
+python3 - "$scratch/readings.json" "$revision" "$sdk_revision" "$fixture" "$producer" "$sdk_dirty" <<'PY'
 import hashlib, json, sys
 from pathlib import Path
 readings = json.loads(Path(sys.argv[1]).read_text())
 print(json.dumps({'broker_revision': sys.argv[2], 'sdk_revision': sys.argv[3],
+    'sdk_worktree_dirty': sys.argv[6] == 'true',
     'fixture_sha256': hashlib.sha256(Path(sys.argv[4]).read_bytes()).hexdigest(),
     'producer': sys.argv[5], 'decoded': True,
+    'negative_checks': ['changed payload', 'changed hash', 'unsupported kind',
+        'changed personal/EIP-712 message where applicable'],
     'diagnostic_adapter': 'Test-only fixture module added to an archived Broker source copy; reader implementation unchanged.',
     'authorized_in_test': False, 'review': readings,
     'limits': 'Actual Broker message reader; no Machine installation, policy, owner approval, signature or settlement.'}, indent=2))
