@@ -57,15 +57,19 @@ async fn compiled_sdk_preserves_each_host_error_reason() {
                 Arc::new(RefusingHost),
                 &"11".repeat(32),
                 "conformance",
-                vec![],
+                vec![
+                    ("bloom.route_id".into(), "r000001".into()),
+                    ("bloom.wallet".into(), "fixture".into()),
+                    ("bloom.account".into(), "1".into()),
+                ],
                 RunOptions::default(),
             )
             .await
             .unwrap();
         match output.response {
             DispatchResponse::Error { code, message } => {
-                assert_eq!(code, expected_code);
                 assert_eq!(message, expected);
+                assert_eq!(code, expected_code);
                 messages.push(message);
             }
             _ => panic!("compiled route must return its host refusal"),
