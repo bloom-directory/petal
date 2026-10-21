@@ -53,6 +53,22 @@ cargo run --locked -p bloom-petal-sdk --features evm-messages --example reviewed
 ```
 
 This demonstrates encoding only. It does not install a Petal, obtain owner
-approval, exercise the actual Broker reader or prove authorization. The real
+approval or prove authorization. To check the produced bytes through the actual
+Broker reader, supply its source checkout and the selected signer address:
+
+```sh
+sh scripts/check-reviewed-message.sh "$BROKER_CHECKOUT" "$SIGNER_ADDRESS"
+```
+
+The command uses a fresh retained source copy and the real reader's normal
+output. It compares the rebuilt preimage and hash, refuses unsupported review
+formats, identifies the Broker commit, and reports `authorized_in_test: false`.
+It does not modify the supplied checkout. An optional third argument selects an
+existing public producer fixture instead of generating the supported example.
+Dependency/tool provisioning may use the network; Cargo offline mode works once
+those sources are available. This adapter targets the PM80 message-review v1
+reader, not arbitrary host versions.
+
+The real
 PM80 installer/Machine/Broker/Signer harness supplies separate authorization
 evidence; new examples still need their own component and profile acceptance.
