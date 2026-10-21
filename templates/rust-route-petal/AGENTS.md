@@ -6,6 +6,8 @@ effects.
 ## Development skill
 
 Petals are authored against the `bloom-petal-development` skill:
-https://github.com/bloom-directory/petal/tree/master/skills/bloom-petal-development
+Read the local `SKILL.md`, copied byte-for-byte from the contract shipped with
+the CLI that generated this scaffold. It remains available offline and matches
+that tool's authoring instructions.
 Load it into your agent before extending this Petal.
 

@@ -116,10 +116,11 @@ fn scaffold(name: &str, destination: &Path) -> Result<(), String> {
             .replace("petal-template", &crate_name);
         fs::write(&path, body).map_err(|error| format!("write {}: {error}", path.display()))?;
     }
+    let skill = destination.join("SKILL.md");
+    fs::write(&skill, bloom_petal_contract::PETAL_DEVELOPMENT_SKILL)
+        .map_err(|error| format!("write {}: {error}", skill.display()))?;
     println!("created {}", destination.display());
-    println!(
-        "development skill: https://github.com/bloom-directory/petal/tree/master/skills/bloom-petal-development"
-    );
+    println!("development skill: {}", skill.display());
     Ok(())
 }
 
