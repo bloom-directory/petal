@@ -159,7 +159,8 @@ pub fn check_caps(root: impl AsRef<Path>, config: &BuildConfig) -> Result<BuildR
 /// Create the strict, deterministic `.petal.tar.gz` consumed by Bloom.
 ///
 /// Callers should build and check their routes first. The CLI's `package`
-/// command does that check automatically before calling this function.
+/// command rebuilds current sources before calling this function. Machine
+/// composition and installation apply the host's authoritative validation.
 pub fn package(
     root: impl AsRef<Path>,
     config: &BuildConfig,
@@ -483,7 +484,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     fs::create_dir_all(out_dir.parent().unwrap())
         .map_err(display_err("create", out_dir.parent().unwrap()))?;
     replace_dir(&staging, &out_dir)?;
-    println!(
+    eprintln!(
         "wrote {} route components under {}",
         routes.len(),
         out_dir.display()

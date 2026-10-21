@@ -24,8 +24,11 @@ EOF
   printf '# Structural conformance fixture\nNo signing authorization is implied.\n' > "$copy/README.md"
   printf '# Fixture guidance\nUse only for component and package checks.\n' > "$copy/AGENTS.md"
   if [ "$side" = b ]; then printf 'unrelated development report\n' > "$copy/audit-notes.md"; fi
-  cargo run --locked --quiet -p bloom-petal-cli -- build --root "$copy" --config fixtures/repro-petal-build.toml > "$scratch/$side-build.json"
+  # Packaging must rebuild current sources and discard stale active output.
+  mkdir -p "$copy/petal/conformance"
+  printf 'stale component\n' > "$copy/petal/conformance/obsolete.wasm"
   cargo run --locked --quiet -p bloom-petal-cli -- package --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz" > "$scratch/$side-package.json"
+  test ! -e "$copy/petal/conformance/obsolete.wasm"
 done
 for route in sign static.txt; do
   if ! cmp "$scratch/a/petal/conformance/$route.wasm" "$scratch/b/petal/conformance/$route.wasm"; then

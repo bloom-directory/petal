@@ -90,8 +90,7 @@ commit.
 
 ## Packaging a Petal
 
-After building route components, create the platform-neutral archive consumed
-by Bloom:
+Build current route sources and create a platform-neutral runtime archive:
 
 ```sh
 petal package \
@@ -99,7 +98,9 @@ petal package \
   --out dist/example-v0.1.0.petal.tar.gz
 ```
 
-`petal package` checks every built component before writing the archive. The
+`petal package` rebuilds current sources and checks every generated component
+before writing the archive. It cannot silently package an older build. Machine
+composition and installation still apply the host's authoritative checks. The
 archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
 the same clean package tree produces identical bytes. It refuses to overwrite
