@@ -19,4 +19,4 @@ cargo run --quiet -p bloom-petal-cli -- build --config fixtures/petal-build.toml
 cargo run --quiet -p bloom-petal-cli -- check --config fixtures/petal-build.toml
 test "$(wasm-tools component wit fixtures/components/static.txt.wasm | grep -c 'import bloom:sign/signing@0.2.0' || true)" = 0
 test "$(wasm-tools component wit fixtures/components/sign.wasm | grep -c 'import bloom:sign/signing@0.2.0' || true)" = 1
-sh scripts/test-component-reproducibility.sh "$(mktemp -d)"
+sh scripts/test-component-reproducibility.sh "$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/petal-repro.XXXXXX")"

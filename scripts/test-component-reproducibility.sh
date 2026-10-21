@@ -27,8 +27,16 @@ EOF
   cargo run --locked --quiet -p bloom-petal-cli -- build --root "$copy" --config fixtures/repro-petal-build.toml > "$scratch/$side-build.json"
   cargo run --locked --quiet -p bloom-petal-cli -- package --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz" > "$scratch/$side-package.json"
 done
-cmp "$scratch/a/petal/conformance/sign.wasm" "$scratch/b/petal/conformance/sign.wasm"
-cmp "$scratch/a/petal/conformance/static.txt.wasm" "$scratch/b/petal/conformance/static.txt.wasm"
+for route in sign static.txt; do
+  if ! cmp "$scratch/a/petal/conformance/$route.wasm" "$scratch/b/petal/conformance/$route.wasm"; then
+    for side in a b; do
+      wasm-tools print "$scratch/$side/petal/conformance/$route.wasm" > "$scratch/reproducibility-$side.wat"
+    done
+    diff -u "$scratch/reproducibility-a.wat" "$scratch/reproducibility-b.wat" | head -80 || true
+    printf 'Component mismatch; diagnostic evidence retained at %s\n' "$scratch" >&2
+    exit 1
+  fi
+done
 cmp "$scratch/a.petal.tar.gz" "$scratch/b.petal.tar.gz"
 python3 - "$scratch" <<'PY'
 import hashlib, json, sys
