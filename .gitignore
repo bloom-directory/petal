@@ -3,3 +3,4 @@
 *.petal.tar
 fixtures/components/
 /dist/
+/.assemble-release-artifacts.*/

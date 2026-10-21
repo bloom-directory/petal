@@ -18,7 +18,8 @@ skill=skills/bloom-petal-development/SKILL.md
 # The crate ships the skill and builds from its own tarball, so the
 # include_str! behind PETAL_DEVELOPMENT_SKILL resolves for its consumers.
 cargo package -p bloom-petal-contract --allow-dirty --quiet
-version=$(cargo pkgid -p bloom-petal-contract | sed 's/.*[#@]//')
+package_id=$(cargo pkgid -p bloom-petal-contract)
+version=${package_id##*[#@]}
 target=$(cargo metadata --format-version 1 --no-deps |
   sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
 tar -xzf "$target/package/bloom-petal-contract-$version.crate" -C "$tmp"
@@ -26,14 +27,25 @@ cmp "$skill" "$tmp/bloom-petal-contract-$version/$skill" ||
   fail "the packaged crate's $skill differs from the repository's"
 
 # The release artifacts are complete, verify against their checksums, and name
-# the commit they were built from and the contract the CLI reports. The test
-# also runs on uncommitted work, so it lets the assembler use a dirty tree and
-# warns about it below; an uncommitted contract bump still fails until it is
-# committed.
-scripts/assemble-release-artifacts.sh --allow-dirty "$tmp/dist"
-(cd "$tmp/dist" && shasum -a 256 -c SHA256SUMS >/dev/null)
+# the commit they were built from and the contract the CLI reports. On a clean
+# tree, as in CI, the assembler runs exactly as a release runs it. The test
+# also runs on uncommitted work, so there it lets the assembler use a dirty
+# tree and warns about it below; an uncommitted contract bump still fails until
+# it is committed.
+dirty=$(git status --porcelain --untracked-files=all -- wit src
+  git ls-files -v -- wit src | grep '^[a-zS]' || true)
+assemble() {
+  if [ -z "$dirty" ]; then
+    scripts/assemble-release-artifacts.sh "$@"
+  else
+    scripts/assemble-release-artifacts.sh --allow-dirty "$@"
+  fi
+}
+assemble "$tmp/dist"
+(cd "$tmp/dist" && shasum -a 256 -c --quiet SHA256SUMS) ||
+  fail "the release artifacts do not verify against SHA256SUMS"
 sleep 2
-scripts/assemble-release-artifacts.sh --allow-dirty "$tmp/repeated"
+assemble "$tmp/repeated"
 cmp "$tmp/dist/SHA256SUMS" "$tmp/repeated/SHA256SUMS" ||
   fail "release artifacts changed when only build time changed"
 inspect=$(cargo run --quiet -p bloom-petal-cli -- inspect)
@@ -50,7 +62,7 @@ grep -qx "source_commit: $(git rev-parse HEAD)" "$tmp/dist/contract.txt" ||
 grep -qx "wit_digest: $digest" "$tmp/dist/contract.txt" ||
   fail "contract.txt does not carry wit_digest $digest"
 # petal inspect hashes the working tree's WIT; the archive holds HEAD's.
-[ -z "$(git status --porcelain --untracked-files=all -- wit src)" ] ||
+[ -z "$dirty" ] ||
   echo "test-release-artifacts: wit/ or src/ has uncommitted changes; contract.txt's wit_digest describes the working tree, not the archived WIT" >&2
 
 # The release artifact is HEAD's skill, byte for byte, whatever the working
@@ -68,43 +80,65 @@ elif ! cmp -s "$tmp/bloom-petal-contract-$version/$skill" "$tmp/dist/SKILL.md"; 
 fi
 
 # Without --allow-dirty, the assembler refuses a tree whose WIT inputs differ
-# from HEAD, before it touches a previous run's artifacts. This runs it in a
-# scratch repository, so the refusal comes before it needs cargo.
-repo=$tmp/guard
-mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev"
-cp scripts/assemble-release-artifacts.sh "$repo/scripts/"
-printf 'package bloom:route@0.1.0;\n' >"$repo/wit/route/route.wit"
-: >"$repo/src/lib.rs"
-printf 'previous\n' >"$repo/prev/contract.txt"
-: >"$repo/prev/SHA256SUMS"
-git -C "$repo" init -q
-git -C "$repo" add scripts wit src
-git -C "$repo" -c user.name=test -c user.email=test@example.invalid \
-  -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm init
-for change in modified staged untracked; do
-  case $change in
-    modified) printf '// change\n' >>"$repo/wit/route/route.wit" ;;
-    staged) printf '// change\n' >>"$repo/src/lib.rs" && git -C "$repo" add src/lib.rs ;;
-    untracked) mkdir -p "$repo/wit/route/deps/new" && printf 'package a:b;\n' >"$repo/wit/route/deps/new/new.wit" ;;
-  esac
+# from HEAD, or that hides changes from git, before it touches a previous run's
+# artifacts; it also refuses a symbolic link as its output. This runs it in a
+# scratch repository, so each refusal comes before it needs cargo. The
+# subshell drops the caller's git environment and config: run from a hook or
+# `git rebase -x`, GIT_DIR and GIT_INDEX_FILE would otherwise point these
+# commands at the caller's repository.
+(
+  unset $(git rev-parse --local-env-vars)
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+  repo=$tmp/guard
+  mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev"
+  cp scripts/assemble-release-artifacts.sh "$repo/scripts/"
+  printf 'package bloom:route@0.0.0;\n' >"$repo/wit/route/route.wit"
+  : >"$repo/src/lib.rs"
+  printf 'previous\n' >"$repo/prev/contract.txt"
+  : >"$repo/prev/SHA256SUMS"
+  git -C "$repo" init -q --template=
+  git -C "$repo" config core.excludesFile /dev/null
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" add scripts wit src
+  git -C "$repo" commit -qm init
+  for change in modified staged untracked assume-unchanged skip-worktree; do
+    case $change in
+      modified) printf '// change\n' >>"$repo/wit/route/route.wit" ;;
+      staged) printf '// change\n' >>"$repo/src/lib.rs" && git -C "$repo" add src/lib.rs ;;
+      untracked) mkdir -p "$repo/wit/route/deps/new" && printf 'package a:b;\n' >"$repo/wit/route/deps/new/new.wit" ;;
+      *) git -C "$repo" update-index "--$change" wit/route/route.wit && printf '// change\n' >>"$repo/wit/route/route.wit" ;;
+    esac
+    status=0
+    "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
+    [ "$status" = 1 ] && grep -q '^assemble-release-artifacts: wit/ or src/' "$tmp/guard.err" ||
+      fail "the assembler did not refuse a $change WIT input: exit $status, $(cat "$tmp/guard.err")"
+    [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+      fail "the assembler replaced the previous artifacts despite a $change WIT input"
+    git -C "$repo" update-index --no-assume-unchanged wit/route/route.wit
+    git -C "$repo" update-index --no-skip-worktree wit/route/route.wit
+    git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit src/lib.rs
+    if [ -f "$repo/wit/route/deps/new/new.wit" ]; then
+      rm -f "$repo/wit/route/deps/new/new.wit"
+      rmdir "$repo/wit/route/deps/new" "$repo/wit/route/deps"
+    fi
+  done
+  ln -s prev "$repo/link"
   status=0
-  "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
-  [ "$status" = 1 ] && grep -q 'differs from HEAD' "$tmp/guard.err" ||
-    fail "the assembler did not refuse a $change WIT input: exit $status, $(cat "$tmp/guard.err")"
-  [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
-    fail "the assembler replaced the previous artifacts despite a $change WIT input"
-  git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit src/lib.rs
-  if [ -f "$repo/wit/route/deps/new/new.wit" ]; then
-    rm -f "$repo/wit/route/deps/new/new.wit"
-    rmdir "$repo/wit/route/deps/new" "$repo/wit/route/deps"
-  fi
-done
+  "$repo/scripts/assemble-release-artifacts.sh" "$repo/link" 2>"$tmp/guard.err" || status=$?
+  [ "$status" = 1 ] && grep -q 'symbolic link' "$tmp/guard.err" ||
+    fail "the assembler did not refuse a symbolic link as its output: exit $status, $(cat "$tmp/guard.err")"
+  [ -L "$repo/link" ] && [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+    fail "the assembler replaced a symbolic link or its target"
+)
 
+# An artifact-named directory in the output is refused, not deleted.
 mkdir -p "$tmp/directory-guard/SKILL.md"
 printf 'previous\n' > "$tmp/directory-guard/contract.txt"
 : > "$tmp/directory-guard/SHA256SUMS"
 status=0
-scripts/assemble-release-artifacts.sh "$tmp/directory-guard" 2>"$tmp/directory-guard.err" || status=$?
+assemble "$tmp/directory-guard" 2>"$tmp/directory-guard.err" || status=$?
 [ "$status" = 1 ] && grep -q 'holds directory SKILL.md' "$tmp/directory-guard.err" ||
   fail "artifact-named directory was not refused before replacement"
 [ "$(cat "$tmp/directory-guard/contract.txt")" = previous ] ||

@@ -452,8 +452,7 @@ Know what an install changes:
 - A signing route is authorized only for the operation classes its installer
   provenance record lists. Without that record the write fails with a plain
   permission error; for `sign_payload` with the exact selector, Machine's log
-  names the reason
-  (`installer provenance does not authorize <class>`). See
+  names the reason (`installer provenance does not authorize <class>`). See
   [Troubleshoot a bare `permission denied`](#troubleshoot-a-bare-permission-denied).
 - `--force` is not a reinstall flag. It replaces or removes a package while
   sessions scoped to it are still active; those sessions then read
@@ -505,11 +504,10 @@ helpers such as `petal::read_store` return `-4`, which reaches the caller as
   `[index]` not immediately preceded by `[wallet]`, or a suffixed capture such
   as `[index].json` draws a `warning: route …` from `petal build` and
   `petal check` but installs without error. Bloom then refuses every call to it
-  at dispatch and logs nothing. The route still
-  appears in directory listings, so a listed file can be unreadable. The
-  exception is a directory route ending at `[wallet]` with
-  `[wallet]/[index]/...` routes beneath it: Bloom lists the accounts itself, so
-  its `$index.rs` never runs, and reading it is denied.
+  at dispatch and logs nothing. The route still appears in directory listings,
+  so a listed file can be unreadable. The exception is a directory route ending
+  at `[wallet]` with `[wallet]/[index]/...` routes beneath it: Bloom lists the
+  accounts itself, so its `$index.rs` never runs, and reading it is denied.
 - **Owner approval pending.** Bloom does not deny a signature that needs
   approval. The SDK returns `ApprovalPending` with an action id. For a
   signature, the owner-only `/petal-signing-requests/<id>.json` carries the
@@ -529,12 +527,14 @@ helpers such as `petal::read_store` return `-4`, which reaches the caller as
   signing request on that wallet that needs a new ceremony is refused with
   `CEREMONY_RATE_LIMITED`
   (`wallet already has a live ceremony; retry after <n> ms`). The same code
-  also reports a cancellation backoff and the rolling per-wallet quota. The
-  route sees only a denial. Machine's `petal.sign_payload_denied` line carries
-  the code, in `reason` with the full message on the exact path and in
+  also reports a cancellation backoff and the rolling per-wallet quota, for
+  which Broker also logs `ceremony.quota_rejected` at WARN. The route sees only
+  a denial. Machine's `petal.sign_payload_denied` line carries the code, in
+  `reason` with the full message on the exact path and in
   `protocol_error_code` on the reusable path; Broker's `rpc.completed` carries
-  the code only. Finish or wait out the pending ceremony before the next
-  signing write.
+  the code only. When the refused ceremony is the policy update for a new
+  package hash, Machine logs nothing, and only `rpc.completed` shows the code.
+  Finish or wait out the pending ceremony before the next signing write.
 - **Signing refused.** Missing installer provenance for the operation class, a
   wallet policy that does not allow the package hash or a destination, an
   approval that is not yet active, spent or expired, or a reused approval hint.
@@ -542,10 +542,12 @@ helpers such as `petal::read_store` return `-4`, which reaches the caller as
   `petal.sign_payload_denied`. On the exact path the line carries `wallet` and
   `operation_class`, usually with `package_hash`, `route`, `request_id` and a
   `reason`; when Broker refuses a reusable request, it carries only
-  `package_hash`, `route` and `protocol_error_code`. `sign_payload_batch`
-  refusals are not logged under that name. A batch refused by Machine, for
-  example for missing installer provenance, leaves no log line at all; Broker
-  errors on the exact path appear at ERROR as
+  `package_hash`, `route` and `protocol_error_code`. On the exact path Machine
+  also logs Broker's refusal at ERROR as `petal exact signing failed`, with its
+  code and message. `sign_payload_batch` refusals are not logged under that
+  name. A batch refused by Machine, for example for missing installer
+  provenance, leaves no log line at all; Broker errors on the exact path appear
+  at ERROR as
   `petal exact batch signing failed`, and the reusable path logs nothing.
   Refusals checked inside the route runtime, such as an operation class outside
   the route's `sign_intent` or `[sign].allowed_intents`, a signing route without
