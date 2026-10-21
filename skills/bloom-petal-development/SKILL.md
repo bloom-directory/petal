@@ -32,6 +32,11 @@ repository with a fresh scaffold.
 
 ## Resolve the product and trust contract
 
+WIT defines the portable component interface. Bloom's installer provenance,
+wallet policy and Broker review profiles are separate host semantics. Another
+host implementing the same WIT does not acquire Bloom's trust or verification
+guarantees. State the tested host combination when demonstrating signing.
+
 Before coding, write down or recover these decisions from the user's request,
 the target repository, and its domain/API documentation:
 
