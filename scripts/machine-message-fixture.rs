@@ -5,7 +5,7 @@ use bloom_petals::{
     HostError, HostVfsEntry, NameRegistry, PayloadSignRequest, PetalHost, PetalRouter, PetalRunner,
     PetalStore, PetalVm, SignOutcome,
 };
-use bloom_vfs::{Vfs, path::VfsPath};
+use bloom_vfs::{Handler, Vfs, path::VfsPath};
 use std::{
     fs,
     path::PathBuf,
