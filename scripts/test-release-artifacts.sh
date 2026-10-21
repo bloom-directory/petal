@@ -12,7 +12,7 @@ fail() {
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'printf "Release test evidence retained at %s\n" "$tmp"' EXIT
 skill=skills/bloom-petal-development/SKILL.md
 
 # The crate ships the skill and builds from its own tarball, so the
@@ -32,6 +32,10 @@ cmp "$skill" "$tmp/bloom-petal-contract-$version/$skill" ||
 # committed.
 scripts/assemble-release-artifacts.sh --allow-dirty "$tmp/dist"
 (cd "$tmp/dist" && shasum -a 256 -c SHA256SUMS >/dev/null)
+sleep 2
+scripts/assemble-release-artifacts.sh --allow-dirty "$tmp/repeated"
+cmp "$tmp/dist/SHA256SUMS" "$tmp/repeated/SHA256SUMS" ||
+  fail "release artifacts changed when only build time changed"
 inspect=$(cargo run --quiet -p bloom-petal-cli -- inspect)
 contract=$(printf '%s\n' "$inspect" | awk '/^contract:/ { print $2 }')
 digest=$(printf '%s\n' "$inspect" | awk '/^wit_digest:/ { print $2 }')
@@ -89,6 +93,19 @@ for change in modified staged untracked; do
     fail "the assembler did not refuse a $change WIT input: exit $status, $(cat "$tmp/guard.err")"
   [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
     fail "the assembler replaced the previous artifacts despite a $change WIT input"
-  git -C "$repo" reset -q --hard
-  git -C "$repo" clean -qfd wit src
+  git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit src/lib.rs
+  if [ -f "$repo/wit/route/deps/new/new.wit" ]; then
+    rm -f "$repo/wit/route/deps/new/new.wit"
+    rmdir "$repo/wit/route/deps/new" "$repo/wit/route/deps"
+  fi
 done
+
+mkdir -p "$tmp/directory-guard/SKILL.md"
+printf 'previous\n' > "$tmp/directory-guard/contract.txt"
+: > "$tmp/directory-guard/SHA256SUMS"
+status=0
+scripts/assemble-release-artifacts.sh "$tmp/directory-guard" 2>"$tmp/directory-guard.err" || status=$?
+[ "$status" = 1 ] && grep -q 'holds directory SKILL.md' "$tmp/directory-guard.err" ||
+  fail "artifact-named directory was not refused before replacement"
+[ "$(cat "$tmp/directory-guard/contract.txt")" = previous ] ||
+  fail "an invalid output directory lost previous artifacts"
