@@ -44,10 +44,24 @@ scripts/generate-bindings.sh
 The generated SDK bindings are derived output. `wit/route` is the only
 authoritative WIT tree.
 
-The conformance build emits the WIT digest
-`b1448484d252a4b6cae350df1d28e5102109692acdcd4be9b03bffe097af04f6`.
-Consumer CI must reject a different digest until it intentionally upgrades the
-contract release.
+Read the contract and WIT digest from `petal inspect` using the pinned tooling.
+Release provenance and checksums must describe the WIT shipped with that release;
+a copied digest in authoring documentation is not a compatibility oracle.
+
+## Host error detail
+
+Default SDK builds keep the original `SdkError::Host` and `SdkError::Message`
+variants. First replace status matches with `error.host_status()`, then enable
+`host-error-detail` on the route's existing SDK dependency when ready. The feature
+adds `HostReason`; exhaustive matches must handle it. Each error owns its reason,
+so later calls cannot overwrite earlier detail. `message()` includes the reason;
+`reason()` returns it separately. No last-error slot or WIT change is required.
+
+Detail is limited to 512 Unicode characters with control characters removed.
+Hosts must supply caller-safe messages; length limits cannot redact unknown
+credentials. Machine's HTTP URL redaction is tracked in
+[Bloom #364](https://github.com/bloom-directory/bloom/pull/364). Adopt that host
+fix before enabling richer errors in consumers that perform HTTP requests.
 
 ## Packaging a Petal
 

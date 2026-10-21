@@ -281,6 +281,7 @@ pub enum SdkError {
     Host(HostStatus),
     /// A classified host failure with its bounded explanation. Hosts must
     /// supply caller-safe detail: bounding text cannot redact unknown secrets.
+    #[cfg(feature = "host-error-detail")]
     HostReason {
         status: HostStatus,
         reason: String,
@@ -292,13 +293,16 @@ impl SdkError {
     /// Classify both bare SDK failures and detailed host failures.
     pub fn host_status(&self) -> Option<&HostStatus> {
         match self {
-            Self::Host(status) | Self::HostReason { status, .. } => Some(status),
+            Self::Host(status) => Some(status),
+            #[cfg(feature = "host-error-detail")]
+            Self::HostReason { status, .. } => Some(status),
             Self::Message(_) => None,
         }
     }
 
     pub fn reason(&self) -> Option<&str> {
         match self {
+            #[cfg(feature = "host-error-detail")]
             Self::HostReason { reason, .. } => Some(reason),
             _ => None,
         }
@@ -313,6 +317,7 @@ impl SdkError {
             SdkError::Host(HostStatus::BufferTooSmall { needed }) => {
                 format!("buffer too small: needs {needed} bytes")
             }
+            #[cfg(feature = "host-error-detail")]
             SdkError::HostReason { status, reason } => {
                 format!("{}: {reason}", Self::Host(status.clone()).message())
             }
@@ -728,16 +733,19 @@ pub mod sdk {
             "invalid" => HostStatus::Invalid,
             _ => return SdkError::Message(message),
         };
-        let reason: String = reason
-            .chars()
-            .filter(|c| !c.is_control())
-            .take(512)
-            .collect();
-        if reason.is_empty() {
-            SdkError::Host(status)
-        } else {
-            SdkError::HostReason { status, reason }
+        #[cfg(feature = "host-error-detail")]
+        {
+            let reason: String = reason
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(512)
+                .collect();
+            if !reason.is_empty() {
+                return SdkError::HostReason { status, reason };
+            }
         }
+        let _ = reason;
+        SdkError::Host(status)
     }
 
     #[cfg(test)]
@@ -745,6 +753,7 @@ pub mod sdk {
         use super::{HostStatus, SdkError, host_err};
 
         #[test]
+        #[cfg(feature = "host-error-detail")]
         fn reason_and_status_travel_with_the_failed_operation() {
             let first = host_err("denied: SELECTOR_MISMATCH: wrong account".into());
             let second = host_err("invalid: unsupported capability".into());
@@ -756,6 +765,25 @@ pub mod sdk {
             assert_eq!(second.reason(), Some("unsupported capability"));
             assert_eq!(local.reason(), None);
             assert_eq!(first.reason(), Some("SELECTOR_MISMATCH: wrong account"));
+        }
+
+        #[test]
+        #[cfg(not(feature = "host-error-detail"))]
+        fn default_errors_keep_legacy_variants_and_exhaustive_matches() {
+            for (message, expected) in [
+                ("denied: gate refused", HostStatus::Denied),
+                ("not found: selected account", HostStatus::NotFound),
+                ("invalid: malformed request", HostStatus::Invalid),
+            ] {
+                let error = host_err(message.into());
+                assert_eq!(error.host_status(), Some(&expected));
+                assert_eq!(error.reason(), None);
+                // No wildcard: adding a default variant breaks this contract.
+                match error {
+                    SdkError::Host(status) => assert_eq!(status, expected),
+                    SdkError::Message(_) => panic!("expected the legacy host status"),
+                }
+            }
         }
 
         #[test]
@@ -775,6 +803,7 @@ pub mod sdk {
         }
 
         #[test]
+        #[cfg(feature = "host-error-detail")]
         fn classified_reason_is_bounded_without_splitting_utf8() {
             let error = host_err(format!("invalid: \n{}\t", "é".repeat(600)));
             let reason = error.reason().unwrap();
@@ -2024,6 +2053,7 @@ mod account_tests {
             -2
         );
 
+        #[cfg(feature = "host-error-detail")]
         for (status, expected_code) in [
             (HostStatus::NotFound, -1),
             (HostStatus::Invalid, -1),
