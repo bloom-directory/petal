@@ -59,6 +59,7 @@ assert set(sdk_contract) == {'contract', 'wit_digest'}
 result = {'machine_revision':sys.argv[2], 'sdk_revision':sys.argv[3], 'built':True,
     'sdk_contract':sdk_contract,
     'structurally_valid':True, 'compiled_capability_refusal':True,
+    'compiled_capability_reason':(root/'capability-refusal.txt').read_text(),
     'wasm_forwarded':True, 'account':1, 'retry_identity_preserved':True,
     'transaction_staging_forwarded':True, 'transaction_confirmed':False,
     'machine_composition_reproduced':True, 'machine_archive_reproduced':True,

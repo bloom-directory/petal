@@ -125,9 +125,16 @@ async fn compiled_constructor_reaches_actual_machine_host() {
         "capability mutation did not change the manifest"
     );
     fs::write(&manifest, invalid).unwrap();
-    let refused = bloom_petals::package::build_petal_package_dir(&root).is_err();
+    let refusal = bloom_petals::package::build_petal_package_dir(&root)
+        .expect_err("compiled capability was not enforced")
+        .to_string();
     fs::write(&manifest, original).unwrap();
-    assert!(refused, "compiled capability was not enforced");
+    assert!(refusal.contains("component route import"), "{refusal}");
+    assert!(
+        refusal.contains("requires missing petal.toml cap bloom:sign"),
+        "{refusal}"
+    );
+    fs::write(evidence.join("capability-refusal.txt"), refusal).unwrap();
 
     let state = evidence.join("machine-state");
     let store = PetalStore::open(state.join("store")).unwrap();
