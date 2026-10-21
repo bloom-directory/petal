@@ -1,0 +1,91 @@
+{
+  "machine_revision": "4ec55276571f039e66ee50178d3286976d0a5b4d",
+  "sdk_revision": "f005a2f673cf530011a07c8d250836d0fb7131a6",
+  "built": true,
+  "sdk_contract": {
+    "contract": "bloom:route@0.1.0",
+    "wit_digest": "f52579e1f964eb0302c418f08817593d8f2fc38a434b5f71b483972c56839254"
+  },
+  "structurally_valid": true,
+  "compiled_capability_refusal": true,
+  "compiled_capability_reason": "invalid wasm: petal/conformance/personal/[wallet]/[index]/sign.wasm: component route import \"bloom:sign/signing@0.2.0\" requires missing petal.toml cap bloom:sign",
+  "wasm_forwarded": true,
+  "account": 1,
+  "retry_identity_preserved": true,
+  "transaction_staging_forwarded": true,
+  "transaction_confirmed": false,
+  "machine_composition_reproduced": true,
+  "machine_archive_reproduced": true,
+  "archive_sha256": "f376e063d13f0c6e5c9fd0ea5948f5d0112f965f5b06f3347715593adad3f521",
+  "composition": {
+    "package_hash": "471b9acb6c0c48640a5a5474f0fd96676b0714f673d7e391e43467ff8703cefb",
+    "routes": [
+      {
+        "route_id": "r000001",
+        "pattern": "personal/[wallet]/[index]/sign",
+        "operation_classes": [
+          "conformance.personal"
+        ]
+      },
+      {
+        "route_id": "r000002",
+        "pattern": "sign",
+        "operation_classes": [
+          "conformance.sign"
+        ]
+      },
+      {
+        "route_id": "r000003",
+        "pattern": "stage/[wallet]/[index]/self-call",
+        "operation_classes": []
+      },
+      {
+        "route_id": "r000004",
+        "pattern": "static.txt",
+        "operation_classes": []
+      }
+    ],
+    "contract": "bloom:route@0.1.0",
+    "wit_digest": "f52579e1f964eb0302c418f08817593d8f2fc38a434b5f71b483972c56839254",
+    "authority": "proposal only; trusted installer enrollment not exercised"
+  },
+  "machine_test_adapter_sha256": "8b545bd4059233ca5e3e91dcab4423d5283718ce2dac1c06208a474a17e481bc",
+  "decoder": {
+    "broker_revision": "ff5e635d6e10fb28b39cc7bf25fc88c35f92de5a",
+    "sdk_revision": "f005a2f673cf530011a07c8d250836d0fb7131a6",
+    "sdk_worktree_dirty": false,
+    "fixture_sha256": "db37f6fefbd41441cdb456c47df277d9595078da2beba6670348ee373c2d42d7",
+    "producer": "supplied_fixture",
+    "decoded": true,
+    "negative_checks": [
+      "changed payload",
+      "changed hash",
+      "unsupported kind",
+      "changed personal/EIP-712 message where applicable"
+    ],
+    "diagnostic_adapter": "Test-only fixture module added to an archived Broker source copy; reader implementation unchanged.",
+    "authorized_in_test": false,
+    "review": [
+      {
+        "kind": "personal",
+        "title": "Sign a personal message",
+        "signer": "0x0000000000000000000000000000000000000001",
+        "payload_keccak": "0x7881784267c9b7e3d707a3ea06b12a1362e440dd55ac3e71cc00443b9ffcc205",
+        "domain": [],
+        "fields": [
+          {
+            "path": "message",
+            "value": "Bloom component \u00e9"
+          }
+        ],
+        "warnings": [
+          "Bloom verified the signed fields, not their execution effects or the identity of an unlisted application."
+        ]
+      }
+    ],
+    "limits": "Actual Broker message reader; no Machine installation, policy, owner approval, signature or settlement."
+  },
+  "authorized_in_test": false,
+  "limits": "Test-only Machine/Broker adapters; captured host, synthetic account projection, no daemon authorization, custody signature, chain submission or settlement.",
+  "ci_run_url": "https://github.com/bloom-directory/petal/actions/runs/39527579568"
+}
