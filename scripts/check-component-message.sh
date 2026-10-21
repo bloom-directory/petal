@@ -12,6 +12,11 @@ if ! git -C "$machine" diff --quiet HEAD -- Cargo.toml Cargo.lock crates; then
   exit 1
 fi
 revision=$(git -C "$machine" rev-parse HEAD)
+sdk_revision=$(git -C "$root" rev-parse HEAD)
+if ! git -C "$root" diff --quiet HEAD -- Cargo.toml Cargo.lock crates fixtures scripts; then
+  printf 'Commit the SDK component/check sources before recording their revision.\n' >&2
+  exit 1
+fi
 scratch=$(mktemp -d)
 printf 'Component check evidence retained at %s\n' "$scratch" >&2
 cd "$root"
@@ -24,7 +29,7 @@ for side in a b; do
 schema = "bloom.petal.package.v1"
 name = "conformance"
 [caps]
-allowed = ["bloom:sign"]
+allowed = ["bloom:sign", "bloom:tx.outbox", "bloom:vfs.read"]
 [sign]
 allowed_intents = ["conformance.sign", "conformance.personal"]
 EOF
@@ -34,24 +39,29 @@ done
 mkdir "$scratch/machine"
 git -C "$machine" archive HEAD | tar -x -C "$scratch/machine"
 cp "$root/scripts/machine-message-fixture.rs" "$scratch/machine/crates/bloom-petals/tests/sdk_message_fixture.rs"
-export PETAL_COMPONENT_EVIDENCE=$scratch
+export PETAL_COMPONENT_EVIDENCE=$scratch PETAL_FIXTURE_SIGNER=$signer
 if ! cargo test --locked --manifest-path "$scratch/machine/Cargo.toml" -p bloom-petals \
   --target-dir "$root/target/host-check" --test sdk_message_fixture -- --nocapture > "$scratch/machine-test.log" 2>&1; then
   printf 'Machine component check failed; inspect %s/machine-test.log\n' "$scratch" >&2
   exit 1
 fi
+[ "$(git -C "$root" rev-parse HEAD)" = "$sdk_revision" ] || { printf 'SDK revision changed during the check.\n' >&2; exit 1; }
 sh "$root/scripts/check-reviewed-message.sh" "$broker" "$signer" "$scratch/producer.json" > "$scratch/broker-review.json"
-python3 - "$scratch" "$revision" <<'PY'
+python3 - "$scratch" "$revision" "$sdk_revision" <<'PY'
 import hashlib, json, sys
 from pathlib import Path
 root = Path(sys.argv[1])
-result = {'machine_revision':sys.argv[2], 'built':True,
+decoder = json.loads((root/'broker-review.json').read_text())
+assert decoder['sdk_revision'] == sys.argv[3] and not decoder['sdk_worktree_dirty']
+result = {'machine_revision':sys.argv[2], 'sdk_revision':sys.argv[3], 'built':True,
     'structurally_valid':True, 'compiled_capability_refusal':True,
     'wasm_forwarded':True, 'account':1, 'retry_identity_preserved':True,
+    'transaction_staging_forwarded':True, 'transaction_confirmed':False,
     'machine_composition_reproduced':True, 'machine_archive_reproduced':True,
     'archive_sha256':hashlib.sha256((root/'composed.petal.tar').read_bytes()).hexdigest(),
     'composition':json.loads((root/'composition.json').read_text()),
-    'decoder':json.loads((root/'broker-review.json').read_text()),
+    'machine_test_adapter_sha256':hashlib.sha256((root/'machine/crates/bloom-petals/tests/sdk_message_fixture.rs').read_bytes()).hexdigest(),
+    'decoder':decoder,
     'authorized_in_test':False,
     'limits':'Test-only Machine/Broker adapters; captured host, synthetic account projection, no daemon authorization, custody signature, chain submission or settlement.'}
 (root/'component-result.json').write_text(json.dumps(result, indent=2)+'\n')

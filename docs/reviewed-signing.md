@@ -97,3 +97,11 @@ real installer/DaemonPetalHost/Broker/Signer authorization test. The supplied
 checkouts are archived without modification; evidence stays in a fresh retained
 temporary directory. The script currently checks these bounded examples, not
 an arbitrary protocol, and is not yet part of cross-repository CI.
+
+The fixture also contains `stage/[wallet]/[index]/self-call`. Writing an explicit
+chain name stages a zero-value, empty-data call to the selected account's own
+address; an empty chain fails locally. Inspect a real host's normal
+`wallets/<wallet>/<index>/chains/<chain>/outbox/pending/` for its staged request.
+The route never confirms or broadcasts it; a real transaction would still
+spend gas. The combined check captures the staging request and verifies account,
+chain, destination and value without signing or contacting a chain.
