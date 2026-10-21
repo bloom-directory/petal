@@ -1,0 +1,174 @@
+{
+  "machine_revision": "79fa71d38b9685bdba4585c72ea80ddccbd935f8",
+  "sdk_revision": "483ee075674670a056659f8e36017ba275bcc19b",
+  "built": true,
+  "sdk_contract": {
+    "contract": "bloom:route@0.1.0",
+    "wit_digest": "f52579e1f964eb0302c418f08817593d8f2fc38a434b5f71b483972c56839254"
+  },
+  "structurally_valid": true,
+  "compiled_capability_refusal": true,
+  "compiled_capability_reason": "invalid wasm: petal/conformance/personal/[wallet]/[index]/sign.wasm: component route import \"bloom:sign/signing@0.2.0\" requires missing petal.toml cap bloom:sign",
+  "wasm_forwarded": true,
+  "account": 1,
+  "retry_identity_preserved": true,
+  "transaction_staging_forwarded": true,
+  "transaction_confirmed": false,
+  "machine_composition_reproduced": true,
+  "machine_archive_reproduced": true,
+  "archive_sha256": "633a1bda7ba4747534156d79693be0e1775dd09241725f5798f8cbe36c0c85d0",
+  "composition": {
+    "package_hash": "1d2a1364685b1b26ae64a2cdcf4c53317a0dc61e373e17d034a5b90de3df3e95",
+    "routes": [
+      {
+        "route_id": "r000001",
+        "pattern": "personal/[wallet]/[index]/sign",
+        "operation_classes": [
+          "conformance.personal"
+        ]
+      },
+      {
+        "route_id": "r000002",
+        "pattern": "sign",
+        "operation_classes": [
+          "conformance.sign"
+        ]
+      },
+      {
+        "route_id": "r000003",
+        "pattern": "stage/[wallet]/[index]/self-call",
+        "operation_classes": []
+      },
+      {
+        "route_id": "r000004",
+        "pattern": "static.txt",
+        "operation_classes": []
+      },
+      {
+        "route_id": "r000005",
+        "pattern": "typed/[wallet]/[index]/sign",
+        "operation_classes": [
+          "conformance.typed"
+        ]
+      }
+    ],
+    "contract": "bloom:route@0.1.0",
+    "wit_digest": "f52579e1f964eb0302c418f08817593d8f2fc38a434b5f71b483972c56839254",
+    "authority": "proposal only; trusted installer enrollment not exercised"
+  },
+  "machine_test_adapter_sha256": "64dbc17b07b10ab6b27bad00b2e71f7e689253859eb86d9d92a04c9db976021c",
+  "decoder": {
+    "broker_revision": "ff5e635d6e10fb28b39cc7bf25fc88c35f92de5a",
+    "sdk_revision": "483ee075674670a056659f8e36017ba275bcc19b",
+    "sdk_worktree_dirty": false,
+    "fixture_sha256": "01cd1ca7a80423e28052daeec675cfacc3366c7c778435ff5a358daf99866e14",
+    "producer": "supplied_fixture",
+    "decoded": true,
+    "negative_checks": [
+      "changed payload",
+      "changed hash",
+      "unsupported kind",
+      "changed personal/EIP-712 message where applicable",
+      "changed typed chain where applicable"
+    ],
+    "diagnostic_adapter": "Test-only fixture module added to an archived Broker source copy; reader implementation unchanged.",
+    "authorized_in_test": false,
+    "review": [
+      {
+        "kind": "personal",
+        "title": "Sign a personal message",
+        "signer": "0x0000000000000000000000000000000000000001",
+        "payload_keccak": "0x7881784267c9b7e3d707a3ea06b12a1362e440dd55ac3e71cc00443b9ffcc205",
+        "domain": [],
+        "fields": [
+          {
+            "path": "message",
+            "value": "Bloom component \u00e9"
+          }
+        ],
+        "warnings": [
+          "Bloom verified the signed fields, not their execution effects or the identity of an unlisted application."
+        ]
+      },
+      {
+        "kind": "eip712",
+        "title": "Sign typed data",
+        "signer": "0x0000000000000000000000000000000000000001",
+        "payload_keccak": "0xbe609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2",
+        "domain": [
+          {
+            "path": "primaryType",
+            "value": "Mail"
+          },
+          {
+            "path": "chainId",
+            "value": "0x1"
+          },
+          {
+            "path": "name",
+            "value": "Ether Mail"
+          },
+          {
+            "path": "verifyingContract",
+            "value": "0xcccccccccccccccccccccccccccccccccccccccc"
+          },
+          {
+            "path": "version",
+            "value": "1"
+          }
+        ],
+        "fields": [
+          {
+            "path": "from.name",
+            "value": "Cow"
+          },
+          {
+            "path": "from.wallet",
+            "value": "0xcd2a3d9f938e13cd947ec05abc7fe734df8dd826"
+          },
+          {
+            "path": "to.name",
+            "value": "Bob"
+          },
+          {
+            "path": "to.wallet",
+            "value": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "path": "contents",
+            "value": "Hello, Bob!"
+          }
+        ],
+        "warnings": [
+          "Bloom verified the signed fields, not their execution effects or the identity of an unlisted application."
+        ]
+      }
+    ],
+    "limits": "Actual Broker message reader; no Machine installation, policy, owner approval, signature or settlement."
+  },
+  "authorized_in_test": true,
+  "limits": "Disposable developer software owner and real installer/Machine/Broker/Signer; independent decoder adapters; no physical ceremony, funds, chain submission or settlement.",
+  "authorization": {
+    "schema": "bloom.sdk.authorization-boundary.v1",
+    "package_hash": "1d2a1364685b1b26ae64a2cdcf4c53317a0dc61e373e17d034a5b90de3df3e95",
+    "account": 1,
+    "formats": [
+      "personal",
+      "typed"
+    ],
+    "authorized_in_test": true,
+    "signed_operations": 2,
+    "installer_class_denials_without_hint": 2,
+    "normal_owner_projection": true,
+    "retry_identity_preserved": true,
+    "limits": "disposable software owner; no chain submission, funds, settlement or physical ceremony"
+  },
+  "ci": {
+    "run": "https://github.com/bloom-directory/petal/actions/runs/39536656348",
+    "conclusion": "success",
+    "passed_jobs": 5,
+    "signer_revision": "c17f4bf42404548e07fddc749c740b0a8eb01119",
+    "service_features": "triad-dev-harness; Machine no-default-features with mount",
+    "limits": "Fresh CI service builds at selected source inputs; software owner only. Final landed Linux/macOS release, package upgrade and physical-owner conformance remain separate."
+  }
+}
