@@ -116,7 +116,14 @@ fn scaffold(name: &str, destination: &Path) -> Result<(), String> {
             .replace("petal-template", &crate_name);
         fs::write(&path, body).map_err(|error| format!("write {}: {error}", path.display()))?;
     }
-    let skill = destination.join("SKILL.md");
+    // The Agent Skills format names a skill's directory after the skill.
+    let skill_dir = destination
+        .join(".agents")
+        .join("skills")
+        .join("bloom-petal-development");
+    fs::create_dir_all(&skill_dir)
+        .map_err(|error| format!("create {}: {error}", skill_dir.display()))?;
+    let skill = skill_dir.join("SKILL.md");
     fs::write(&skill, bloom_petal_contract::PETAL_DEVELOPMENT_SKILL)
         .map_err(|error| format!("write {}: {error}", skill.display()))?;
     println!("created {}", destination.display());

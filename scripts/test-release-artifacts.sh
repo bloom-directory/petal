@@ -190,6 +190,51 @@ for when in build export staging; do
     fail "a swap during $when kept the artifacts out of the directory that was checked"
 done
 
+# Between the first check and entering the output, the script still names the
+# output by its path. A swap of the output, or of its parent, in that window
+# is noticed once the script is inside, and refused; the other directory, made
+# to look like a previous run's output, is left alone.
+for what in output parent; do
+  mkdir -p "$tmp/win-$what/out" "$tmp/winvictim-$what/out" "$tmp/winstub-$what"
+  printf 'previous\n' >"$tmp/winvictim-$what/out/contract.txt"
+  printf 'previous sums\n' >"$tmp/winvictim-$what/out/SHA256SUMS"
+  case $what in
+    output) from=$tmp/win-$what/out to=$tmp/winvictim-$what/out ;;
+    parent) from=$tmp/win-$what to=$tmp/winvictim-$what ;;
+  esac
+  # git log reads the commit time, after the first check and before the
+  # script enters the output.
+  printf '#!/bin/sh\nif [ "$1" = log ] && [ ! -e "%s.real" ]; then\n  mv "%s" "%s.real"\n  ln -s "%s" "%s"\nfi\nexec "%s" "$@"\n' \
+    "$from" "$from" "$from" "$to" "$from" "$real_git" >"$tmp/winstub-$what/git"
+  chmod +x "$tmp/winstub-$what/git"
+  status=0
+  (PATH=$tmp/winstub-$what:$PATH; export PATH; assemble "$tmp/win-$what/out") 2>"$tmp/win.err" || status=$?
+  [ -e "$from.real" ] || fail "the $what swap stub never ran"
+  [ "$status" = 1 ] && grep -q 'changed while it was checked' "$tmp/win.err" ||
+    fail "a swap of the $what before the script entered it was not refused: exit $status, $(cat "$tmp/win.err")"
+  [ "$(ls -A "$tmp/winvictim-$what/out" | LC_ALL=C sort | tr '\n' ' ')" = "SHA256SUMS contract.txt " ] &&
+    [ "$(cat "$tmp/winvictim-$what/out/SHA256SUMS")" = "previous sums" ] ||
+    fail "a swap of the $what before the script entered it redirected the assembler"
+done
+
+# When the output's parent does not exist yet there is no resolved parent to
+# compare, so the symbolic-link check alone refuses an output planted as a
+# link in that window.
+mkdir -p "$tmp/winvictim-new/out" "$tmp/winstub-new"
+printf 'previous\n' >"$tmp/winvictim-new/out/contract.txt"
+printf 'previous sums\n' >"$tmp/winvictim-new/out/SHA256SUMS"
+printf '#!/bin/sh\nif [ "$1" = log ] && [ ! -e "%s/win-new" ]; then\n  mkdir "%s/win-new"\n  ln -s "%s/winvictim-new/out" "%s/win-new/out"\nfi\nexec "%s" "$@"\n' \
+  "$tmp" "$tmp" "$tmp" "$tmp" "$real_git" >"$tmp/winstub-new/git"
+chmod +x "$tmp/winstub-new/git"
+status=0
+(PATH=$tmp/winstub-new:$PATH; export PATH; assemble "$tmp/win-new/out") 2>"$tmp/win.err" || status=$?
+[ -e "$tmp/win-new" ] || fail "the new-parent swap stub never ran"
+[ "$status" = 1 ] && grep -q 'changed while it was checked' "$tmp/win.err" ||
+  fail "an output planted as a symbolic link under a new parent was not refused: exit $status, $(cat "$tmp/win.err")"
+[ "$(ls -A "$tmp/winvictim-new/out" | LC_ALL=C sort | tr '\n' ' ')" = "SHA256SUMS contract.txt " ] &&
+  [ "$(cat "$tmp/winvictim-new/out/SHA256SUMS")" = "previous sums" ] ||
+  fail "an output planted as a symbolic link under a new parent redirected the assembler"
+
 # A parent whose name ends in a newline is kept intact when it is resolved.
 nl='
 '
@@ -319,11 +364,12 @@ fi
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1
   repo=$tmp/guard
   mkdir -p "$repo/scripts" "$repo/wit/route" "$repo/src" "$repo/prev" \
-    "$repo/crates/petal-cli/src"
+    "$repo/crates/petal-cli/src" "$repo/skills/bloom-petal-development"
   cp scripts/assemble-release-artifacts.sh "$repo/scripts/"
   printf 'package bloom:route@0.0.0;\n' >"$repo/wit/route/route.wit"
   : >"$repo/src/lib.rs"
   : >"$repo/crates/petal-cli/src/main.rs"
+  printf 'skill\n' >"$repo/skills/bloom-petal-development/SKILL.md"
   printf 'previous\n' >"$repo/prev/contract.txt"
   : >"$repo/prev/SHA256SUMS"
   git -C "$repo" init -q --template=
@@ -332,16 +378,17 @@ fi
   git -C "$repo" config user.name test
   git -C "$repo" config user.email test@example.invalid
   git -C "$repo" config commit.gpgsign false
-  git -C "$repo" add scripts wit src crates
+  git -C "$repo" add scripts wit src crates skills
   git -C "$repo" commit -qm init
   # prev/ is an untracked output inside the repository, which the guard
   # leaves out; every refusal below is about the change that case makes.
   mkdir -p "$repo/.git/info"
-  for change in modified cli staged untracked assume-unchanged skip-worktree; do
+  for change in modified cli staged untracked untracked-hidden assume-unchanged skip-worktree; do
     case $change in
       modified) printf '// change\n' >>"$repo/wit/route/route.wit" ;;
       cli) printf '// change\n' >>"$repo/crates/petal-cli/src/main.rs" ;;
       staged) printf '// change\n' >>"$repo/src/lib.rs" && git -C "$repo" add src/lib.rs ;;
+      untracked-hidden) git -C "$repo" config status.showUntrackedFiles no && printf 'fn main() {}\n' >"$repo/crates/petal-cli/build.rs" ;;
       untracked) mkdir -p "$repo/wit/route/deps/new" && printf 'package a:b;\n' >"$repo/wit/route/deps/new/new.wit" ;;
       assume-unchanged) git -C "$repo" update-index --assume-unchanged wit/route/route.wit && printf '// change\n' >>"$repo/wit/route/route.wit" ;;
       skip-worktree) git -C "$repo" update-index --skip-worktree crates/petal-cli/src/main.rs && printf '// change\n' >>"$repo/crates/petal-cli/src/main.rs" ;;
@@ -355,11 +402,30 @@ fi
     git -C "$repo" update-index --no-assume-unchanged wit/route/route.wit
     git -C "$repo" update-index --no-skip-worktree crates/petal-cli/src/main.rs
     git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit src/lib.rs crates/petal-cli/src/main.rs
+    git -C "$repo" config --unset status.showUntrackedFiles || true
+    rm -f "$repo/crates/petal-cli/build.rs"
     if [ -f "$repo/wit/route/deps/new/new.wit" ]; then
       rm -f "$repo/wit/route/deps/new/new.wit"
       rmdir "$repo/wit/route/deps/new" "$repo/wit/route/deps"
     fi
   done
+  # An output named like a pathspec glob is excluded literally, so it hides
+  # neither prev/ nor the WIT from the guard.
+  printf '// change\n' >>"$repo/wit/route/route.wit"
+  status=0
+  "$repo/scripts/assemble-release-artifacts.sh" "$repo/[pw]*" 2>"$tmp/guard.err" || status=$?
+  [ "$status" = 1 ] && grep -q 'wit/route/route.wit' "$tmp/guard.err" ||
+    fail "an output named [pw]* hid a modified WIT from the guard: exit $status, $(cat "$tmp/guard.err")"
+  git -C "$repo" restore -- wit/route/route.wit
+  # Reached through a symbolic link to the repository, an output inside it is
+  # still recognised as inside, so the guard still leaves it out.
+  ln -s guard "$tmp/guard-link"
+  status=0
+  "$tmp/guard-link/scripts/assemble-release-artifacts.sh" "$tmp/guard-link/prev" 2>"$tmp/guard.err" || status=$?
+  ! grep -q -e refusing -e 'differs from HEAD' -e 'told to ignore' "$tmp/guard.err" ||
+    fail "an output reached through a symbolic link to the repository was not left out: $(cat "$tmp/guard.err")"
+  [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
+    fail "the assembler replaced the previous artifacts when reached through a symbolic link"
   printf '*.wit export-ignore\n' >"$repo/.git/info/attributes"
   status=0
   "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
@@ -392,6 +458,18 @@ fi
   [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
     fail "the assembler replaced the previous artifacts although HEAD moved"
   git -C "$repo" reset -q --soft HEAD~1
+  # Every read names the commit HEAD pointed at when the assembler started,
+  # so a commit made during the build cannot change what is archived.
+  printf '#!/bin/sh\n: >"%s/headmove/pinned"\nprintf "package bloom:route@9.9.9;\\n" >wit/route/route.wit\ngit commit -qam moved\necho "wit_digest: 0"\n' "$tmp" >"$tmp/headmove/cargo"
+  started=$(git -C "$repo" rev-parse HEAD)
+  status=0
+  (PATH=$tmp/headmove:$PATH; export PATH; "$repo/scripts/assemble-release-artifacts.sh" --allow-dirty "$tmp/pinned") 2>"$tmp/guard.err" || status=$?
+  [ -f "$tmp/headmove/pinned" ] || fail "the committing cargo stub never ran"
+  [ "$status" = 0 ] && grep -qx "source_commit: $started" "$tmp/pinned/contract.txt" &&
+    tar -xzOf "$tmp/pinned/petal-wit-0.0.0.tar.gz" petal-wit-0.0.0/route.wit | grep -qx 'package bloom:route@0.0.0;' ||
+    fail "a commit made during the build changed what was archived: exit $status, $(cat "$tmp/guard.err")"
+  git -C "$repo" reset -q --soft "$started"
+  git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit
   # The symbolic link is itself an untracked file, so these runs skip the
   # working-tree guard with --allow-dirty; the output checks still apply.
   ln -s prev "$repo/link"

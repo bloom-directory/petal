@@ -68,6 +68,7 @@ esac
 # yet may not be reached through .. at all.
 dir=${out%/*}
 dir=${dir:-/}
+resolved_parent=
 if [ -d "$dir" ]; then
   # The trailing . keeps a parent whose name ends in a newline intact.
   resolved=$(CDPATH= cd -P -- "$dir" && pwd -P && echo .) || {
@@ -75,7 +76,8 @@ if [ -d "$dir" ]; then
     exit 1
   }
   resolved=${resolved%?.}
-  out=${resolved%/}/${out##*/}
+  resolved_parent=${resolved%/}
+  out=$resolved_parent/${out##*/}
 else
   case $out in
     */../*)
@@ -204,7 +206,12 @@ archive_time="@$(git log -1 --no-show-signature --format=%ct "$commit") +0000"
 # here on cannot send a write or a deletion anywhere else.
 mkdir -p "$out"
 cd -P -- "$out"
-if [ -L "$out" ] || ! [ . -ef "$out" ]; then
+# The directory entered must still be the output, reached through the parent
+# resolved above: a swap of either since then is refused.
+here=$(pwd -P && echo .)
+here=${here%?.}
+if [ -L "$out" ] || ! [ . -ef "$out" ] ||
+  { [ -n "$resolved_parent" ] && [ "${here%/*}" != "$resolved_parent" ]; }; then
   refuse "which changed while it was checked"
 fi
 check_out .

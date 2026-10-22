@@ -33,13 +33,22 @@ fn new_points_the_scaffold_at_the_development_skill() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     let path = Path::new(skill_path(&stdout));
-    assert_eq!(path, destination.join("SKILL.md"));
+    assert_eq!(
+        path,
+        destination.join(".agents/skills/bloom-petal-development/SKILL.md")
+    );
     let skill = std::fs::read_to_string(path).unwrap();
     assert_eq!(skill, bloom_petal_contract::PETAL_DEVELOPMENT_SKILL);
+    // The Agent Skills format requires the directory to carry the skill's name.
+    assert_eq!(
+        path.parent().and_then(Path::file_name).unwrap(),
+        "bloom-petal-development"
+    );
+    assert!(skill.starts_with("---\nname: bloom-petal-development\n"));
 
     // The scaffold's operating contract sends agents to the same place.
     let agents = std::fs::read_to_string(destination.join("AGENTS.md")).unwrap();
-    assert!(agents.contains("`SKILL.md`"));
+    assert!(agents.contains("`.agents/skills/bloom-petal-development/SKILL.md`"));
     assert!(!agents.contains("/master/"));
     assert!(!agents.contains("{{"), "unrendered placeholder:\n{agents}");
 }
