@@ -279,10 +279,35 @@ pub enum HostStatus {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SdkError {
     Host(HostStatus),
+    /// A classified host failure with its bounded explanation. Hosts must
+    /// supply caller-safe detail: bounding text cannot redact unknown secrets.
+    #[cfg(feature = "host-error-detail")]
+    HostReason {
+        status: HostStatus,
+        reason: String,
+    },
     Message(String),
 }
 
 impl SdkError {
+    /// Classify both bare SDK failures and detailed host failures.
+    pub fn host_status(&self) -> Option<&HostStatus> {
+        match self {
+            Self::Host(status) => Some(status),
+            #[cfg(feature = "host-error-detail")]
+            Self::HostReason { status, .. } => Some(status),
+            Self::Message(_) => None,
+        }
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            #[cfg(feature = "host-error-detail")]
+            Self::HostReason { reason, .. } => Some(reason),
+            _ => None,
+        }
+    }
+
     pub fn message(&self) -> String {
         match self {
             SdkError::Host(HostStatus::NotFound) => "not found".into(),
@@ -291,6 +316,10 @@ impl SdkError {
             SdkError::Host(HostStatus::Backend) => "backend error".into(),
             SdkError::Host(HostStatus::BufferTooSmall { needed }) => {
                 format!("buffer too small: needs {needed} bytes")
+            }
+            #[cfg(feature = "host-error-detail")]
+            SdkError::HostReason { status, reason } => {
+                format!("{}: {reason}", Self::Host(status.clone()).message())
             }
             SdkError::Message(message) => message.clone(),
         }
@@ -697,15 +726,89 @@ pub mod sdk {
     }
 
     fn host_err(message: String) -> SdkError {
-        let lower = message.to_ascii_lowercase();
-        if lower.contains("not found") {
-            SdkError::Host(HostStatus::NotFound)
-        } else if lower.contains("denied") || lower.contains("permission") {
-            SdkError::Host(HostStatus::Denied)
-        } else if lower.contains("invalid") {
-            SdkError::Host(HostStatus::Invalid)
-        } else {
-            SdkError::Message(message)
+        let (label, reason) = message.split_once(": ").unwrap_or((&message, ""));
+        let status = match label.to_ascii_lowercase().as_str() {
+            "not found" => HostStatus::NotFound,
+            "denied" | "permission denied" => HostStatus::Denied,
+            "invalid" => HostStatus::Invalid,
+            _ => return SdkError::Message(message),
+        };
+        #[cfg(feature = "host-error-detail")]
+        {
+            let reason: String = reason
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(512)
+                .collect();
+            if !reason.is_empty() {
+                return SdkError::HostReason { status, reason };
+            }
+        }
+        let _ = reason;
+        SdkError::Host(status)
+    }
+
+    #[cfg(test)]
+    mod host_reason_tests {
+        use super::{HostStatus, SdkError, host_err};
+
+        #[test]
+        #[cfg(feature = "host-error-detail")]
+        fn reason_and_status_travel_with_the_failed_operation() {
+            let first = host_err("denied: SELECTOR_MISMATCH: wrong account".into());
+            let second = host_err("invalid: unsupported capability".into());
+            let local = super::request_key(b"{}").unwrap_err();
+            assert_eq!(first.host_status(), Some(&HostStatus::Denied));
+            assert_eq!(first.reason(), Some("SELECTOR_MISMATCH: wrong account"));
+            assert_eq!(first.message(), "denied: SELECTOR_MISMATCH: wrong account");
+            assert_eq!(second.host_status(), Some(&HostStatus::Invalid));
+            assert_eq!(second.reason(), Some("unsupported capability"));
+            assert_eq!(local.reason(), None);
+            assert_eq!(first.reason(), Some("SELECTOR_MISMATCH: wrong account"));
+        }
+
+        #[test]
+        #[cfg(not(feature = "host-error-detail"))]
+        fn default_errors_keep_legacy_variants_and_exhaustive_matches() {
+            for (message, expected) in [
+                ("denied: gate refused", HostStatus::Denied),
+                ("not found: selected account", HostStatus::NotFound),
+                ("invalid: malformed request", HostStatus::Invalid),
+            ] {
+                let error = host_err(message.into());
+                assert_eq!(error.host_status(), Some(&expected));
+                assert_eq!(error.reason(), None);
+                // No wildcard: adding a default variant breaks this contract.
+                match error {
+                    SdkError::Host(status) => assert_eq!(status, expected),
+                    SdkError::Message(_) => panic!("expected the legacy host status"),
+                }
+            }
+        }
+
+        #[test]
+        fn a_reasonless_failure_preserves_the_original_bare_status() {
+            let error = host_err("permission denied".into());
+            assert_eq!(error, SdkError::Host(HostStatus::Denied));
+            assert_eq!(error.reason(), None);
+        }
+
+        #[test]
+        fn backend_words_do_not_reclassify_the_error() {
+            let message = "backend: invalid response: permission information not found";
+            let error = host_err(message.into());
+            assert_eq!(error.host_status(), None);
+            assert_eq!(error.reason(), None);
+            assert_eq!(error.message(), message);
+        }
+
+        #[test]
+        #[cfg(feature = "host-error-detail")]
+        fn classified_reason_is_bounded_without_splitting_utf8() {
+            let error = host_err(format!("invalid: \n{}\t", "é".repeat(600)));
+            let reason = error.reason().unwrap();
+            assert_eq!(reason.chars().count(), 512);
+            assert!(reason.chars().all(|c| c == 'é'));
         }
     }
 }
@@ -1306,13 +1409,21 @@ impl VfsRead for HostVfs {
 /// as `address.btc`, is `NotAFile`, which reaches the guest as `Invalid`. To a
 /// caller both mean this account has no address there, so both report `-1`.
 fn read_address<R: VfsRead>(vfs: &mut R, path: &str) -> Result<Vec<u8>, DispatchResponse> {
-    vfs.read(path, ADDRESS_MAX_BYTES).map_err(|err| match err {
-        SdkError::Host(HostStatus::NotFound | HostStatus::Invalid) => {
-            error(-1, format!("{path}: this account has no address there"))
-        }
-        SdkError::Host(HostStatus::Denied) => error(-2, format!("{path}: denied")),
-        other => error(-4, format!("{path}: {}", other.message())),
-    })
+    vfs.read(path, ADDRESS_MAX_BYTES)
+        .map_err(|err| match err.host_status() {
+            Some(HostStatus::NotFound | HostStatus::Invalid) => {
+                let reason = err
+                    .reason()
+                    .map(|reason| format!(": {reason}"))
+                    .unwrap_or_default();
+                error(
+                    -1,
+                    format!("{path}: this account has no address there{reason}"),
+                )
+            }
+            Some(HostStatus::Denied) => error(-2, format!("{path}: {}", err.message())),
+            _ => error(-4, format!("{path}: {}", err.message())),
+        })
 }
 
 /// Parse an `address.evm` leaf.
@@ -1942,6 +2053,28 @@ mod account_tests {
             -2
         );
 
+        #[cfg(feature = "host-error-detail")]
+        for (status, expected_code) in [
+            (HostStatus::NotFound, -1),
+            (HostStatus::Invalid, -1),
+            (HostStatus::Denied, -2),
+        ] {
+            let mut detailed = MapVfs::new().failing(
+                &path,
+                SdkError::HostReason {
+                    status,
+                    reason: "selected account is unavailable".into(),
+                },
+            );
+            let failure = account.address_evm_from(&mut detailed).unwrap_err();
+            assert_eq!(code(&failure), expected_code);
+            let DispatchResponse::Error { message, .. } = failure else {
+                panic!("expected account error");
+            };
+            assert!(message.contains(&path));
+            assert!(message.contains("selected account is unavailable"));
+        }
+
         let mut corrupt = MapVfs::new().file(&path, b"not-an-address");
         let failure = account.address_evm_from(&mut corrupt).unwrap_err();
         assert_eq!(code(&failure), -4);
@@ -1987,7 +2120,7 @@ pub fn read_json_value<T: serde::Serialize>(value: &T) -> DispatchResponse {
 pub fn read_store(key: &str, max_bytes: usize) -> DispatchResponse {
     match sdk::store_get(key, max_bytes) {
         Ok(bytes) => DispatchResponse::Read(bytes),
-        Err(SdkError::Host(HostStatus::NotFound)) => error(-1, "not found"),
+        Err(err) if err.host_status() == Some(&HostStatus::NotFound) => error(-1, err.message()),
         Err(err) => error(-4, err.message()),
     }
 }

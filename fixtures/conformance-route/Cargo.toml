@@ -10,4 +10,5 @@ publish = false
 crate-type = ["rlib"]
 
 [dependencies]
-petal = { package = "bloom-petal-sdk", path = "../../crates/petal-sdk" }
+petal = { package = "bloom-petal-sdk", path = "../../crates/petal-sdk", features = ["host-error-detail"] }
+sha2 = "0.10"
