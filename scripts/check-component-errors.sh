@@ -5,7 +5,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 machine=${1:?usage: check-component-errors.sh MACHINE_CHECKOUT}
 machine=$(CDPATH= cd -- "$machine" && pwd)
 for checkout in "$root" "$machine"; do
-  [ -z "$(git -C "$checkout" status --porcelain --untracked-files=all -- Cargo.toml Cargo.lock crates fixtures scripts)" ] || {
+  [ -z "$(git -C "$checkout" status --porcelain --untracked-files=all)" ] || {
     printf 'Commit check sources before recording revisions: %s\n' "$checkout" >&2
     exit 1
   }
