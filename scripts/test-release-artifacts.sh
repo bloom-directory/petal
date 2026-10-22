@@ -60,7 +60,7 @@ cmp "$tmp/dist/SHA256SUMS" "$tmp/repeated/SHA256SUMS" ||
 for name in "$tmp/dist/." "$tmp/dist/sub/.." "$tmp/dist/missing/../../dist"; do
   status=0
   assemble "$name" 2>"$tmp/dot.err" || status=$?
-  [ "$status" = 2 ] && grep -q -e 'name the output directory itself' -e 'must already exist' "$tmp/dot.err" ||
+  [ "$status" = 2 ] && grep -q -e 'name the output directory itself' -e 'does not exist; create it first' "$tmp/dot.err" ||
     fail "the assembler accepted $name as its output: exit $status, $(cat "$tmp/dot.err")"
 done
 [ ! -e "$tmp/dist/missing" ] || fail "a refused output path created $tmp/dist/missing"
@@ -217,23 +217,14 @@ for what in output parent; do
     fail "a swap of the $what before the script entered it redirected the assembler"
 done
 
-# When the output's parent does not exist yet there is no resolved parent to
-# compare, so the symbolic-link check alone refuses an output planted as a
-# link in that window.
-mkdir -p "$tmp/winvictim-new/out" "$tmp/winstub-new"
-printf 'previous\n' >"$tmp/winvictim-new/out/contract.txt"
-printf 'previous sums\n' >"$tmp/winvictim-new/out/SHA256SUMS"
-printf '#!/bin/sh\nif [ "$1" = log ] && [ ! -e "%s/win-new" ]; then\n  mkdir "%s/win-new"\n  ln -s "%s/winvictim-new/out" "%s/win-new/out"\nfi\nexec "%s" "$@"\n' \
-  "$tmp" "$tmp" "$tmp" "$tmp" "$real_git" >"$tmp/winstub-new/git"
-chmod +x "$tmp/winstub-new/git"
+# An output whose parent does not exist yet is refused before anything is
+# created, so no parent can be planted as a symbolic link while the script
+# works.
 status=0
-(PATH=$tmp/winstub-new:$PATH; export PATH; assemble "$tmp/win-new/out") 2>"$tmp/win.err" || status=$?
-[ -e "$tmp/win-new" ] || fail "the new-parent swap stub never ran"
-[ "$status" = 1 ] && grep -q 'changed while it was checked' "$tmp/win.err" ||
-  fail "an output planted as a symbolic link under a new parent was not refused: exit $status, $(cat "$tmp/win.err")"
-[ "$(ls -A "$tmp/winvictim-new/out" | LC_ALL=C sort | tr '\n' ' ')" = "SHA256SUMS contract.txt " ] &&
-  [ "$(cat "$tmp/winvictim-new/out/SHA256SUMS")" = "previous sums" ] ||
-  fail "an output planted as a symbolic link under a new parent redirected the assembler"
+assemble "$tmp/win-new/out" 2>"$tmp/win.err" || status=$?
+[ "$status" = 2 ] && grep -q 'does not exist; create it first' "$tmp/win.err" ||
+  fail "an output whose parent does not exist was not refused: exit $status, $(cat "$tmp/win.err")"
+[ ! -e "$tmp/win-new" ] || fail "a refused output whose parent does not exist created $tmp/win-new"
 
 # A parent whose name ends in a newline is kept intact when it is resolved.
 nl='
@@ -296,7 +287,7 @@ cmp "$tmp/stale/SHA256SUMS" "$tmp/dist/SHA256SUMS" ||
 # An output this user cannot read or write is refused, not half-replaced.
 # root can read and write anything, so this only runs as another user.
 if [ "$(id -u)" != 0 ]; then
-  for mode in 300 500; do
+  for mode in 300 500 600; do
     mkdir "$tmp/locked-$mode"
     chmod "$mode" "$tmp/locked-$mode"
     status=0
@@ -426,6 +417,11 @@ fi
     fail "an output reached through a symbolic link to the repository was not left out: $(cat "$tmp/guard.err")"
   [ "$(cat "$repo/prev/contract.txt")" = previous ] ||
     fail "the assembler replaced the previous artifacts when reached through a symbolic link"
+  # A caller's GIT_LITERAL_PATHSPECS does not switch off that exclusion.
+  status=0
+  GIT_LITERAL_PATHSPECS=1 "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
+  ! grep -q -e refusing -e 'differs from HEAD' -e 'told to ignore' "$tmp/guard.err" ||
+    fail "GIT_LITERAL_PATHSPECS stopped the guard leaving out an output inside the repository: $(cat "$tmp/guard.err")"
   printf '*.wit export-ignore\n' >"$repo/.git/info/attributes"
   status=0
   "$repo/scripts/assemble-release-artifacts.sh" "$repo/prev" 2>"$tmp/guard.err" || status=$?
@@ -460,16 +456,17 @@ fi
   git -C "$repo" reset -q --soft HEAD~1
   # Every read names the commit HEAD pointed at when the assembler started,
   # so a commit made during the build cannot change what is archived.
-  printf '#!/bin/sh\n: >"%s/headmove/pinned"\nprintf "package bloom:route@9.9.9;\\n" >wit/route/route.wit\ngit commit -qam moved\necho "wit_digest: 0"\n' "$tmp" >"$tmp/headmove/cargo"
+  printf '#!/bin/sh\n: >"%s/headmove/pinned"\nprintf "package bloom:route@9.9.9;\\n" >wit/route/route.wit\nprintf "moved\\n" >skills/bloom-petal-development/SKILL.md\ngit commit -qam moved\necho "wit_digest: 0"\n' "$tmp" >"$tmp/headmove/cargo"
   started=$(git -C "$repo" rev-parse HEAD)
   status=0
   (PATH=$tmp/headmove:$PATH; export PATH; "$repo/scripts/assemble-release-artifacts.sh" --allow-dirty "$tmp/pinned") 2>"$tmp/guard.err" || status=$?
   [ -f "$tmp/headmove/pinned" ] || fail "the committing cargo stub never ran"
   [ "$status" = 0 ] && grep -qx "source_commit: $started" "$tmp/pinned/contract.txt" &&
-    tar -xzOf "$tmp/pinned/petal-wit-0.0.0.tar.gz" petal-wit-0.0.0/route.wit | grep -qx 'package bloom:route@0.0.0;' ||
+    tar -xzOf "$tmp/pinned/petal-wit-0.0.0.tar.gz" petal-wit-0.0.0/route.wit | grep -qx 'package bloom:route@0.0.0;' &&
+    [ "$(cat "$tmp/pinned/SKILL.md")" = skill ] ||
     fail "a commit made during the build changed what was archived: exit $status, $(cat "$tmp/guard.err")"
   git -C "$repo" reset -q --soft "$started"
-  git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit
+  git -C "$repo" restore --source=HEAD --staged --worktree -- wit/route/route.wit skills/bloom-petal-development/SKILL.md
   # The symbolic link is itself an untracked file, so these runs skip the
   # working-tree guard with --allow-dirty; the output checks still apply.
   ln -s prev "$repo/link"

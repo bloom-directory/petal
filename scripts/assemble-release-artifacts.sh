@@ -1,8 +1,8 @@
 #!/bin/sh
 # Assemble the release artifacts for HEAD into a directory (default: dist at
 # the repository root). A relative directory is taken from the caller's
-# working directory. It must name the directory itself: it may not end in . or
-# .., and may contain .. only when its parent directory already exists.
+# working directory. Its parent directory must already exist, and it must name
+# the directory itself: it may not end in . or ..
 #
 # The directory is replaced, so it must be new, empty, or hold only a previous
 # run's artifacts; it may not be a symbolic link, and this user must be able to
@@ -63,34 +63,32 @@ case $out in
     exit 2
     ;;
 esac
-# Resolve the parent when it exists, so a .. inside the path cannot make
-# mkdir -p create a directory inside the output. A parent that does not exist
-# yet may not be reached through .. at all.
+# The parent must already exist, so it can be resolved now and compared with
+# the directory the script later enters: a parent created or swapped in the
+# meantime is refused. Resolving it also means a .. inside the path cannot
+# make mkdir -p create a directory inside the output.
 dir=${out%/*}
 dir=${dir:-/}
-resolved_parent=
-if [ -d "$dir" ]; then
-  # The trailing . keeps a parent whose name ends in a newline intact.
-  resolved=$(CDPATH= cd -P -- "$dir" && pwd -P && echo .) || {
-    echo "assemble-release-artifacts: cannot enter $dir, the parent of $out" >&2
-    exit 1
-  }
-  resolved=${resolved%?.}
-  resolved_parent=${resolved%/}
-  out=$resolved_parent/${out##*/}
-else
-  case $out in
-    */../*)
-      echo "assemble-release-artifacts: $out passes through .., so its parent $dir must already exist" >&2
-      exit 2
-      ;;
-  esac
+if [ ! -d "$dir" ]; then
+  echo "assemble-release-artifacts: $dir, the parent of $out, does not exist; create it first" >&2
+  exit 2
 fi
+# The trailing . keeps a parent whose name ends in a newline intact.
+resolved=$(CDPATH= cd -P -- "$dir" && pwd -P && echo .) || {
+  echo "assemble-release-artifacts: cannot enter $dir, the parent of $out" >&2
+  exit 1
+}
+resolved=${resolved%?.}
+resolved_parent=${resolved%/}
+out=$resolved_parent/${out##*/}
 cd "$root"
 # A replace ref would make git archive and git show read objects other than
 # HEAD's, unseen by git status, so ignore replace refs throughout.
 GIT_NO_REPLACE_OBJECTS=1
-export GIT_NO_REPLACE_OBJECTS
+# The guard's output exclusion uses pathspec magic, which a caller's
+# GIT_LITERAL_PATHSPECS would switch off.
+GIT_LITERAL_PATHSPECS=0
+export GIT_NO_REPLACE_OBJECTS GIT_LITERAL_PATHSPECS
 # Every later read names this commit, so a HEAD that moves, or a repository
 # path that is swapped, while the CLI builds cannot change what is archived.
 commit=$(git rev-parse --verify 'HEAD^{commit}')
@@ -211,7 +209,7 @@ cd -P -- "$out"
 here=$(pwd -P && echo .)
 here=${here%?.}
 if [ -L "$out" ] || ! [ . -ef "$out" ] ||
-  { [ -n "$resolved_parent" ] && [ "${here%/*}" != "$resolved_parent" ]; }; then
+  [ "${here%/*}" != "$resolved_parent" ]; then
   refuse "which changed while it was checked"
 fi
 check_out .
