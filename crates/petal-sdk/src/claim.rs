@@ -32,10 +32,21 @@
 //! the fee asset Bloom catalogs for the operation class, and Broker refuses
 //! any declared fee on current Bloom (see [`ClaimFee`]).
 //!
-//! Broker compares a declared destination with the wallet policy by exact
-//! string equality on both the chain and the destination. Declare each one in
-//! exactly the form the owner's policy uses: a lowercase address never matches
-//! a checksummed policy entry, and `evm-8453` never matches `base`.
+//! Broker matches a declared destination's chain against the wallet policy
+//! exactly: `evm-8453` never matches `base`. How it then compares the
+//! destination depends on the Broker. A Broker without chain-aware
+//! destination matching (bloom-directory/bloom-broker#80) compares the exact
+//! string, so a lowercase address never matches a checksummed policy entry.
+//! A Broker with it decodes a destination on a chain in its address table,
+//! such as `base`, `ethereum`, `polygon`, `solana`, `cosmos` or `bitcoin`,
+//! and compares what it decodes to: an EVM address in any letter case,
+//! because case is only the EIP-55 checksum; a Solana address only as
+//! written; a Cosmos bech32 address in all-lowercase or all-uppercase, with
+//! its own prefix; a Bitcoin mainnet address by its output script. It still
+//! compares a `petal:` class, a destination on any other chain (`evm-<id>`
+//! names included) and one that does not decode by the exact string. Declare
+//! each destination in exactly the form the owner's policy uses: that
+//! spelling matches on every Broker.
 //!
 //! Every effect check runs after the owner has approved, so a claim Broker
 //! refuses costs the owner a wasted approval. [`ClaimEffects::validate`]
@@ -246,8 +257,12 @@ impl ClaimEffects {
     }
 
     /// Declare where the payload sends value. Use exactly the chain and
-    /// destination strings the owner's policy allows; Broker compares them
-    /// byte for byte.
+    /// destination strings the owner's policy allows. Broker compares the
+    /// chain byte for byte. A Broker without chain-aware destination matching
+    /// (bloom-directory/bloom-broker#80) compares the destination byte for
+    /// byte too; one with it also accepts another spelling of the same address
+    /// on a chain it knows, such as an EVM address in another letter case.
+    /// The policy's own spelling matches on every Broker.
     pub fn destination(mut self, chain: &str, destination: &str) -> Self {
         self.destinations.push(ClaimDestination {
             chain: chain.to_owned(),
@@ -835,9 +850,10 @@ fn validate_token(label: &str, value: &str) -> Result<(), String> {
     }
 }
 
-/// Broker compares assets and destinations byte for byte, so a label is
-/// printable ASCII with no spaces: invisible, bidi and look-alike characters
-/// would make a value that reads like the policy entry and never matches it.
+/// Broker compares assets, and any destination it does not decode, byte for
+/// byte, so a label is printable ASCII with no spaces: invisible, bidi and
+/// look-alike characters would make a value that reads like the policy entry
+/// and never matches it.
 /// Addresses, base58, venue ids and `native` all fit.
 fn validate_label(label: &str, value: &str) -> Result<(), String> {
     if (1..=256).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_graphic()) {
@@ -1012,7 +1028,8 @@ mod tests {
             value["declared_debits"],
             serde_json::json!([{"asset": {"chain": "base", "asset": "native"}, "amount": "1000000000000000"}])
         );
-        // Kept byte for byte: Broker compares destinations exactly.
+        // Kept byte for byte: the SDK never re-spells a destination, and the
+        // policy's own spelling is the one every Broker matches.
         assert_eq!(
             value["declared_destinations"],
             serde_json::json!([{"chain": "base", "destination": "0xAbC0000000000000000000000000000000000001"}])
