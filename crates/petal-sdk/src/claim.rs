@@ -32,10 +32,17 @@
 //! the fee asset Bloom catalogs for the operation class, and Broker refuses
 //! any declared fee on current Bloom (see [`ClaimFee`]).
 //!
-//! Broker compares a declared destination with the wallet policy by exact
-//! string equality on both the chain and the destination. Declare each one in
-//! exactly the form the owner's policy uses: a lowercase address never matches
-//! a checksummed policy entry, and `evm-8453` never matches `base`.
+//! Broker matches a declared destination's chain against the wallet policy
+//! exactly: `evm-8453` never matches `base`. On a chain whose address format
+//! it knows, it then compares the destination by the address it decodes to,
+//! not by its spelling: an EVM address matches in any letter case, because
+//! case is only the EIP-55 checksum, while a Solana address stays
+//! case-sensitive, a bech32 address keeps its prefix and a Bitcoin address
+//! compares by its output script. A destination on any other chain, or one
+//! that does not decode, is compared by its exact string. Brokers before
+//! chain-aware destination matching (bloom-directory/bloom-broker#80) compare
+//! every destination by its exact string, so declaring each one in exactly the
+//! form the owner's policy uses stays the choice that works on every Broker.
 //!
 //! Every effect check runs after the owner has approved, so a claim Broker
 //! refuses costs the owner a wasted approval. [`ClaimEffects::validate`]
@@ -835,9 +842,10 @@ fn validate_token(label: &str, value: &str) -> Result<(), String> {
     }
 }
 
-/// Broker compares assets and destinations byte for byte, so a label is
-/// printable ASCII with no spaces: invisible, bidi and look-alike characters
-/// would make a value that reads like the policy entry and never matches it.
+/// Broker compares assets, and any destination it does not decode, byte for
+/// byte, so a label is printable ASCII with no spaces: invisible, bidi and
+/// look-alike characters would make a value that reads like the policy entry
+/// and never matches it.
 /// Addresses, base58, venue ids and `native` all fit.
 fn validate_label(label: &str, value: &str) -> Result<(), String> {
     if (1..=256).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_graphic()) {
