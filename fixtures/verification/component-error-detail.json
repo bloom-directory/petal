@@ -1,7 +1,7 @@
 {
-  "sdk_revision": "5cd13f0b05a39065b1dd3ac5b08bc43bc975d1ef",
+  "sdk_revision": "18db1459e7ba7fc4bbe8267c2fa98d175bef75ee",
   "machine_revision": "79fa71d38b9685bdba4585c72ea80ddccbd935f8",
-  "component_sha256": "401318d951360e6893588a310796692594d057652dae6f5e6afda1fb84ceb03a",
+  "component_sha256": "614cc8631d7ba19c76bb02c99bda41d38463560656a3a14c609c631776354462",
   "feature": "host-error-detail",
   "compiled_error_forwarding": true,
   "errors": [
@@ -21,7 +21,7 @@
     "passed": 1,
     "failed": 0,
     "ignored": 0,
-    "duration_seconds": 0.13,
+    "duration_seconds": 0.16,
     "adapter": "Test-only module added to an archived Machine checkout; VM implementation unchanged."
   }
 }
