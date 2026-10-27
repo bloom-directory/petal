@@ -18,7 +18,7 @@ fn sign(ctx: &petal::Ctx, body: &[u8]) -> Result<petal::DispatchResponse, petal:
                 Some(petal::HostStatus::Invalid) => -3,
                 _ => -4,
             },
-            error.message(),
+            error.detail(),
         )
     })?;
     Ok(petal::DispatchResponse::Write)

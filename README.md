@@ -50,14 +50,17 @@ a copied digest in authoring documentation is not a compatibility oracle.
 
 ## Host error detail
 
-Default SDK builds keep the original `SdkError::Host` and `SdkError::Message`
-variants. First replace status matches with `error.host_status()`, then enable
-`host-error-detail` on the route's existing SDK dependency when ready. The feature
-adds `HostReason`; exhaustive matches must handle it. Each error owns its reason,
-so later calls cannot overwrite earlier detail. `message()` includes the reason;
-`reason()` returns it separately. No last-error slot or WIT change is required.
+Host calls return the same `SdkError::Host(status)` with or without the
+`host-error-detail` feature, and `message()` is unchanged, so existing matches
+keep working when the feature is enabled anywhere in the build. With the
+feature, the SDK also records the host's explanation of the most recent
+classified failure: `petal::sdk::last_host_reason()` returns it, and
+`error.detail()` appends it to `message()` when its status matches. Read it
+right after the failing call; the next host failure replaces it. No WIT change
+is required.
 
-Detail is limited to 512 Unicode characters with control characters removed.
+Detail is limited to 512 Unicode characters; control characters become spaces
+and a truncated explanation ends with `…`.
 Hosts must supply caller-safe messages; length limits cannot redact unknown
 credentials. Machine's HTTP URL redaction is tracked in
 [Bloom #364](https://github.com/bloom-directory/bloom/pull/364). Adopt that host

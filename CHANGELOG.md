@@ -2,11 +2,10 @@
 
 ## Unreleased
 
-- Opt-in `host-error-detail` retains classified host failures in `SdkError::HostReason`.
-  `message()` includes it and `host_status()` classifies both bare and detailed
-  failures. Migrate `SdkError::Host(..)` matches to that accessor before enabling
-  the feature. Default builds retain the original variants and status behavior.
-  No global last-error slot or WIT change is required.
+- Opt-in `host-error-detail` records the host's explanation of the latest
+  classified failure in `sdk::last_host_reason()`; `SdkError::detail()` appends
+  it to `message()`. Errors keep the bare `SdkError::Host(status)` variant and
+  message, so existing matches are unaffected. No WIT change is required.
   Hosts remain responsible for removing credentials and internal request data
   before sending explanations; this is not a generic secret redactor.
 
