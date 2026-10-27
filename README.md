@@ -52,12 +52,16 @@ a copied digest in authoring documentation is not a compatibility oracle.
 
 Host calls return the same `SdkError::Host(status)` with or without the
 `host-error-detail` feature, and `message()` is unchanged, so existing matches
-keep working when the feature is enabled anywhere in the build. With the
-feature, the SDK also records the host's explanation of the most recent
-classified failure: `petal::sdk::last_host_reason()` returns it, and
-`error.detail()` appends it to `message()` when its status matches. Read it
-right after the failing call; the next host failure replaces it. No WIT change
-is required.
+keep working when the feature is enabled anywhere in the build. Classification
+is the same as in earlier releases.
+
+With the feature, `petal::sdk::last_host_reason()` returns the host's
+explanation of the latest SDK host call, when that call failed with a host
+message of the form `denied: <reason>`, `not found: <reason>` or
+`invalid: <reason>` whose label matches its status. The reason belongs to that
+call, not to the error value: every host call replaces it, and a success or an
+error the SDK builds itself clears it. Read it right after the failing call.
+No WIT change is required.
 
 Detail is limited to 512 Unicode characters; control characters become spaces
 and a truncated explanation ends with `…`.

@@ -283,22 +283,6 @@ pub enum SdkError {
 }
 
 impl SdkError {
-    pub fn host_status(&self) -> Option<&HostStatus> {
-        match self {
-            Self::Host(status) => Some(status),
-            Self::Message(_) => None,
-        }
-    }
-
-    /// `message()` followed by the host's explanation from
-    /// [`sdk::last_host_reason`], when one is recorded for this status.
-    pub fn detail(&self) -> String {
-        match sdk::last_host_reason().filter(|(status, _)| Some(status) == self.host_status()) {
-            Some((_, reason)) => format!("{}: {reason}", self.message()),
-            None => self.message(),
-        }
-    }
-
     pub fn message(&self) -> String {
         match self {
             SdkError::Host(HostStatus::NotFound) => "not found".into(),
@@ -425,7 +409,7 @@ pub mod sdk {
             headers: req.headers.clone(),
             body: req.body.clone(),
         })
-        .map_err(host_err)?;
+        .host()?;
         if resp.body.len() > max_bytes {
             return Err(SdkError::Host(HostStatus::BufferTooSmall {
                 needed: resp.body.len(),
@@ -442,7 +426,7 @@ pub mod sdk {
         let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
             .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
-        key::request(request_jcs).map_err(host_err)
+        key::request(request_jcs).host()
     }
 
     pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
@@ -470,7 +454,7 @@ pub mod sdk {
             selector: selector(&req.selector),
             key_ref_jcs: req.key_ref_jcs.clone(),
         };
-        match sign::sign_payload(&request).map_err(host_err)? {
+        match sign::sign_payload(&request).host()? {
             sign::SignResult::Signature(signature) => Ok(SignOutcome::Signature(signature)),
             sign::SignResult::ApprovalPending(approval) => Ok(SignOutcome::ApprovalPending {
                 action_id: approval.action_id,
@@ -502,7 +486,7 @@ pub mod sdk {
             selector: selector(&req.selector),
             key_ref_jcs: req.key_ref_jcs.clone(),
         };
-        match sign::sign_payload_batch(&request).map_err(host_err)? {
+        match sign::sign_payload_batch(&request).host()? {
             sign::SignBatchResult::Signatures(signatures) => {
                 if signatures.len() != req.payloads.len() {
                     return Err(SdkError::Message(
@@ -540,7 +524,7 @@ pub mod sdk {
             max_priority_fee_per_gas: req.max_priority_fee_per_gas.clone(),
         })
         .map(staged_transaction)
-        .map_err(host_err)
+        .host()
     }
 
     pub fn tx_confirm(
@@ -552,7 +536,7 @@ pub mod sdk {
         super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::confirm(wallet, chain_name, outbox_id, acknowledge_warnings)
             .map(staged_transaction)
-            .map_err(host_err)
+            .host()
     }
 
     pub fn tx_inspect(
@@ -568,7 +552,7 @@ pub mod sdk {
                 tx_hash: inspection.tx_hash,
                 receipt_json: inspection.receipt_json,
             })
-            .map_err(host_err)
+            .host()
     }
 
     pub fn chain_read(
@@ -582,12 +566,12 @@ pub mod sdk {
             params_json: params_json.into(),
         })
         .map(|response| response.result_json)
-        .map_err(host_err)
+        .host()
     }
 
     pub fn store_get(key: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
         let namespace = namespace_for_key(key, false);
-        let Some(bytes) = store::get(namespace, key).map_err(host_err)? else {
+        let Some(bytes) = store::get(namespace, key).host()? else {
             return Err(SdkError::Host(HostStatus::NotFound));
         };
         if bytes.len() > max_bytes {
@@ -600,27 +584,27 @@ pub mod sdk {
 
     pub fn store_put(key: &str, value: &[u8], secret: bool) -> Result<(), SdkError> {
         let namespace = namespace_for_key(key, secret);
-        store::put(namespace, key, value, namespace == SECRET_NS).map_err(host_err)
+        store::put(namespace, key, value, namespace == SECRET_NS).host()
     }
 
     pub fn store_put_new(key: &str, value: &[u8], secret: bool) -> Result<(), SdkError> {
         let namespace = namespace_for_key(key, secret);
-        store::put_new(namespace, key, value, namespace == SECRET_NS).map_err(host_err)
+        store::put_new(namespace, key, value, namespace == SECRET_NS).host()
     }
 
     pub fn store_del(key: &str) -> Result<(), SdkError> {
         let namespace = namespace_for_key(key, false);
-        store::delete(namespace, key).map_err(host_err)
+        store::delete(namespace, key).host()
     }
 
     pub fn store_del_if_value(key: &str, expected: &[u8]) -> Result<(), SdkError> {
         let namespace = namespace_for_key(key, false);
-        store::delete_if_value(namespace, key, expected).map_err(host_err)
+        store::delete_if_value(namespace, key, expected).host()
     }
 
     pub fn store_list(prefix: &str, max_bytes: usize) -> Result<Vec<String>, SdkError> {
         let namespace = namespace_for_key(prefix, false);
-        let keys = store::list(namespace, prefix).map_err(host_err)?;
+        let keys = store::list(namespace, prefix).host()?;
         let size = keys.iter().map(|key| key.len()).sum::<usize>();
         if size > max_bytes {
             return Err(SdkError::Host(HostStatus::BufferTooSmall { needed: size }));
@@ -629,7 +613,7 @@ pub mod sdk {
     }
 
     pub fn vfs_read(path: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
-        let bytes = vfs::read(path).map_err(host_err)?;
+        let bytes = vfs::read(path).host()?;
         if bytes.len() > max_bytes {
             return Err(SdkError::Host(HostStatus::BufferTooSmall {
                 needed: bytes.len(),
@@ -639,12 +623,12 @@ pub mod sdk {
     }
 
     pub fn vfs_write(path: &str, body: &[u8]) -> Result<(), SdkError> {
-        vfs::write(path, body).map_err(host_err)
+        vfs::write(path, body).host()
     }
 
     pub fn vfs_list(path: &str, max_bytes: usize) -> Result<Vec<String>, SdkError> {
-        let _ = vfs::lookup(path).map_err(host_err)?;
-        let entries = vfs::list(path).map_err(host_err)?;
+        let _ = vfs::lookup(path).host()?;
+        let entries = vfs::list(path).host()?;
         let size = entries.iter().map(|entry| entry.name.len()).sum::<usize>();
         if size > max_bytes {
             return Err(SdkError::Host(HostStatus::BufferTooSmall { needed: size }));
@@ -653,20 +637,23 @@ pub mod sdk {
     }
 
     pub fn now_ms() -> u64 {
-        env::now_ms().unwrap_or(0)
+        env::now_ms().host().unwrap_or(0)
     }
 
     pub fn try_now_ms() -> Result<u64, SdkError> {
-        env::now_ms().map_err(host_err)
+        env::now_ms().host()
     }
 
     pub fn random_bytes(len: usize) -> Result<Vec<u8>, SdkError> {
-        let len = u32::try_from(len).map_err(|_| SdkError::Host(HostStatus::Invalid))?;
-        env::random_bytes(len).map_err(host_err)
+        let len = u32::try_from(len).map_err(|_| {
+            clear_host_reason();
+            SdkError::Host(HostStatus::Invalid)
+        })?;
+        env::random_bytes(len).host()
     }
 
     pub fn runtime_setting(key: &str) -> Result<Option<String>, SdkError> {
-        env::setting(key).map_err(host_err)
+        env::setting(key).host()
     }
 
     fn staged_transaction(staged: tx::StagedTransaction) -> StagedTransaction {
@@ -717,29 +704,62 @@ pub mod sdk {
             const { core::cell::RefCell::new(None) };
     }
 
-    /// The status and explanation of the most recent classified host failure,
-    /// recorded only with the `host-error-detail` feature. Host calls still
-    /// return the bare `SdkError::Host(status)`, so existing matches are
-    /// unaffected. Read it right after the failing call: the next host failure
-    /// replaces it, and a success does not clear it.
+    /// The host's explanation of the latest SDK host call, if that call failed
+    /// with a classified `SdkError::Host` error. Recorded only with the
+    /// `host-error-detail` feature; errors stay the bare `SdkError::Host(status)`.
+    ///
+    /// The reason belongs to the latest call, not to an error value: every host
+    /// call replaces it, a successful call or an error the SDK builds itself
+    /// clears it. Read it right after the call that failed.
     pub fn last_host_reason() -> Option<(HostStatus, String)> {
         LAST_HOST_REASON.with(|slot| slot.borrow().clone())
     }
 
+    pub(crate) fn clear_host_reason() {
+        LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = None);
+    }
+
+    /// Converts a host call's result, replacing the recorded reason.
+    trait HostCall<T> {
+        fn host(self) -> Result<T, SdkError>;
+    }
+
+    impl<T> HostCall<T> for Result<T, String> {
+        fn host(self) -> Result<T, SdkError> {
+            clear_host_reason();
+            self.map_err(host_err)
+        }
+    }
+
     const REASON_MAX_CHARS: usize = 512;
 
+    /// Classifies a host error exactly as earlier SDK releases did. The text
+    /// after `label: ` is recorded as the reason only when the label names the
+    /// same status, so classification never depends on the feature.
     pub(crate) fn host_err(message: String) -> SdkError {
-        let (label, reason) = message.split_once(": ").unwrap_or((&message, ""));
-        let status = match label.to_ascii_lowercase().as_str() {
-            "not found" => Some(HostStatus::NotFound),
-            "denied" | "permission denied" => Some(HostStatus::Denied),
-            "invalid" => Some(HostStatus::Invalid),
-            _ => None,
+        let lower = message.to_ascii_lowercase();
+        let status = if lower.contains("not found") {
+            Some(HostStatus::NotFound)
+        } else if lower.contains("denied") || lower.contains("permission") {
+            Some(HostStatus::Denied)
+        } else if lower.contains("invalid") {
+            Some(HostStatus::Invalid)
+        } else {
+            None
         };
         let recorded = status
             .clone()
-            .filter(|_| cfg!(feature = "host-error-detail") && !reason.is_empty())
-            .map(|status| (status, bounded_reason(reason)));
+            .filter(|_| cfg!(feature = "host-error-detail"))
+            .and_then(|status| {
+                let (label, reason) = message.split_once(": ")?;
+                let labelled = match label.to_ascii_lowercase().as_str() {
+                    "not found" => HostStatus::NotFound,
+                    "denied" | "permission denied" => HostStatus::Denied,
+                    "invalid" => HostStatus::Invalid,
+                    _ => return None,
+                };
+                (labelled == status && !reason.is_empty()).then(|| (status, bounded_reason(reason)))
+            });
         LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = recorded);
         status.map_or(SdkError::Message(message), SdkError::Host)
     }
@@ -778,8 +798,10 @@ pub mod sdk {
 
         #[test]
         #[cfg(feature = "host-error-detail")]
-        fn the_latest_reason_is_recorded_beside_the_error() {
-            let first = host_err("denied: SELECTOR_MISMATCH: wrong account".into());
+        fn the_reason_belongs_to_the_latest_host_call() {
+            use super::HostCall;
+            let failed: Result<(), String> = Err("denied: SELECTOR_MISMATCH: wrong account".into());
+            assert_eq!(failed.host(), Err(SdkError::Host(HostStatus::Denied)));
             assert_eq!(
                 last_host_reason(),
                 Some((
@@ -787,30 +809,55 @@ pub mod sdk {
                     "SELECTOR_MISMATCH: wrong account".into()
                 ))
             );
-            assert_eq!(first.detail(), "denied: SELECTOR_MISMATCH: wrong account");
-            let second = host_err("invalid: unsupported capability".into());
-            assert_eq!(second.detail(), "invalid: unsupported capability");
-            // The slot names the latest failure; a different status gets no reason.
-            assert_eq!(first.detail(), "denied");
-            host_err("permission denied".into());
+            // A success, including a store miss the SDK reports itself, clears it.
+            assert_eq!(Ok::<Option<u8>, String>(None).host(), Ok(None));
+            assert_eq!(last_host_reason(), None);
+            // A failure without a reason does not inherit an older one.
+            let _ = Err::<(), String>("denied: store".into()).host();
+            assert_eq!(
+                last_host_reason(),
+                Some((HostStatus::Denied, "store".into()))
+            );
+            let _ = Err::<(), String>("permission denied".into()).host();
             assert_eq!(last_host_reason(), None);
         }
 
         #[test]
         #[cfg(not(feature = "host-error-detail"))]
         fn default_builds_record_no_reason() {
-            let error = host_err("denied: gate refused".into());
+            host_err("denied: gate refused".into());
             assert_eq!(last_host_reason(), None);
-            assert_eq!(error.detail(), "denied");
         }
 
         #[test]
-        fn backend_words_do_not_reclassify_the_error() {
-            let message = "backend: invalid response: permission information not found";
-            let error = host_err(message.into());
-            assert_eq!(error.host_status(), None);
-            assert_eq!(last_host_reason(), None);
-            assert_eq!(error.detail(), message);
+        fn classification_matches_earlier_releases() {
+            for (message, expected) in [
+                (
+                    "denied: APPROVAL_NOT_FOUND: approval not found",
+                    Some(HostStatus::NotFound),
+                ),
+                (
+                    "backend: confirm EVM outbox: approval denied",
+                    Some(HostStatus::Denied),
+                ),
+                (
+                    "backend: Broker returned an invalid signature count",
+                    Some(HostStatus::Invalid),
+                ),
+                (
+                    "backend: read EVM outbox receipt: Permission denied (os error 13)",
+                    Some(HostStatus::Denied),
+                ),
+                ("backend: upstream timed out", None),
+            ] {
+                let error = host_err(message.into());
+                assert_eq!(
+                    error,
+                    expected.map_or(SdkError::Message(message.into()), SdkError::Host)
+                );
+                // A reason is kept only when the label names the same status.
+                assert_eq!(last_host_reason(), None, "{message}");
+            }
         }
 
         #[test]
@@ -1424,18 +1471,19 @@ impl VfsRead for HostVfs {
 /// as `address.btc`, is `NotAFile`, which reaches the guest as `Invalid`. To a
 /// caller both mean this account has no address there, so both report `-1`.
 fn read_address<R: VfsRead>(vfs: &mut R, path: &str) -> Result<Vec<u8>, DispatchResponse> {
+    // Only a reason this read records may be attached, so clear any older one.
+    sdk::clear_host_reason();
     vfs.read(path, ADDRESS_MAX_BYTES).map_err(|err| {
-        let detail = err.detail();
-        match err.host_status() {
-            Some(HostStatus::NotFound | HostStatus::Invalid) => {
-                let reason = detail.strip_prefix(&err.message()).unwrap_or_default();
-                error(
-                    -1,
-                    format!("{path}: this account has no address there{reason}"),
-                )
-            }
-            Some(HostStatus::Denied) => error(-2, format!("{path}: {detail}")),
-            _ => error(-4, format!("{path}: {detail}")),
+        let reason = sdk::last_host_reason()
+            .map(|(_, reason)| format!(": {reason}"))
+            .unwrap_or_default();
+        match err {
+            SdkError::Host(HostStatus::NotFound | HostStatus::Invalid) => error(
+                -1,
+                format!("{path}: this account has no address there{reason}"),
+            ),
+            SdkError::Host(HostStatus::Denied) => error(-2, format!("{path}: denied{reason}")),
+            other => error(-4, format!("{path}: {}{reason}", other.message())),
         }
     })
 }
@@ -2067,10 +2115,27 @@ mod account_tests {
             -2
         );
 
+        // An older call's reason is never attached to this read's error.
+        sdk::host_err("not found: session not found".into());
+        let DispatchResponse::Error { message, .. } =
+            account.address_evm_from(&mut MapVfs::new()).unwrap_err()
+        else {
+            panic!("expected account error");
+        };
+        assert!(!message.contains("session not found"), "{message}");
+
+        /// Fails like the host does, recording the reason during the read.
+        #[cfg(feature = "host-error-detail")]
+        struct HostFailure(String);
+        #[cfg(feature = "host-error-detail")]
+        impl VfsRead for HostFailure {
+            fn read(&mut self, _path: &str, _max_bytes: usize) -> Result<Vec<u8>, SdkError> {
+                Err(sdk::host_err(self.0.clone()))
+            }
+        }
         #[cfg(feature = "host-error-detail")]
         for (label, expected_code) in [("not found", -1), ("invalid", -1), ("denied", -2)] {
-            let failure = sdk::host_err(format!("{label}: selected account is unavailable"));
-            let mut detailed = MapVfs::new().failing(&path, failure);
+            let mut detailed = HostFailure(format!("{label}: selected account is unavailable"));
             let failure = account.address_evm_from(&mut detailed).unwrap_err();
             assert_eq!(code(&failure), expected_code);
             let DispatchResponse::Error { message, .. } = failure else {
@@ -2125,8 +2190,18 @@ pub fn read_json_value<T: serde::Serialize>(value: &T) -> DispatchResponse {
 pub fn read_store(key: &str, max_bytes: usize) -> DispatchResponse {
     match sdk::store_get(key, max_bytes) {
         Ok(bytes) => DispatchResponse::Read(bytes),
-        Err(err) if err.host_status() == Some(&HostStatus::NotFound) => error(-1, err.detail()),
-        Err(err) => error(-4, err.detail()),
+        Err(err) => {
+            let message = match sdk::last_host_reason() {
+                Some((_, reason)) => format!("{}: {reason}", err.message()),
+                None => err.message(),
+            };
+            let code = if err == SdkError::Host(HostStatus::NotFound) {
+                -1
+            } else {
+                -4
+            };
+            error(code, message)
+        }
     }
 }
 

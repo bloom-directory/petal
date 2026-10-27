@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- Opt-in `host-error-detail` records the host's explanation of the latest
-  classified failure in `sdk::last_host_reason()`; `SdkError::detail()` appends
-  it to `message()`. Errors keep the bare `SdkError::Host(status)` variant and
-  message, so existing matches are unaffected. No WIT change is required.
+- Opt-in `host-error-detail`: `sdk::last_host_reason()` returns the host's
+  explanation when the latest SDK host call failed. Every host call replaces
+  it; a success clears it. Errors keep the bare `SdkError::Host(status)` variant,
+  message and classification, so Petals that upgrade behave as before. No WIT
+  change is required.
   Hosts remain responsible for removing credentials and internal request data
   before sending explanations; this is not a generic secret redactor.
 

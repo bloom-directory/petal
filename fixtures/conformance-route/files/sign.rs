@@ -11,15 +11,17 @@ fn sign(ctx: &petal::Ctx, body: &[u8]) -> Result<petal::DispatchResponse, petal:
     )?;
     let request = claim.sign_request("fixture", petal::SignSelector::Exact)?;
     petal::sdk::sign_payload(&request).map_err(|error| {
-        petal::error(
-            match error.host_status() {
-                Some(petal::HostStatus::NotFound) => -1,
-                Some(petal::HostStatus::Denied) => -2,
-                Some(petal::HostStatus::Invalid) => -3,
-                _ => -4,
-            },
-            error.detail(),
-        )
+        let message = match petal::sdk::last_host_reason() {
+            Some((_, reason)) => format!("{}: {reason}", error.message()),
+            None => error.message(),
+        };
+        let code = match error {
+            petal::SdkError::Host(petal::HostStatus::NotFound) => -1,
+            petal::SdkError::Host(petal::HostStatus::Denied) => -2,
+            petal::SdkError::Host(petal::HostStatus::Invalid) => -3,
+            _ => -4,
+        };
+        petal::error(code, message)
     })?;
     Ok(petal::DispatchResponse::Write)
 }
