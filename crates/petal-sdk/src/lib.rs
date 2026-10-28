@@ -423,6 +423,7 @@ pub mod sdk {
     }
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
+        clear_host_reason();
         let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
             .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
@@ -430,6 +431,7 @@ pub mod sdk {
     }
 
     pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
+        clear_host_reason();
         super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
         let request_jcs = serde_jcs::to_vec(request)
             .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))?;
@@ -439,6 +441,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
+        clear_host_reason();
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         let request = sign::PayloadSignRequest {
             wallet: req.wallet.clone(),
@@ -464,6 +467,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<SignBatchOutcome, SdkError> {
+        clear_host_reason();
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         super::validate_payload_batch(&req.payloads)?;
         let request = sign::PayloadBatchSignRequest {
@@ -512,6 +516,7 @@ pub mod sdk {
     }
 
     pub fn tx_stage(req: &EvmTransaction) -> Result<StagedTransaction, SdkError> {
+        clear_host_reason();
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
         tx::stage(&tx::EvmTransaction {
             wallet: req.wallet.clone(),
@@ -533,6 +538,7 @@ pub mod sdk {
         outbox_id: &str,
         acknowledge_warnings: bool,
     ) -> Result<StagedTransaction, SdkError> {
+        clear_host_reason();
         super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::confirm(wallet, chain_name, outbox_id, acknowledge_warnings)
             .map(staged_transaction)
@@ -544,6 +550,7 @@ pub mod sdk {
         chain_name: &str,
         outbox_id: &str,
     ) -> Result<OutboxInspection, SdkError> {
+        clear_host_reason();
         super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
         tx::inspect(wallet, chain_name, outbox_id)
             .map(|inspection| OutboxInspection {
@@ -758,7 +765,8 @@ pub mod sdk {
                     "invalid" => HostStatus::Invalid,
                     _ => return None,
                 };
-                (labelled == status && !reason.is_empty()).then(|| (status, bounded_reason(reason)))
+                let reason = bounded_reason(reason);
+                (labelled == status && !reason.trim().is_empty()).then_some((status, reason))
             });
         LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = recorded);
         status.map_or(SdkError::Message(message), SdkError::Host)
@@ -767,7 +775,19 @@ pub mod sdk {
     /// Replace control characters with spaces and mark truncation with `…`,
     /// keeping the result within `REASON_MAX_CHARS` characters.
     fn bounded_reason(reason: &str) -> String {
-        let mut chars = reason.chars().map(|c| if c.is_control() { ' ' } else { c });
+        let mut chars = reason.chars().map(|c| {
+            if c.is_control()
+                || matches!(c,
+                    '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{180e}' |
+                    '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' |
+                    '\u{2060}'..='\u{206f}' | '\u{feff}'
+                )
+            {
+                ' '
+            } else {
+                c
+            }
+        });
         let mut bounded: String = chars.by_ref().take(REASON_MAX_CHARS).collect();
         if chars.next().is_some() {
             bounded.pop();
@@ -779,6 +799,83 @@ pub mod sdk {
     #[cfg(test)]
     mod host_reason_tests {
         use super::{HostStatus, SdkError, host_err, last_host_reason};
+
+        #[test]
+        fn local_validation_clears_previous_host_reason() {
+            use crate::*;
+            fn check<T>(call: impl FnOnce() -> Result<T, SdkError>) {
+                host_err("denied: SELECTOR_MISMATCH: wrong account".into());
+                assert!(call().is_err());
+                assert_eq!(last_host_reason(), None);
+            }
+            let key = PetalKeyRequest {
+                wallet_id: "".into(),
+                key_slot: "test".into(),
+                allowed_routes: vec![],
+                allowed_operation_classes: vec![],
+                allowed_crypto_suites: vec![],
+                maximum_lifetime_ms: 1,
+            };
+            check(|| super::request_key(b"not json"));
+            check(|| super::request_key(&serde_json::to_vec(&key).unwrap()));
+            check(|| super::derive_key(&key));
+            check(|| {
+                super::sign_payload(&PayloadSignRequest {
+                    wallet: "".into(),
+                    preimage: vec![],
+                    claimed_hash: [0; 32],
+                    signature_algorithm: "".into(),
+                    operation_class: "".into(),
+                    petal_use_claim_jcs: vec![],
+                    claim_assurance_evidence: None,
+                    approval_hint: None,
+                    action: None,
+                    advisory: None,
+                    selector: SignSelector::Exact,
+                    key_ref_jcs: None,
+                })
+            });
+            for wallet in ["", "alice"] {
+                check(|| {
+                    super::sign_payload_batch(&PayloadBatchSignRequest {
+                        wallet: wallet.into(),
+                        payloads: vec![],
+                        signature_algorithm: "".into(),
+                        operation_class: "".into(),
+                        petal_use_claim_jcs: vec![],
+                        claim_assurance_evidence: None,
+                        approval_hint: None,
+                        action: None,
+                        advisory: None,
+                        selector: SignSelector::Exact,
+                        key_ref_jcs: None,
+                    })
+                });
+            }
+            check(|| {
+                super::tx_stage(&EvmTransaction {
+                    wallet: "".into(),
+                    chain: "".into(),
+                    to: "".into(),
+                    value_wei: "".into(),
+                    data_hex: "".into(),
+                    nonce: None,
+                    max_fee_per_gas: None,
+                    max_priority_fee_per_gas: None,
+                })
+            });
+            check(|| super::tx_confirm("", "ethereum", "1", false));
+            check(|| super::tx_inspect("", "ethereum", "1"));
+        }
+
+        #[test]
+        #[cfg(feature = "host-error-detail")]
+        fn invisible_controls_cannot_spoof_a_reason() {
+            host_err("invalid: \u{202e}abc\u{200b}".into());
+            assert_eq!(last_host_reason().unwrap().1, " abc ");
+            host_err("denied: \u{200b}\u{202e} \t".into());
+            assert_eq!(last_host_reason(), None);
+        }
 
         #[test]
         fn classified_failures_keep_the_bare_host_variant() {

@@ -63,7 +63,7 @@ call, not to the error value: every host call replaces it, and a success or an
 error the SDK builds itself clears it. Read it right after the failing call.
 No WIT change is required.
 
-Detail is limited to 512 Unicode characters; control characters become spaces
+Detail is limited to 512 Unicode characters; control, bidi-control and zero-width characters become spaces
 and a truncated explanation ends with `…`.
 Hosts must supply caller-safe messages; length limits cannot redact unknown
 credentials. Machine's HTTP URL redaction is tracked in
@@ -73,10 +73,15 @@ fix before enabling richer errors in consumers that perform HTTP requests.
 For the transport regression, run
 `sh scripts/check-component-errors.sh "$MACHINE_CHECKOUT"` against a committed
 Machine checkout. It builds the opted-in conformance component and checks two
-distinct synthetic refusals through the actual Machine VM, including retaining
-the first explanation after another operation. It grants no signing authority.
+distinct synthetic refusals through the actual Machine VM. It grants no signing authority.
 The existing CI workflow exposes this check through manual dispatch with one
 full `machine_ref`; ordinary CI also builds the opted-in component.
+
+Current Machine converts a route's -2 response to message-less PermissionDenied,
+so an agent using IPC still sees only "permission denied". The address helper
+and conformance fixture use -2 for denials; VM-level evidence does not prove
+IPC propagation. Machine's owner must confirm which exact-signing explanations
+are safe to expose before a consumer routes them through another error code.
 
 ## Packaging a Petal
 

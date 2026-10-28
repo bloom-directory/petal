@@ -6,9 +6,8 @@
 //! - **Checked by Bloom:** `package_hash`, `route`, `crypto_suite`,
 //!   `payload_digest` and `ordered_hashes` against the context and the sign
 //!   request, and `operation_class` against the classes cataloged for the
-//!   route. The PM80 Machine profile also compares the claim's class with the
-//!   request's class on exact single-payload, batch and reusable paths. Older
-//!   hosts may enforce less; portable WIT alone does not establish these checks. A
+//!   route. Bloom compares the claim's class with the sign request's class on
+//!   the batch and reusable paths, but not on an exact single-payload sign. A
 //!   wrong value only gets the signature refused, so [`petal_use_claim`] fills
 //!   them in from the route context and the payloads, and [`PetalClaim`]
 //!   builds the sign request from the same class, suite and payloads so the

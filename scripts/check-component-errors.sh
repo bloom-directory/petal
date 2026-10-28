@@ -20,6 +20,7 @@ mkdir "$scratch/machine"
 git -C "$machine" archive HEAD | tar -x -C "$scratch/machine"
 cp scripts/machine-error-fixture.rs "$scratch/machine/crates/bloom-petals/tests/sdk_error_fixture.rs"
 export PETAL_ERROR_COMPONENT="$root/fixtures/components/sign.wasm"
+export PETAL_ERROR_OBSERVATIONS="$scratch/observed.json"
 if ! cargo test --locked --manifest-path "$scratch/machine/Cargo.toml" -p bloom-petals \
   --target-dir "${PETAL_HOST_TEST_TARGET:-$root/target/host-check}" \
   --test sdk_error_fixture > "$scratch/machine-test.log" 2>&1; then
@@ -31,8 +32,8 @@ import hashlib, json, os, pathlib, sys
 result = {'sdk_revision':sys.argv[1], 'machine_revision':sys.argv[2],
     'component_sha256':hashlib.sha256(pathlib.Path(os.environ['PETAL_ERROR_COMPONENT']).read_bytes()).hexdigest(),
     'feature':'host-error-detail', 'compiled_error_forwarding':True,
-    'errors':['denied: owner cancelled this request', 'invalid: message evidence is malformed'],
-    'dispatch_codes':[-2,-3], 'earlier_reason_preserved':True, 'authorized_in_test':False,
+    'observations':json.loads(pathlib.Path(os.environ['PETAL_ERROR_OBSERVATIONS']).read_text()),
+    'authorized_in_test':False,
     'limits':'Actual compiled component and Machine VM; synthetic host errors, no Broker, Signer, credentials or funds.'}
 text = json.dumps(result, indent=2)+'\n'
 pathlib.Path(sys.argv[3], 'error-result.json').write_text(text)

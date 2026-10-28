@@ -39,7 +39,7 @@ impl PetalHost for RefusingHost {
 async fn compiled_sdk_preserves_each_host_error_reason() {
     let wasm = std::fs::read(std::env::var_os("PETAL_ERROR_COMPONENT").unwrap()).unwrap();
     let vm = PetalVm::new().unwrap();
-    let mut messages = vec![];
+    let mut observed = vec![];
     for (body, expected_code, expected) in [
         ("cancelled", -2, "denied: owner cancelled this request"),
         ("malformed", -3, "invalid: message evidence is malformed"),
@@ -70,11 +70,13 @@ async fn compiled_sdk_preserves_each_host_error_reason() {
             DispatchResponse::Error { code, message } => {
                 assert_eq!(message, expected);
                 assert_eq!(code, expected_code);
-                messages.push(message);
+                observed.push(serde_json::json!({"code": code, "message": message}));
             }
             _ => panic!("compiled route must return its host refusal"),
         }
     }
-    // The later operation cannot overwrite the earlier returned explanation.
-    assert_eq!(messages[0], "denied: owner cancelled this request");
+    std::fs::write(
+        std::env::var_os("PETAL_ERROR_OBSERVATIONS").unwrap(),
+        serde_json::to_vec_pretty(&observed).unwrap(),
+    ).unwrap();
 }

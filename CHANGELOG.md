@@ -9,6 +9,9 @@
   change is required.
   Hosts remain responsible for removing credentials and internal request data
   before sending explanations; this is not a generic secret redactor.
+  A reason is recorded only when its label matches the classified status.
+  Local argument validation clears stale reasons. Store and address helpers
+  append the current read's reason; Machine still drops -2 denial messages at IPC.
 
 - Establish the canonical `bloom:route@0.1.0` contract.
 - Extract the shared Rust SDK and route builder.
