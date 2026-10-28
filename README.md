@@ -44,10 +44,9 @@ scripts/generate-bindings.sh
 The generated SDK bindings are derived output. `wit/route` is the only
 authoritative WIT tree.
 
-The conformance build emits the WIT digest
-`b1448484d252a4b6cae350df1d28e5102109692acdcd4be9b03bffe097af04f6`.
-Consumer CI must reject a different digest until it intentionally upgrades the
-contract release.
+Read the contract and WIT digest from `petal inspect` using the pinned tooling.
+Release provenance and checksums must describe the WIT shipped with that release;
+a copied digest in authoring documentation is not a compatibility oracle.
 
 ## Packaging a Petal
 
@@ -74,11 +73,13 @@ owns its release assets; Bloom only downloads and verifies them during setup.
 ## Distribution
 
 Rust packages are published to crates.io at coordinated exact versions. GitHub
-Releases carry the WIT archive, checksums, source archive, and optional CLI
-binaries. Git tags identify source provenance but are not the terminal Cargo
-dependency channel.
+Releases carry the WIT archive, contract provenance, the Petal development
+skill, checksums and the source archive. Git tags identify source provenance
+but are not the terminal Cargo dependency channel.
 
 `scripts/release-check.sh` runs the release gates and assembles the canonical
-WIT archive, contract provenance, and SHA-256 checksums under `dist/`. A pushed
-version tag publishes those artifacts through GitHub Releases. crates.io
-publication is performed in dependency order: contract, SDK, builder, CLI.
+WIT archive, contract provenance, the Petal development skill, and SHA-256
+checksums under `dist/`. Assembling them needs git 2.40 or later, for
+`git archive --mtime`. A pushed version tag publishes those artifacts through
+GitHub Releases. crates.io publication is performed in dependency order:
+contract, SDK, builder, CLI.
