@@ -22,6 +22,8 @@ getrandom::register_custom_getrandom!(component_getrandom);
 pub use bindings::bloom::route::types::EntryKind;
 pub use bindings::{Ctx as RawCtx, Entry, Guest as RawGuest, RouteError, RouteMeta};
 
+pub mod effects;
+
 pub trait RouteIdentity {
     const PATH: &'static str;
     const CANONICAL_PATH: &'static str;

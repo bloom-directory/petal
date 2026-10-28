@@ -82,3 +82,35 @@ dependency channel.
 WIT archive, contract provenance, and SHA-256 checksums under `dist/`. A pushed
 version tag publishes those artifacts through GitHub Releases. crates.io
 publication is performed in dependency order: contract, SDK, builder, CLI.
+
+### Economic effects for reusable signing
+
+`petal::effects::Effects` builds the existing effects-v1 signing claim from the
+exact ordered payloads, trusted route context and typed raw-token debits,
+destinations and fees. For example:
+
+```rust,ignore
+let effects = petal::effects::Effects::new(
+    "evm-137",
+    petal::effects::PermissionEffect::None,
+).with_debits(vec![petal::effects::Debit {
+    asset: petal::effects::Asset {
+        chain: "evm-137".into(),
+        asset: collateral_contract.into(),
+    },
+    amount: gross_signed_debit.to_string(),
+}]);
+let claim = effects.batch_claim(ctx, operation_class, crypto_suite, &payloads)?;
+```
+
+The protocol adapter derives these facts from the prepared signing bytes. The
+builder provides canonical serialization and stable payload/route bindings; it
+is not a verifier or an authorization. Machine binds the real spending account,
+and Broker independently checks the supported protocol and reviewed allowance.
+Unverified formats and continuing permissions retain their existing approval
+requirements. Use `RequiresSeparateApproval` for credential creation, token
+allowances, delegation or other changes that authorize later actions.
+
+Keep approval state, deduplication, ambiguous-signature recovery and accounting
+in Machine/Broker/Signer. Petal-side hints remain advisory and must never replace
+those authorities. The route WIT and signing request ABI are unchanged.
