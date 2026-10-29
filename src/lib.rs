@@ -14,6 +14,14 @@ pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
 pub const BUILD_MANIFEST_SCHEMA: &str = "bloom.petal.build-manifest.v1";
 pub const PACKAGE_DIGEST_PREFIX: &[u8] = b"bloom.petal.package.v1\0";
 
+/// The reserved route captures for a wallet-scoped route. Bloom only grants a
+/// Petal wallet authority on a route that declares these two adjacently, so the
+/// names are part of the contract rather than a convention. They were spelled
+/// as bare literals in the SDK, the builder and nine sites in Bloom's router
+/// before living here.
+pub const WALLET_CAPTURE: &str = "[wallet]";
+pub const ACCOUNT_INDEX_CAPTURE: &str = "[index]";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostInterface {
     RouteTypes,
@@ -113,6 +121,12 @@ pub const RUST_TEMPLATE_FILES: &[(&str, &str)] = &[
     ),
 ];
 
+/// The Petal development skill, shipped with the contract so the version a
+/// host serves is the version of the contract it runs. It is documentation:
+/// it is not part of [`wit_digest`].
+pub const PETAL_DEVELOPMENT_SKILL: &str =
+    include_str!("../skills/bloom-petal-development/SKILL.md");
+
 pub fn wit_digest() -> String {
     let mut hasher = Sha256::new();
     for (path, bytes) in WIT_FILES {
@@ -168,6 +182,46 @@ mod tests {
         assert_eq!(wit_digest().len(), 64);
         assert_eq!(WIT_FILES.len(), 9);
         assert!(WIT_FILES.iter().all(|(_, bytes)| !bytes.is_empty()));
+    }
+
+    #[test]
+    fn embeds_the_petal_development_skill() {
+        assert!(PETAL_DEVELOPMENT_SKILL.starts_with("---\nname: bloom-petal-development\n"));
+        assert!(PETAL_DEVELOPMENT_SKILL.contains("\n## Run it in Bloom\n"));
+        assert!(PETAL_DEVELOPMENT_SKILL.contains("\n## Troubleshoot a bare `permission denied`\n"));
+        assert!(PETAL_DEVELOPMENT_SKILL.ends_with('\n'));
+    }
+
+    /// The Agent Skills spec requires `name` and `description` and allows only
+    /// these top-level frontmatter fields; anything else, such as a version,
+    /// belongs under `metadata`.
+    #[test]
+    fn skill_frontmatter_uses_only_spec_fields() {
+        const ALLOWED: &[&str] = &[
+            "name",
+            "description",
+            "license",
+            "compatibility",
+            "metadata",
+            "allowed-tools",
+        ];
+        let frontmatter = PETAL_DEVELOPMENT_SKILL
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split_once("\n---\n"))
+            .map(|(frontmatter, _)| frontmatter)
+            .expect("skill starts with a frontmatter block");
+        let mut keys = Vec::new();
+        for line in frontmatter.lines() {
+            if line.starts_with([' ', '\t']) || line.is_empty() {
+                continue;
+            }
+            let key = line.split_once(':').map_or(line, |(key, _)| key);
+            assert!(ALLOWED.contains(&key), "top-level frontmatter field {key}");
+            keys.push(key);
+        }
+        for required in ["name", "description"] {
+            assert!(keys.contains(&required), "frontmatter lacks {required}");
+        }
     }
 
     #[test]

@@ -408,6 +408,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     if routes.is_empty() {
         return Err("no route controllers found".into());
     }
+    warn_route_shapes(&routes);
     let out_dir = root.join(&config.output);
 
     if check_only {
@@ -997,6 +998,88 @@ fn check_shared_route_architecture(root: &Path, config: &BuildConfig) -> Result<
     } else {
         Err(violations.join("\n"))
     }
+}
+
+/// Report wallet-scoped routes Bloom will refuse before the Petal runs.
+///
+/// A route carrying `[wallet]` only reaches a guest when `[index]` follows it
+/// immediately: Bloom's router denies every other shape
+/// (`bloom-petals/src/router.rs`, the `(Some(wallet), Some(index))` adjacency
+/// check and the `_ => PermissionDenied` fallthrough). The exception is the
+/// directory listing at `…/[wallet]/$index`, which Bloom answers from its own
+/// account projection — legal provided the Petal does declare the account
+/// routes beneath it.
+///
+/// Warnings rather than errors for now: several shipped Petals are in exactly
+/// this state, and failing their builds is a separate decision from reporting
+/// the breakage. This becomes an error once they are migrated.
+fn warn_route_shapes(routes: &[Route]) {
+    for violation in route_shape_violations(routes) {
+        eprintln!("warning: {violation}");
+    }
+}
+
+/// The name of a route capture, parsed the way Bloom parses it: `[wallet]`
+/// and `[wallet].json` both name `wallet`. Bloom binds the suffixed form too,
+/// so a lint matching only the exact segment misses routes Bloom refuses.
+fn capture_name(segment: &str) -> Option<&str> {
+    let rest = segment.strip_prefix('[')?;
+    rest.find(']').map(|end| &rest[..end])
+}
+
+fn route_shape_violations(routes: &[Route]) -> Vec<String> {
+    let wallet = bloom_petal_contract::WALLET_CAPTURE;
+    let index = bloom_petal_contract::ACCOUNT_INDEX_CAPTURE;
+    let has_account_routes = |prefix: &str| {
+        let nested = format!("{prefix}/{index}");
+        routes
+            .iter()
+            .any(|route| route.path == nested || route.path.starts_with(&format!("{nested}/")))
+    };
+    let mut violations = Vec::new();
+    for route in routes {
+        let segments = route.path.split('/').collect::<Vec<_>>();
+        for (position, segment) in segments.iter().enumerate() {
+            match capture_name(segment) {
+                // Bloom compares the exact segments `[wallet]` and `[index]`
+                // for adjacency, so a suffixed capture can never satisfy it,
+                // even though Bloom still binds the parameter from it.
+                Some("wallet") | Some("index") if *segment != wallet && *segment != index => {
+                    violations.push(format!(
+                        "route {} captures {segment}; Bloom only grants wallet authority to the exact segments {wallet}/{index}, so it refuses this route before the Petal runs",
+                        route.path
+                    ));
+                }
+                Some("wallet") => {
+                    let prefix = segments[..=position].join("/");
+                    match segments.get(position + 1) {
+                        Some(next) if *next == index => {}
+                        // The host-owned account listing. Only meaningful when
+                        // the account routes it points at actually exist.
+                        Some(next) if *next == "$index" && has_account_routes(&prefix) => {}
+                        Some(next) if capture_name(next) == Some("index") => {} // reported at that segment
+                        _ => violations.push(format!(
+                            "route {} declares {wallet} without an adjacent {index}; Bloom refuses it before the Petal runs",
+                            route.path
+                        )),
+                    }
+                }
+                Some("index")
+                    if position
+                        .checked_sub(1)
+                        .and_then(|previous| segments.get(previous))
+                        != Some(&wallet) =>
+                {
+                    violations.push(format!(
+                        "route {} declares {index} without a preceding {wallet}",
+                        route.path
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    violations
 }
 
 fn required_caps(source: &Path) -> Result<BTreeSet<&'static str>, String> {
@@ -2563,6 +2646,78 @@ mod tests {
             route_params("trade/[wallet]/[id]/file.json"),
             vec![("wallet", 1), ("id", 2)]
         );
+    }
+
+    fn route(path: &str) -> Route {
+        Route {
+            path: path.to_owned(),
+            canonical: canonical_route_path(path),
+            source: PathBuf::from(format!("{path}.rs")),
+            package: package_name(path),
+        }
+    }
+
+    #[test]
+    fn a_wallet_capture_needs_an_adjacent_account_capture() {
+        let migrated = [
+            route("swaps/[wallet]/$index"),
+            route("swaps/[wallet]/[index]/$index"),
+            route("swaps/[wallet]/[index]/new"),
+            route("swaps/[wallet]/[index]/[id]/status.json"),
+            route("status.json"),
+        ];
+        assert!(route_shape_violations(&migrated).is_empty());
+
+        // The shape every unmigrated Petal is in: Bloom denies all of these.
+        let unmigrated = [route("swaps/[wallet]/$index"), route("swaps/[wallet]/new")];
+        let found = route_shape_violations(&unmigrated);
+        // The listing counts too once nothing declares [index] beneath it,
+        // which is what makes an unmigrated tree fail as a whole.
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().any(|v| v.contains("swaps/[wallet]/$index")));
+        assert!(found.iter().any(|v| v.contains("swaps/[wallet]/new")));
+    }
+
+    #[test]
+    fn a_suffixed_capture_is_refused_even_though_bloom_binds_it() {
+        // Bloom parses `[wallet].json` as the `wallet` param, so these routes
+        // look wallet-scoped, but its adjacency check compares exact segments.
+        for path in ["balance/[wallet].json", "balance/[wallet]/[index].json"] {
+            let found = route_shape_violations(&[route(path)]);
+            assert_eq!(found.len(), 1, "{path}: {found:?}");
+            assert!(found[0].contains("exact segments"), "{found:?}");
+        }
+        // A capture whose name merely starts with `wallet` is not a wallet.
+        assert!(route_shape_violations(&[route("keys/[wallet_id].json")]).is_empty());
+    }
+
+    #[test]
+    fn suffixed_captures_are_reported_once_per_route() {
+        // A suffixed account capture with no wallet before it is one route
+        // with one problem.
+        let found = route_shape_violations(&[route("pages/[index].json")]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        // The morpho #5 shape: the listing points at a suffixed account route,
+        // which Bloom refuses, so the listing has no account route to serve.
+        let found = route_shape_violations(&[
+            route("positions/[wallet]/$index"),
+            route("positions/[wallet]/[index].json"),
+        ]);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(
+            found
+                .iter()
+                .any(|v| v.contains("positions/[wallet]/$index"))
+        );
+        assert!(found.iter().any(|v| v.contains("exact segments")));
+    }
+
+    #[test]
+    fn an_account_capture_needs_a_preceding_wallet() {
+        let orphan = [route("sessions/[index]/new")];
+        let found = route_shape_violations(&orphan);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("without a preceding [wallet]"));
     }
     #[test]
     fn package_names_are_stable_and_collision_safe() {

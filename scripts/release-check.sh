@@ -7,25 +7,18 @@ cd "$root"
 scripts/check.sh
 cargo package -p bloom-petal-contract
 cargo package -p bloom-petal-sdk
-if cargo search bloom-petal-contract --limit 1 | grep -q '^bloom-petal-contract = "0.1.0"'; then
+# The builder and CLI package only once the version they depend on is on
+# crates.io.
+contract_id=$(cargo pkgid -p bloom-petal-contract)
+builder_id=$(cargo pkgid -p bloom-petal-builder)
+contract_version=${contract_id##*[#@]}
+builder_version=${builder_id##*[#@]}
+if cargo search bloom-petal-contract --limit 1 | grep -q "^bloom-petal-contract = \"$contract_version\""; then
   cargo package -p bloom-petal-builder
 fi
-if cargo search bloom-petal-builder --limit 1 | grep -q '^bloom-petal-builder = "0.1.0"'; then
+if cargo search bloom-petal-builder --limit 1 | grep -q "^bloom-petal-builder = \"$builder_version\""; then
   cargo package -p bloom-petal-cli
 fi
 
-rm -rf dist
-mkdir -p dist
-git archive --format=tar.gz --prefix=petal-wit-0.1.0/ \
-  -o dist/petal-wit-0.1.0.tar.gz HEAD:wit/route
-
-commit=$(git rev-parse HEAD)
-digest=$(cargo run --quiet -p bloom-petal-cli -- inspect | awk '/^wit_digest:/ { print $2 }')
-cat >dist/contract.txt <<EOF
-source_commit: $commit
-contract: bloom:route@0.1.0
-wit_digest: $digest
-EOF
-
-(cd dist && shasum -a 256 contract.txt petal-wit-0.1.0.tar.gz >SHA256SUMS)
+scripts/assemble-release-artifacts.sh dist
 echo "release artifacts written to $root/dist"
