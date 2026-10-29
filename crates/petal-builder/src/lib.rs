@@ -159,8 +159,10 @@ pub fn check_caps(root: impl AsRef<Path>, config: &BuildConfig) -> Result<BuildR
 /// Create the strict, deterministic `.petal.tar.gz` consumed by Bloom.
 ///
 /// Callers should build and check their routes first. The CLI's `package`
-/// command rebuilds current sources before calling this function. Machine
-/// composition and installation apply the host's authoritative validation.
+/// command rebuilds current sources before calling this function, or with
+/// `--no-build` checks the components a Petal's own build command produced.
+/// Machine composition and installation apply the host's authoritative
+/// validation.
 pub fn package(
     root: impl AsRef<Path>,
     config: &BuildConfig,
@@ -224,11 +226,8 @@ pub fn package(
     }
     // Generated scaffolds point AGENTS.md at this pinned authoring document.
     // Retain it when present, including rejecting linked or unreadable copies.
-    let skill = root.join("SKILL.md");
-    match fs::symlink_metadata(&skill) {
-        Ok(_) => collect_package_files(&root, &skill, &mut files)?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("inspect {}: {error}", skill.display())),
+    if let Some(skill) = packaged_skill(&root)? {
+        collect_package_files(&root, &skill, &mut files)?;
     }
     files.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
     let package_hash = package_hash(&files);
@@ -273,6 +272,39 @@ pub fn package(
         archive: out,
         sha256,
     })
+}
+
+/// The development skill `petal new` wrote under `root`, if present. Every
+/// directory on the way must be a real directory and the skill a regular
+/// file, so that a link cannot pull a file into the package from outside the
+/// Petal and a directory cannot pull in whatever it holds.
+fn packaged_skill(root: &Path) -> Result<Option<PathBuf>, String> {
+    let components = Path::new(bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH)
+        .components()
+        .collect::<Vec<_>>();
+    let mut path = root.to_owned();
+    for (index, component) in components.iter().enumerate() {
+        path.push(component);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("inspect {}: {error}", path.display())),
+        };
+        if index + 1 < components.len() {
+            if !metadata.is_dir() {
+                return Err(format!(
+                    "Petal package skill path crosses non-directory {}",
+                    path.display()
+                ));
+            }
+        } else if !metadata.is_file() {
+            return Err(format!(
+                "Petal package skill {} is not a regular file",
+                path.display()
+            ));
+        }
+    }
+    Ok(Some(path))
 }
 
 fn absolute_from(root: &Path, path: &Path) -> PathBuf {
@@ -412,12 +444,30 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     let out_dir = root.join(&config.output);
 
     if check_only {
-        let failures = routes
+        let mut failures = routes
             .iter()
             .filter_map(|route| {
                 check_route_caps(route, &out_dir.join(format!("{}.wasm", route.path))).err()
             })
             .collect::<Vec<_>>();
+        // Bloom installs every component in the output as a route, so a
+        // leftover one would bring back a route that has no controller.
+        if out_dir.is_dir() {
+            let expected = routes
+                .iter()
+                .map(|route| format!("{}.wasm", route.path))
+                .collect::<BTreeSet<_>>();
+            failures.extend(
+                discover_wasm_paths(&out_dir)?
+                    .difference(&expected)
+                    .map(|path| {
+                        format!(
+                            "{} has no route controller; rebuild to remove it",
+                            out_dir.join(path).display()
+                        )
+                    }),
+            );
+        }
         if failures.is_empty() {
             eprintln!(
                 "checked capability metadata for {} route components",
@@ -737,23 +787,36 @@ fn build_workspace(
     .arg(workspace.parent().unwrap().join("target"))
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());
-    let flags = component_rustflags(root);
+    let flags = component_rustflags(root)?;
     if std::env::var_os("CARGO_ENCODED_RUSTFLAGS").is_some()
         || std::env::var_os("RUSTFLAGS").is_some()
     {
         cmd.env("CARGO_ENCODED_RUSTFLAGS", flags);
     } else {
-        // Cargo appends this array to configured build flags. Do not replace
-        // a developer's target-specific flags with an environment override.
+        // Add to configured build flags. Do not replace a developer's
+        // target-specific flags with an environment override.
         let flags = flags
             .to_str()
             .ok_or("component rustflags must be UTF-8")?
             .split('\x1f')
             .collect::<Vec<_>>();
-        cmd.arg("--config").arg(format!(
-            "build.rustflags={}",
-            serde_json::to_string(&flags).map_err(|error| error.to_string())?
-        ));
+        let environment = std::env::var("CARGO_BUILD_RUSTFLAGS").ok();
+        match appended_build_rustflags(environment.as_deref(), &flags) {
+            // Cargo appends this variable to `build.rustflags` wherever its
+            // config sets them, as a string or an array.
+            Some(value) => {
+                cmd.env("CARGO_BUILD_RUSTFLAGS", value);
+            }
+            // Cargo splits the variable on whitespace, so a path containing
+            // whitespace goes in an array, which Cargo appends to a configured
+            // array but cannot merge into a configured string.
+            None => {
+                cmd.arg("--config").arg(format!(
+                    "build.rustflags={}",
+                    serde_json::to_string(&flags).map_err(|error| error.to_string())?
+                ));
+            }
+        }
     }
     if let Some(jobs) = jobs {
         cmd.arg("--jobs").arg(jobs.to_string());
@@ -817,7 +880,64 @@ fn build_workspace(
     Ok(exact)
 }
 
-fn component_rustflags(root: &Path) -> std::ffi::OsString {
+/// `CARGO_BUILD_RUSTFLAGS` with `flags` after the developer's own value, or
+/// `None` when a flag contains whitespace, which Cargo would split it on.
+fn appended_build_rustflags(developer: Option<&str>, flags: &[&str]) -> Option<String> {
+    if flags.iter().any(|flag| flag.contains(char::is_whitespace)) {
+        return None;
+    }
+    Some(
+        developer
+            .map(str::trim)
+            .filter(|developer| !developer.is_empty())
+            .into_iter()
+            .chain(flags.iter().copied())
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
+fn cargo_home() -> Option<PathBuf> {
+    std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
+}
+
+/// The toolchain's rust-src directory and the `/rustc/<commit>` path rustc
+/// embeds for standard library sources when rust-src is not installed.
+fn toolchain_source() -> Result<Option<(PathBuf, String)>, String> {
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let print = |args: &[&str]| -> Result<String, String> {
+        let output = Command::new(&rustc)
+            .args(args)
+            .output()
+            .map_err(|error| format!("run rustc {}: {error}", args.join(" ")))?;
+        if !output.status.success() {
+            return Err(format!(
+                "rustc {} failed with {}",
+                args.join(" "),
+                output.status
+            ));
+        }
+        String::from_utf8(output.stdout)
+            .map_err(|_| format!("rustc {} printed non-UTF-8 output", args.join(" ")))
+    };
+    let version = print(&["-vV"])?;
+    let Some(commit) = version
+        .lines()
+        .find_map(|line| line.strip_prefix("commit-hash: "))
+        .filter(|commit| is_full_commit(commit))
+    else {
+        return Ok(None);
+    };
+    let sysroot = print(&["--print", "sysroot"])?;
+    Ok(Some((
+        PathBuf::from(sysroot.trim()).join("lib/rustlib/src/rust"),
+        format!("/rustc/{commit}"),
+    )))
+}
+
+fn component_rustflags(root: &Path) -> Result<std::ffi::OsString, String> {
     let mut flags = std::env::var_os("CARGO_ENCODED_RUSTFLAGS").unwrap_or_else(|| {
         std::env::var("RUSTFLAGS")
             .unwrap_or_default()
@@ -836,13 +956,16 @@ fn component_rustflags(root: &Path) -> std::ffi::OsString {
         flags.push(stable);
     };
     remap(root, "/petal");
-    if let Some(cargo_home) = std::env::var_os("CARGO_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
-    {
+    if let Some(cargo_home) = cargo_home() {
         remap(&cargo_home, "/cargo");
     }
-    flags
+    // With rust-src installed, rustc embeds standard library paths inside the
+    // toolchain, which names its directory and the user's home. Map them back
+    // to the path rustc embeds without rust-src.
+    if let Some((source, embedded)) = toolchain_source()? {
+        remap(&source, &embedded);
+    }
+    Ok(flags)
 }
 
 fn discover_routes(root: &Path) -> Result<Vec<Route>, String> {
@@ -2587,6 +2710,117 @@ mod tests {
         let capabilities =
             package(fixture.path(), &package_config(), archive("capabilities")).unwrap();
         assert_ne!(code.package_hash, capabilities.package_hash);
+    }
+
+    #[test]
+    fn package_keeps_the_scaffolded_skill_as_runtime_identity() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        let archive = |name: &str| fixture.path().join(format!("dist/{name}.petal.tar.gz"));
+        let without = package(fixture.path(), &package_config(), archive("without")).unwrap();
+        // A SKILL.md at the root is a development document, not the scaffold's.
+        fs::write(fixture.path().join("SKILL.md"), "notes\n").unwrap();
+        let root_document = package(fixture.path(), &package_config(), archive("root")).unwrap();
+        assert_eq!(without.package_hash, root_document.package_hash);
+
+        let skill = fixture
+            .path()
+            .join(bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH);
+        fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        fs::write(&skill, "skill v1\n").unwrap();
+        let first = package(fixture.path(), &package_config(), archive("first")).unwrap();
+        assert_ne!(without.package_hash, first.package_hash);
+        let decoder = flate2::read::GzDecoder::new(fs::File::open(archive("first")).unwrap());
+        let entries = tar::Archive::new(decoder)
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                entry
+                    .unwrap()
+                    .path()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            entries
+                .iter()
+                .any(|path| path == bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH),
+            "{entries:?}"
+        );
+        assert!(
+            !entries.iter().any(|path| path == "SKILL.md"),
+            "{entries:?}"
+        );
+
+        fs::write(&skill, "skill v2, edited\n").unwrap();
+        let edited = package(fixture.path(), &package_config(), archive("edited")).unwrap();
+        assert_ne!(first.package_hash, edited.package_hash);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn package_refuses_a_skill_reached_through_a_linked_directory() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        let outside = tempfile::tempdir().unwrap();
+        let skill = Path::new(bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH);
+        let target = outside.path().join(skill.strip_prefix(".agents").unwrap());
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "outside the Petal\n").unwrap();
+        std::os::unix::fs::symlink(outside.path(), fixture.path().join(".agents")).unwrap();
+        let out = fixture.path().join("dist/linked.petal.tar.gz");
+        let error = package(fixture.path(), &package_config(), &out).unwrap_err();
+        assert!(error.contains("crosses non-directory"), "{error}");
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn package_refuses_a_skill_that_is_not_a_regular_file() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        let skill = fixture
+            .path()
+            .join(bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH);
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("notes.txt"), "not the skill\n").unwrap();
+        let out = fixture.path().join("dist/directory.petal.tar.gz");
+        let error = package(fixture.path(), &package_config(), &out).unwrap_err();
+        assert!(error.contains("is not a regular file"), "{error}");
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn component_flags_follow_the_developers_build_rustflags() {
+        let flags = ["--remap-path-prefix=/root=/petal", "-Cdebuginfo=0"];
+        assert_eq!(
+            appended_build_rustflags(None, &flags).unwrap(),
+            "--remap-path-prefix=/root=/petal -Cdebuginfo=0"
+        );
+        assert_eq!(
+            appended_build_rustflags(Some(" --cfg developer  -Copt-level=3 "), &flags).unwrap(),
+            "--cfg developer  -Copt-level=3 --remap-path-prefix=/root=/petal -Cdebuginfo=0"
+        );
+        assert_eq!(
+            appended_build_rustflags(Some("  "), &flags).unwrap(),
+            "--remap-path-prefix=/root=/petal -Cdebuginfo=0"
+        );
+        // Cargo splits the variable on whitespace, so such a path needs an array.
+        assert_eq!(
+            appended_build_rustflags(None, &["--remap-path-prefix=/my root=/petal"]),
+            None
+        );
+    }
+
+    #[test]
+    fn toolchain_sources_map_to_the_path_rustc_embeds_without_rust_src() {
+        let Some((source, embedded)) = toolchain_source().unwrap() else {
+            return;
+        };
+        assert!(source.ends_with("lib/rustlib/src/rust"), "{source:?}");
+        let commit = embedded.strip_prefix("/rustc/").unwrap();
+        assert!(is_full_commit(commit), "{embedded}");
     }
 
     #[test]

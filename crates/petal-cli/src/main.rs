@@ -27,6 +27,11 @@ enum Command {
         root: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Package the components a Petal's own build command produced,
+        /// checking their capabilities, instead of rebuilding them in this
+        /// environment, which lacks any compile-time values that command set.
+        #[arg(long)]
+        no_build: bool,
     },
     /// Check route architecture and generated capabilities without rebuilding.
     Check {
@@ -59,10 +64,19 @@ fn run() -> Result<(), String> {
                 serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
             );
         }
-        Command::Package { config, root, out } => {
+        Command::Package {
+            config,
+            root,
+            out,
+            no_build,
+        } => {
             let config = resolve_config(&root, &config);
             let config = bloom_petal_builder::load_config(&config)?;
-            bloom_petal_builder::build(&root, &config)?;
+            if no_build {
+                bloom_petal_builder::check_caps(&root, &config)?;
+            } else {
+                bloom_petal_builder::build(&root, &config)?;
+            }
             let report = bloom_petal_builder::package(&root, &config, &out)?;
             println!(
                 "{}",
@@ -116,14 +130,11 @@ fn scaffold(name: &str, destination: &Path) -> Result<(), String> {
             .replace("petal-template", &crate_name);
         fs::write(&path, body).map_err(|error| format!("write {}: {error}", path.display()))?;
     }
-    // The Agent Skills format names a skill's directory after the skill.
-    let skill_dir = destination
-        .join(".agents")
-        .join("skills")
-        .join("bloom-petal-development");
-    fs::create_dir_all(&skill_dir)
-        .map_err(|error| format!("create {}: {error}", skill_dir.display()))?;
-    let skill = skill_dir.join("SKILL.md");
+    let skill = destination.join(bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH);
+    if let Some(parent) = skill.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("create {}: {error}", parent.display()))?;
+    }
     fs::write(&skill, bloom_petal_contract::PETAL_DEVELOPMENT_SKILL)
         .map_err(|error| format!("write {}: {error}", skill.display()))?;
     println!("created {}", destination.display());

@@ -40,6 +40,18 @@ for route in sign static.txt; do
     exit 1
   fi
 done
+# Components name no machine-specific location: not the checkout, the Rust
+# toolchain, which rust-src exposes, or the home directory holding them.
+sysroot=$(rustc --print sysroot)
+for route in sign static.txt; do
+  for location in "$scratch" "$sysroot" "${HOME:-/}"; do
+    [ "$location" = / ] && continue
+    if grep -aqF -- "$location" "$scratch/a/petal/conformance/$route.wasm"; then
+      printf '%s embeds %s\n' "$route.wasm" "$location" >&2
+      exit 1
+    fi
+  done
+done
 cmp "$scratch/a.petal.tar.gz" "$scratch/b.petal.tar.gz"
 python3 - "$scratch" <<'PY'
 import hashlib, json, sys
@@ -56,3 +68,17 @@ result = {'schema': 'bloom.petal.reproducibility.v1', 'components': {
 (root / 'reproducibility-result.json').write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result, indent=2))
 PY
+# The release workflow packages what a Petal's own build command produced,
+# which can hold compile-time values a rebuild would not see. After a route
+# changes, --no-build still ships the built components; package rebuilds.
+copy=$scratch/a
+route=$copy/fixtures/conformance-route/files/static.txt.rs
+sed 's/canonical petal fixture/edited after the build/' "$route" > "$route.edited"
+mv "$route.edited" "$route"
+cargo run --locked --quiet -p bloom-petal-cli -- package --no-build --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/a-no-build.petal.tar.gz" > "$scratch/a-no-build-package.json"
+cmp "$scratch/a.petal.tar.gz" "$scratch/a-no-build.petal.tar.gz"
+cargo run --locked --quiet -p bloom-petal-cli -- package --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/a-rebuilt.petal.tar.gz" > "$scratch/a-rebuilt-package.json"
+if cmp -s "$scratch/a.petal.tar.gz" "$scratch/a-rebuilt.petal.tar.gz"; then
+  echo 'package did not rebuild the edited route' >&2
+  exit 1
+fi

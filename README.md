@@ -98,21 +98,26 @@ petal package \
 ```
 
 `petal package` rebuilds current sources and checks every generated component
-before writing the archive. It cannot silently package an older build. Machine
+before writing the archive. It cannot silently package an older build. A
+rebuild sees only the current environment, so a Petal whose build command
+supplies compile-time values, such as a key read with `option_env!`, runs that
+command and then `petal package --no-build`, which checks the components it
+produced and packages them as they are. The release workflow does this. Machine
 composition and installation still apply the host's authoritative checks. The
 archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
 the same clean package tree produces identical bytes. It refuses to overwrite
 an existing output. It includes the complete `petal/` runtime tree, `petal.toml`,
-`README.md`, `AGENTS.md`, and the pinned `SKILL.md` when present. The configured
-output must be `petal/<name>`.
+`README.md`, `AGENTS.md`, and, when present, the pinned development skill that
+`petal new` writes to `.agents/skills/bloom-petal-development/SKILL.md`. The
+configured output must be `petal/<name>`.
 Unrelated development files do not change runtime identity; code, capabilities
 and runtime documents do. This deliberately changes older source-tree package
 hashes: publish a new immutable package and preserve its predecessor lineage.
 Machine assigns a separate final identity when composing the installed package.
 
-Component builds remap checkout and Cargo cache paths, omit symbol names and
-use one codegen unit at compile time. Multiple units produced path-dependent
+Component builds remap the checkout, Cargo home and Rust toolchain source paths,
+omit symbol names and use one codegen unit at compile time. Multiple units produced path-dependent
 empty-function ordering on Rust 1.99.1 even after remapping. Two different
 checkout directories with identical compiler and
 locked inputs produce the same tested components. Explicit target-specific
