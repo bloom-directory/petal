@@ -11,6 +11,7 @@ description = "Rust SDK for authoring Bloom Petal route components"
 name = "petal"
 
 [dependencies]
+bloom-petal-contract = { path = "../.." }
 getrandom.workspace = true
 serde.workspace = true
 serde_json.workspace = true

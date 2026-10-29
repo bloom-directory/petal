@@ -13,6 +13,7 @@ const ALL_CAPS: &[&str] = &[
     "bloom:http",
     "bloom:store",
     "bloom:sign",
+    "bloom:sign.status",
     "bloom:tx.outbox",
     "bloom:chain",
     "bloom:vfs.read",
@@ -821,7 +822,7 @@ fn required_caps(source: &Path) -> Result<BTreeSet<&'static str>, String> {
         return Ok(ALL_CAPS
             .iter()
             .copied()
-            .filter(|cap| rest[..end].contains(cap))
+            .filter(|cap| rest[..end].contains(&format!("\"{cap}\"")))
             .collect());
     }
     let caps: &[&str] = if source.contains("store_dir_spec()") {

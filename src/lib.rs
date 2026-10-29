@@ -1,5 +1,7 @@
 //! Canonical contract identifiers and WIT sources for Bloom Petals.
 
+pub mod prepared;
+
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
@@ -7,6 +9,8 @@ use std::path::Path;
 
 pub const ROUTE_PACKAGE: &str = "bloom:route@0.1.0";
 pub const ROUTE_WORLD: &str = "route-file";
+pub const PREPARED_STATUS_INTERFACE: &str = "bloom:prepared-sign/status@0.1.0";
+pub const PREPARED_SIGNING_INTERFACE: &str = "bloom:prepared-sign/signing@0.1.0";
 pub const SIGNING_INTERFACE: &str = "bloom:sign/signing@0.2.0";
 pub const KEY_DERIVE_INTERFACE: &str = "bloom:key/derive@0.1.0";
 pub const PACKAGE_SCHEMA: &str = "bloom.petal.package.v1";
@@ -21,6 +25,8 @@ pub enum HostInterface {
     StoreKv,
     KeyDerive,
     SignSigning,
+    PreparedSigning,
+    PreparedStatus,
     TxOutbox,
     ChainRead,
     VfsReadwrite,
@@ -34,7 +40,8 @@ impl HostInterface {
             Self::HttpFetch => &["bloom:http"],
             Self::StoreKv => &["bloom:store"],
             Self::KeyDerive => &["bloom:key.derive"],
-            Self::SignSigning => &["bloom:sign"],
+            Self::SignSigning | Self::PreparedSigning => &["bloom:sign"],
+            Self::PreparedStatus => &["bloom:sign.status"],
             Self::TxOutbox => &["bloom:tx.outbox"],
             Self::ChainRead => &["bloom:chain"],
             Self::VfsReadwrite => &["bloom:vfs.read", "bloom:vfs.write"],
@@ -59,6 +66,10 @@ pub const WIT_FILES: &[(&str, &[u8])] = &[
     (
         "deps/key/key.wit",
         include_bytes!("../wit/route/deps/key/key.wit"),
+    ),
+    (
+        "deps/prepared-sign/prepared.wit",
+        include_bytes!("../wit/route/deps/prepared-sign/prepared.wit"),
     ),
     (
         "deps/sign-v0.2/sign.wit",
@@ -143,6 +154,8 @@ pub fn host_interface(import: &str) -> Option<HostInterface> {
         "bloom:store/kv@0.1.0" => Some(HostInterface::StoreKv),
         KEY_DERIVE_INTERFACE => Some(HostInterface::KeyDerive),
         SIGNING_INTERFACE => Some(HostInterface::SignSigning),
+        PREPARED_SIGNING_INTERFACE => Some(HostInterface::PreparedSigning),
+        PREPARED_STATUS_INTERFACE => Some(HostInterface::PreparedStatus),
         "bloom:tx/outbox@0.1.0" => Some(HostInterface::TxOutbox),
         "bloom:chain/read@0.1.0" => Some(HostInterface::ChainRead),
         "bloom:vfs/readwrite@0.1.0" => Some(HostInterface::VfsReadwrite),
@@ -166,7 +179,7 @@ mod tests {
     #[test]
     fn wit_digest_is_stable_and_complete() {
         assert_eq!(wit_digest().len(), 64);
-        assert_eq!(WIT_FILES.len(), 9);
+        assert_eq!(WIT_FILES.len(), 10);
         assert!(WIT_FILES.iter().all(|(_, bytes)| !bytes.is_empty()));
     }
 

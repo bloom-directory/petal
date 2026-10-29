@@ -1,0 +1,11 @@
+package bloom:prepared-sign@0.1.0;
+
+/// Version 1 JSON request and response are defined by bloom-petal-contract's
+/// prepared module. Hosts validate all fields and enforce the documented bounds.
+interface signing {
+  sign: func(request: list<u8>) -> result<list<u8>, list<u8>>;
+}
+
+interface status {
+  status: func(request: list<u8>) -> result<list<u8>, list<u8>>;
+}

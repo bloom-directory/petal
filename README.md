@@ -114,3 +114,25 @@ allowances, delegation or other changes that authorize later actions.
 Keep approval state, deduplication, ambiguous-signature recovery and accounting
 in Machine/Broker/Signer. Petal-side hints remain advisory and must never replace
 those authorities. The route WIT and signing request ABI are unchanged.
+
+### Prepared signing contract
+
+`bloom:prepared-sign/signing@0.1.0` is a separately versioned import; the
+existing `bloom:sign/signing@0.2.0` remains available. A component using the
+new import requires a host implementing it and the `bloom:sign` capability;
+there is no fallback to legacy signing. The separate `bloom:prepared-sign/status@0.1.0` import requires
+`bloom:sign.status` and does not confer signing capability. `sign` and read-only `status` take
+UTF-8 JSON and return JSON. Their authoritative DTOs, validation, and
+cryptographic suite identifiers live in `bloom_petal_contract::prepared`.
+Status uses the authenticated executing route namespace.
+
+Version 1 bounds the encoded request and response to 1 MiB, signing preimages
+and review artifacts to 64 KiB each, operation class and review format to
+128 bytes, operation keys to 256 bytes, and bounded declarations to 32
+entries. ERC asset identities use lowercase 20-byte hex addresses, networks
+use canonical `evm-<decimal chain id>`, and quantities and token IDs are
+canonical decimal uint256 strings. `Unspecified` is the default and differs
+from an explicit `None`. Declarations are not proof of economic effects.
+The host must validate the DTO, independently recompute the suite-specific hash,
+and derive identity and policy from authenticated context. For Ed25519 the
+hash binds the message with SHA-256; the signature is over the message itself.
