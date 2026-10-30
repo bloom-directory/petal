@@ -136,7 +136,11 @@ jobs:
           set -euo pipefail
           ARCHIVE="$PETAL_NAME-$RELEASE_TAG.petal.tar.gz"
           mkdir -p dist
+          # Package exactly what the build command produced. A rebuild here
+          # would not see PETAL_COMPILE_TIME_SECRET or the values the build
+          # command derives from it, and would ship components without them.
           "$RUNNER_TEMP/petal" package \
+            --no-build \
             --root "$PACKAGE_ROOT" \
             --out "$RUNNER_TEMP/$ARCHIVE" \
             > "$RUNNER_TEMP/package-report.json"

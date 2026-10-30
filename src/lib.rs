@@ -127,6 +127,11 @@ pub const RUST_TEMPLATE_FILES: &[(&str, &str)] = &[
 pub const PETAL_DEVELOPMENT_SKILL: &str =
     include_str!("../skills/bloom-petal-development/SKILL.md");
 
+/// Where `petal new` writes [`PETAL_DEVELOPMENT_SKILL`], relative to the Petal
+/// root, and where `petal package` takes it from. The Agent Skills format
+/// names a skill's directory after the skill.
+pub const PETAL_DEVELOPMENT_SKILL_PATH: &str = ".agents/skills/bloom-petal-development/SKILL.md";
+
 pub fn wit_digest() -> String {
     let mut hasher = Sha256::new();
     for (path, bytes) in WIT_FILES {

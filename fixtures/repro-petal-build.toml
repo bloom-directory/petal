@@ -1,0 +1,9 @@
+schema = "bloom.petal.build.v1"
+name = "conformance"
+routes = "fixtures/conformance-route/files"
+output = "petal/conformance"
+
+[route_crate]
+package = "bloom-petal-conformance-route"
+path = "fixtures/conformance-route"
+alias = "conformance_route"

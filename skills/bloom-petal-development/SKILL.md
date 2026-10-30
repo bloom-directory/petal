@@ -389,7 +389,9 @@ Use the repository's pinned commands and scripts. At minimum:
 1. Format and run host-side unit tests.
 2. Run clippy or the repository's equivalent static checks.
 3. Run the repository's route-architecture source check.
-4. Run `petal build --root <root>` to compile every route component.
+4. Run `petal build --root <root>` to compile every route component. Run it
+   from the Petal root: Cargo reads `.cargo/config.toml` from the directory it
+   runs in, not from `--root`.
 5. Run `petal check --root <root>` against the just-built components.
 6. Inspect changed components' imports and compare all three policy scopes.
 7. Run `petal package --root <root> --out <versioned>.petal.tar.gz` or the
@@ -406,9 +408,15 @@ Use the repository's pinned commands and scripts. At minimum:
 
 Do not use a successful host-crate build as evidence that route sources compile;
 route files are independently generated component crates. `petal check` does
-not rebuild, so do not use it against stale artifacts. Packaging checks built
-routes but does not fully validate `petal.toml` policy and does not replace
-route-level tests or a runtime VFS smoke test.
+not rebuild, so do not use it against stale artifacts. `petal package` rebuilds
+current sources before packaging, but does not fully validate `petal.toml`
+policy and does not replace route-level tests or a runtime VFS smoke test. A
+rebuild sees only the current environment: when the Petal's build command
+supplies compile-time values, such as a key read with `option_env!`, run that
+command and then `petal package --no-build`, which packages the components it
+produced. The reusable release workflow does this. `--no-build` refuses a
+component with no route controller, but like `petal check` it cannot tell that
+sources changed after the build, so run it straight after the build command.
 
 ## Run it in Bloom
 
@@ -433,26 +441,33 @@ Know what an install changes:
   the top-level `.git` and `.jj` directories and every directory named
   `target`, at any depth. Those are left out of the package itself, so never
   name a route directory `target`; a `.git` file, as in a Git worktree, is
-  included. `petal package` also leaves out the top-level `artifacts/`
-  directory and every `*.petal.tar` and `*.petal.tar.gz` file, so the archive
-  it writes, and the hash Bloom computes when it installs that archive, do not
-  include them. A stray `*.petal.tar` or `*.petal.tar.gz`, or a file under the
-  top-level `artifacts/`, therefore changes only the directory's hash
-  (`bloom petals build` regenerates `artifacts/routes/` and
-  `artifacts/build-manifest.json` before it hashes them). Any other changed or
-  added file, such as a stray note or `.zip`, changes the hash either way.
-  Pass a deliberate runtime tree or a validated runtime archive, rather than
-  the whole development checkout, when that is what you intend to ship.
-  Reproducibility depends on the pinned builder, dependency graph, compiler
-  and flags: compare actual component, composed-package and archive bytes
-  across directories instead of inferring identity from source commits or
-  checkout locations. The `petal build` released with this contract runs
-  `cargo generate-lockfile` on every build, so a newer compatible crate release
-  can change the components, and its components embed the absolute paths of
-  the checkout, the Cargo home and the Rust toolchain. Building the same
-  sources in another directory or on another machine, such as another clone,
-  CI or a GitHub source install, therefore gives a new hash. Propose
-  installer provenance and wallet policy only for the hash of the exact
+  included. Any changed or added file, such as a stray note, archive or
+  `.zip`, changes that hash (`bloom petals build` regenerates
+  `artifacts/routes/` and `artifacts/build-manifest.json` before it hashes
+  them). The archive `petal package` writes holds only the runtime inputs:
+  `petal.toml`, `README.md`, `AGENTS.md`, the `petal/` tree and the
+  development skill at `.agents/skills/bloom-petal-development/SKILL.md`.
+  Other files change neither the archive nor the hash Bloom computes when it
+  installs it. Pass a deliberate runtime tree or a validated runtime archive,
+  rather than the whole development checkout, when that is what you intend to
+  ship. Reproducibility depends on the pinned builder, dependency graph,
+  compiler and flags: compare actual component, composed-package and archive
+  bytes across directories instead of inferring identity from source commits
+  or checkout locations. The `petal build` released with this contract builds
+  from the route workspace's committed `Cargo.lock`, refusing any change to the
+  dependency graph, and keeps the paths of the checkout, the Cargo home and
+  the Rust toolchain out of its components. A path dependency outside the
+  checkout, such as a `[patch]` to a local SDK, keeps its absolute path.
+  Without one, the same sources, compiler and flags give the same components
+  in another directory; another compiler, other flags or another builder give
+  new ones. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, the builder adds
+  its remapping to `CARGO_ENCODED_RUSTFLAGS`. Otherwise it adds it to
+  `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which Cargo uses
+  instead of `build.rustflags`, drop it. Cargo splits that variable on
+  whitespace, so for a path containing whitespace the builder uses a
+  `--config` array, which Cargo cannot merge into a string `build.rustflags`;
+  write that as an array.
+  Propose installer provenance and wallet policy only for the hash of the exact
   package that will be installed: the hash `bloom petals build` reports for
   the package directory you will install as it is (or for the archive it
   writes with `--out`), or, for a release built by the reusable release
@@ -480,9 +495,10 @@ Know what an install changes:
   runs that command natively with the installing user's privileges and does
   not sandbox it, so keep the build non-interactive and dependency-light, and
   test installs by tag and by immutable commit. Bloom builds each install in a
-  fresh temporary checkout, so with this builder its hash differs on every
-  install and cannot be approved in advance; publish a release archive, and
-  install that archive, when the hash must be known before install.
+  fresh temporary checkout with the installing machine's toolchain and Cargo
+  config, so its hash depends on that machine and cannot be approved in
+  advance; publish a release archive, and install that archive, when the hash
+  must be known before install.
 
 Exercise the installed tree both through direct VFS
 (`bloom vfs ls|cat|write /petals/<name>/...`) and through a mounted daemon:
