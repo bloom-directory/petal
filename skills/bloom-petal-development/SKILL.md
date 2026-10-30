@@ -389,7 +389,9 @@ Use the repository's pinned commands and scripts. At minimum:
 1. Format and run host-side unit tests.
 2. Run clippy or the repository's equivalent static checks.
 3. Run the repository's route-architecture source check.
-4. Run `petal build --root <root>` to compile every route component.
+4. Run `petal build --root <root>` to compile every route component. Run it
+   from the Petal root: Cargo reads `.cargo/config.toml` from the directory it
+   runs in, not from `--root`.
 5. Run `petal check --root <root>` against the just-built components.
 6. Inspect changed components' imports and compare all three policy scopes.
 7. Run `petal package --root <root> --out <versioned>.petal.tar.gz` or the
@@ -455,9 +457,14 @@ Know what an install changes:
   from the route workspace's committed `Cargo.lock`, refusing any change to the
   dependency graph, and keeps the paths of the checkout, the Cargo home and
   the Rust toolchain out of its components, unless target-specific rustflags,
-  which Cargo uses instead of `build.rustflags`, drop its remapping. The same
-  sources, compiler and flags therefore give the same components in another
-  directory; another compiler, other flags or another builder give new ones.
+  which Cargo uses instead of `build.rustflags`, drop its remapping. A path
+  dependency outside the checkout, such as a `[patch]` to a local SDK, keeps
+  its absolute path. Without one, the same sources, compiler and flags give
+  the same components in another directory; another compiler, other flags or
+  another builder give new ones. The builder passes its remapping in
+  `CARGO_BUILD_RUSTFLAGS`, which Cargo splits on whitespace. When one of those
+  paths contains whitespace it uses a `--config` array instead, which Cargo
+  cannot merge into a string `build.rustflags`, so write that as an array.
   Propose installer provenance and wallet policy only for the hash of the exact
   package that will be installed: the hash `bloom petals build` reports for
   the package directory you will install as it is (or for the archive it

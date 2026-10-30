@@ -40,7 +40,10 @@ EOF
   (cd "$copy" && "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz") > "$scratch/$side-package.json"
   test ! -e "$copy/petal/conformance/obsolete.wasm"
 done
-grep -rqF petal_reproducibility_probe "$scratch/b/target/petal-routes/target/wasm32-unknown-unknown/release/.fingerprint"
+if ! grep -rqF petal_reproducibility_probe "$scratch/b/target/petal-routes/target/wasm32-unknown-unknown/release/.fingerprint"/petal-route-*; then
+  echo "side b's configured build.rustflags did not reach the route crates" >&2
+  exit 1
+fi
 for route in sign static.txt; do
   if ! cmp "$scratch/a/petal/conformance/$route.wasm" "$scratch/b/petal/conformance/$route.wasm"; then
     for side in a b; do

@@ -277,13 +277,18 @@ pub fn package(
 /// The development skill `petal new` wrote under `root`, if present. Every
 /// directory on the way must be a real directory and the skill a regular
 /// file, so that a link cannot pull a file into the package from outside the
-/// Petal and a directory cannot pull in whatever it holds.
+/// Petal and a directory cannot pull in whatever it holds. Only the exact
+/// name counts: a case-insensitive file system would also find a differently
+/// cased one, which a case-sensitive file system ignores.
 fn packaged_skill(root: &Path) -> Result<Option<PathBuf>, String> {
     let components = Path::new(bloom_petal_contract::PETAL_DEVELOPMENT_SKILL_PATH)
         .components()
         .collect::<Vec<_>>();
     let mut path = root.to_owned();
     for (index, component) in components.iter().enumerate() {
+        if !has_entry(&path, component.as_os_str())? {
+            return Ok(None);
+        }
         path.push(component);
         let metadata = match fs::symlink_metadata(&path) {
             Ok(metadata) => metadata,
@@ -305,6 +310,15 @@ fn packaged_skill(root: &Path) -> Result<Option<PathBuf>, String> {
         }
     }
     Ok(Some(path))
+}
+
+fn has_entry(directory: &Path, name: &OsStr) -> Result<bool, String> {
+    for entry in fs::read_dir(directory).map_err(display_err("read", directory))? {
+        if entry.map_err(|error| error.to_string())?.file_name() == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn absolute_from(root: &Path, path: &Path) -> PathBuf {
@@ -800,7 +814,13 @@ fn build_workspace(
             .ok_or("component rustflags must be UTF-8")?
             .split('\x1f')
             .collect::<Vec<_>>();
-        let environment = std::env::var("CARGO_BUILD_RUSTFLAGS").ok();
+        let environment = match std::env::var("CARGO_BUILD_RUSTFLAGS") {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err("CARGO_BUILD_RUSTFLAGS must be UTF-8".into());
+            }
+        };
         match appended_build_rustflags(environment.as_deref(), &flags) {
             // Cargo appends this variable to `build.rustflags` wherever its
             // config sets them, as a string or an array.
@@ -1283,7 +1303,12 @@ fn discover_wasm_paths(root: &Path) -> Result<BTreeSet<String>, String> {
             let path = entry.map_err(|e| e.to_string())?.path();
             if path.is_dir() {
                 walk(root, &path, out)?;
-            } else if path.extension() == Some(OsStr::new("wasm")) {
+            // Bloom installs every file whose name ends in `.wasm` as a route,
+            // including one named just `.wasm`, which has no extension.
+            } else if path
+                .file_name()
+                .is_some_and(|name| name.as_encoded_bytes().ends_with(b".wasm"))
+            {
                 out.insert(
                     path.strip_prefix(root)
                         .unwrap()
@@ -2792,6 +2817,23 @@ mod tests {
     }
 
     #[test]
+    fn package_takes_the_skill_only_under_its_exact_name() {
+        let fixture = tempfile::tempdir().unwrap();
+        package_fixture(fixture.path());
+        let archive = |name: &str| fixture.path().join(format!("dist/{name}.petal.tar.gz"));
+        let without = package(fixture.path(), &package_config(), archive("without")).unwrap();
+        // A case-insensitive file system finds this under the skill's path; a
+        // case-sensitive one does not, and both must package the same tree.
+        let skill = fixture
+            .path()
+            .join(".Agents/Skills/Bloom-Petal-Development/skill.md");
+        fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        fs::write(&skill, "skill\n").unwrap();
+        let cased = package(fixture.path(), &package_config(), archive("cased")).unwrap();
+        assert_eq!(without.package_hash, cased.package_hash);
+    }
+
+    #[test]
     fn component_flags_follow_the_developers_build_rustflags() {
         let flags = ["--remap-path-prefix=/root=/petal", "-Cdebuginfo=0"];
         assert_eq!(
@@ -2821,6 +2863,28 @@ mod tests {
         assert!(source.ends_with("lib/rustlib/src/rust"), "{source:?}");
         let commit = embedded.strip_prefix("/rustc/").unwrap();
         assert!(is_full_commit(commit), "{embedded}");
+    }
+
+    #[test]
+    fn components_are_found_by_the_name_bloom_installs_as_a_route() {
+        let output = tempfile::tempdir().unwrap();
+        fs::create_dir_all(output.path().join("sub")).unwrap();
+        for name in [
+            "status.wasm",
+            ".wasm",
+            "sub/.wasm",
+            "sub/plan.md.wasm",
+            "notes.txt",
+        ] {
+            fs::write(output.path().join(name), b"component").unwrap();
+        }
+        assert_eq!(
+            discover_wasm_paths(output.path()).unwrap(),
+            [".wasm", "status.wasm", "sub/.wasm", "sub/plan.md.wasm"]
+                .into_iter()
+                .map(String::from)
+                .collect::<BTreeSet<_>>()
+        );
     }
 
     #[test]

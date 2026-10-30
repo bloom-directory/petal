@@ -82,10 +82,12 @@ cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
 ```
 
 A local checkout can still be tested through a `[patch]` in
-`.cargo/config.toml`, as this repository's consumer CI does. Pins outside
-Cargo are not checked: scripts that install the `petal` CLI, and the release
-workflow's `uses:` reference and `petal-tooling-ref`. Keep them at the same
-commit.
+`.cargo/config.toml`, as this repository's consumer CI does. Cargo reads that
+file from the directory `petal` runs in, not from `--root`, so run `petal`
+from the Petal root for the patch, or any rustflags there, to apply. Pins
+outside Cargo are not checked: scripts that install the `petal` CLI, and the
+release workflow's `uses:` reference and `petal-tooling-ref`. Keep them at the
+same commit.
 
 ## Packaging a Petal
 
@@ -126,9 +128,12 @@ locked inputs produce the same tested components. The builder adds its flags to
 `CARGO_BUILD_RUSTFLAGS`, after any value set there, and Cargo appends that to
 the configured `build.rustflags`. When a remapped path contains whitespace, the
 flags go in a `--config` array instead, which Cargo cannot merge into a string
-`build.rustflags`. Explicit target-specific Cargo rustflags keep their normal
-precedence, which drops these flags; include equivalent path remapping if you
-set them.
+`build.rustflags`. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, Cargo
+ignores configured rustflags and the builder adds its flags to
+`CARGO_ENCODED_RUSTFLAGS`. Otherwise explicit target-specific Cargo rustflags
+keep their normal precedence, which drops these flags; include equivalent path
+remapping if you set them. Paths outside the checkout and the Cargo home, such
+as a path dependency on a local SDK checkout, are not remapped.
 
 Petal repositories should publish with the reusable workflow documented in
 [`docs/releasing-petals.md`](docs/releasing-petals.md). The Petal repository
