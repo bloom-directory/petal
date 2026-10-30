@@ -56,11 +56,12 @@ and feature selection. `[sdk]` in `petal-build.toml` is optional transitional
 validation: remove it, or keep it equal to the route dependency.
 
 The route SDK must be an exact pin: a git `rev` that is a full 40-character commit,
-or a version requirement such as `=0.1.0`. `petal build`, `petal check` and
-`petal package` then refuse a Petal when:
+a version requirement such as `=0.1.0`, or a local `path`. `petal build`,
+`petal check` and `petal package` then refuse a Petal when:
 
 - any SDK dependency of the route crate, in any dependency table or inherited
-  from its workspace, differs from `[sdk]`;
+  from its workspace, differs from the route SDK pin, or `[sdk]` is set and
+  differs from it;
 - for a git pin, another crate from the SDK's repository, such as
   `bloom-petal-contract`, is pinned at a different revision, in the route crate
   or in `[dependencies]` of `petal-build.toml`;
@@ -84,7 +85,10 @@ cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
 A local checkout can still be tested through a `[patch]` in
 `.cargo/config.toml`, as this repository's consumer CI does. Cargo reads that
 file from the directory `petal` runs in, not from `--root`, so run `petal`
-from the Petal root for the patch, or any rustflags there, to apply. Pins
+from the Petal root for the patch, or any rustflags there, to apply. The pin
+check accepts a lockfile that resolves the SDK to a local path only while
+Cargo, run from that same directory, applies such a patch, wherever its config
+sets it, including through `include`, a parent directory or Cargo home. Pins
 outside Cargo are not checked: scripts that install the `petal` CLI, and the
 release workflow's `uses:` reference and `petal-tooling-ref`. Keep them at the
 same commit.
@@ -132,8 +136,8 @@ flags go in a `--config` array instead, which Cargo cannot merge into a string
 ignores configured rustflags and the builder adds its flags to
 `CARGO_ENCODED_RUSTFLAGS`. Otherwise explicit target-specific Cargo rustflags
 keep their normal precedence, which drops these flags; include equivalent path
-remapping if you set them. Paths outside the checkout and the Cargo home, such
-as a path dependency on a local SDK checkout, are not remapped.
+remapping if you set them. Other paths, such as a path dependency on a local
+SDK checkout, are not remapped.
 
 Petal repositories should publish with the reusable workflow documented in
 [`docs/releasing-petals.md`](docs/releasing-petals.md). The Petal repository

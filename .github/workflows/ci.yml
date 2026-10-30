@@ -28,6 +28,16 @@ jobs:
           path: ${{ runner.temp }}/petal-repro.*/reproducibility-*
           if-no-files-found: ignore
 
+  # macOS file systems ignore case, which some builder tests depend on.
+  builder-on-macos:
+    name: Builder tests on macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked -p bloom-petal-builder
+
   first-party-consumers:
     name: First-party consumer (${{ matrix.name }})
     runs-on: ubuntu-latest

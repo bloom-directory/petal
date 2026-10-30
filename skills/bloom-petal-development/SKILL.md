@@ -456,15 +456,17 @@ Know what an install changes:
   or checkout locations. The `petal build` released with this contract builds
   from the route workspace's committed `Cargo.lock`, refusing any change to the
   dependency graph, and keeps the paths of the checkout, the Cargo home and
-  the Rust toolchain out of its components, unless target-specific rustflags,
-  which Cargo uses instead of `build.rustflags`, drop its remapping. A path
-  dependency outside the checkout, such as a `[patch]` to a local SDK, keeps
-  its absolute path. Without one, the same sources, compiler and flags give
-  the same components in another directory; another compiler, other flags or
-  another builder give new ones. The builder passes its remapping in
-  `CARGO_BUILD_RUSTFLAGS`, which Cargo splits on whitespace. When one of those
-  paths contains whitespace it uses a `--config` array instead, which Cargo
-  cannot merge into a string `build.rustflags`, so write that as an array.
+  the Rust toolchain out of its components. A path dependency outside the
+  checkout, such as a `[patch]` to a local SDK, keeps its absolute path.
+  Without one, the same sources, compiler and flags give the same components
+  in another directory; another compiler, other flags or another builder give
+  new ones. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, the builder adds
+  its remapping to `CARGO_ENCODED_RUSTFLAGS`. Otherwise it adds it to
+  `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which Cargo uses
+  instead of `build.rustflags`, drop it. Cargo splits that variable on
+  whitespace, so for a path containing whitespace the builder uses a
+  `--config` array, which Cargo cannot merge into a string `build.rustflags`;
+  write that as an array.
   Propose installer provenance and wallet policy only for the hash of the exact
   package that will be installed: the hash `bloom petals build` reports for
   the package directory you will install as it is (or for the archive it
