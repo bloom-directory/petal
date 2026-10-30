@@ -7,6 +7,8 @@ scratch=${1:?usage: test-component-reproducibility.sh FRESH_EMPTY_DIRECTORY}
 [ -d "$scratch" ] && [ ! -L "$scratch" ] && [ -z "$(ls -A "$scratch")" ] || exit 1
 scratch=$(CDPATH= cd -- "$scratch" && pwd)
 cd "$root"
+cargo build --locked --quiet -p bloom-petal-cli
+petal=$(cargo metadata --locked --format-version 1 --no-deps | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')/debug/petal
 for side in a b; do
   copy=$scratch/$side
   mkdir "$copy"
@@ -23,13 +25,22 @@ allowed_intents = ["conformance.sign"]
 EOF
   printf '# Structural conformance fixture\nNo signing authorization is implied.\n' > "$copy/README.md"
   printf '# Fixture guidance\nUse only for component and package checks.\n' > "$copy/AGENTS.md"
-  if [ "$side" = b ]; then printf 'unrelated development report\n' > "$copy/audit-notes.md"; fi
+  if [ "$side" = b ]; then
+    printf 'unrelated development report\n' > "$copy/audit-notes.md"
+    # A developer's own Cargo config, with build.rustflags as a string reached
+    # through include, keeps its flags beside the builder's path remapping.
+    mkdir "$copy/.cargo"
+    printf 'include = ["team.toml"]\n' > "$copy/.cargo/config.toml"
+    printf '[build]\nrustflags = "--cfg petal_reproducibility_probe"\n' > "$copy/.cargo/team.toml"
+  fi
   # Packaging must rebuild current sources and discard stale active output.
   mkdir -p "$copy/petal/conformance"
   printf 'stale component\n' > "$copy/petal/conformance/obsolete.wasm"
-  cargo run --locked --quiet -p bloom-petal-cli -- package --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz" > "$scratch/$side-package.json"
+  # Cargo reads config from the directory it runs in.
+  (cd "$copy" && "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz") > "$scratch/$side-package.json"
   test ! -e "$copy/petal/conformance/obsolete.wasm"
 done
+grep -rqF petal_reproducibility_probe "$scratch/b/target/petal-routes/target/wasm32-unknown-unknown/release/.fingerprint"
 for route in sign static.txt; do
   if ! cmp "$scratch/a/petal/conformance/$route.wasm" "$scratch/b/petal/conformance/$route.wasm"; then
     for side in a b; do
@@ -46,7 +57,7 @@ sysroot=$(rustc --print sysroot)
 for route in sign static.txt; do
   for location in "$scratch" "$sysroot" "${HOME:-/}"; do
     [ "$location" = / ] && continue
-    if grep -aqF -- "$location" "$scratch/a/petal/conformance/$route.wasm"; then
+    if grep -aqF -- "$location" "$scratch/b/petal/conformance/$route.wasm"; then
       printf '%s embeds %s\n' "$route.wasm" "$location" >&2
       exit 1
     fi
@@ -75,9 +86,19 @@ copy=$scratch/a
 route=$copy/fixtures/conformance-route/files/static.txt.rs
 sed 's/canonical petal fixture/edited after the build/' "$route" > "$route.edited"
 mv "$route.edited" "$route"
-cargo run --locked --quiet -p bloom-petal-cli -- package --no-build --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/a-no-build.petal.tar.gz" > "$scratch/a-no-build-package.json"
+# Bloom installs every component as a route, so --no-build refuses one that
+# has no route controller instead of reviving a removed route.
+printf 'stale component\n' > "$copy/petal/conformance/obsolete.wasm"
+if (cd "$copy" && "$petal" package --no-build --root . --config fixtures/repro-petal-build.toml --out "$scratch/a-stale.petal.tar.gz") > /dev/null 2> "$scratch/a-stale.err"; then
+  echo 'package --no-build accepted a component with no route controller' >&2
+  exit 1
+fi
+grep -q 'obsolete.wasm has no route controller' "$scratch/a-stale.err"
+test ! -e "$scratch/a-stale.petal.tar.gz"
+rm "$copy/petal/conformance/obsolete.wasm"
+(cd "$copy" && "$petal" package --no-build --root . --config fixtures/repro-petal-build.toml --out "$scratch/a-no-build.petal.tar.gz") > "$scratch/a-no-build-package.json"
 cmp "$scratch/a.petal.tar.gz" "$scratch/a-no-build.petal.tar.gz"
-cargo run --locked --quiet -p bloom-petal-cli -- package --root "$copy" --config fixtures/repro-petal-build.toml --out "$scratch/a-rebuilt.petal.tar.gz" > "$scratch/a-rebuilt-package.json"
+(cd "$copy" && "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/a-rebuilt.petal.tar.gz") > "$scratch/a-rebuilt-package.json"
 if cmp -s "$scratch/a.petal.tar.gz" "$scratch/a-rebuilt.petal.tar.gz"; then
   echo 'package did not rebuild the edited route' >&2
   exit 1

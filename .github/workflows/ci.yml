@@ -13,6 +13,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          # With rust-src, rustc embeds toolchain paths unless the builder
+          # remaps them, so the reproducibility check can catch a leak.
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
       - name: Install component tools
         run: scripts/install-tools.sh

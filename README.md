@@ -102,7 +102,9 @@ before writing the archive. It cannot silently package an older build. A
 rebuild sees only the current environment, so a Petal whose build command
 supplies compile-time values, such as a key read with `option_env!`, runs that
 command and then `petal package --no-build`, which checks the components it
-produced and packages them as they are. The release workflow does this. Machine
+produced and packages them as they are. The release workflow does this. It
+refuses a component with no route controller, but cannot tell that sources
+changed after the build, so run it straight after the build command. Machine
 composition and installation still apply the host's authoritative checks. The
 archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
@@ -116,13 +118,17 @@ and runtime documents do. This deliberately changes older source-tree package
 hashes: publish a new immutable package and preserve its predecessor lineage.
 Machine assigns a separate final identity when composing the installed package.
 
-Component builds remap the checkout, Cargo home and Rust toolchain source paths,
-omit symbol names and use one codegen unit at compile time. Multiple units produced path-dependent
-empty-function ordering on Rust 1.99.1 even after remapping. Two different
-checkout directories with identical compiler and
-locked inputs produce the same tested components. Explicit target-specific
-Cargo rustflags keep their normal precedence; include equivalent path remapping
-if you replace the default flags.
+Component builds remap the checkout, Cargo home and Rust toolchain source
+paths, omit symbol names and use one codegen unit at compile time. Multiple
+units produced path-dependent empty-function ordering on Rust 1.99.1 even after
+remapping. Two different checkout directories with identical compiler and
+locked inputs produce the same tested components. The builder adds its flags to
+`CARGO_BUILD_RUSTFLAGS`, after any value set there, and Cargo appends that to
+the configured `build.rustflags`. When a remapped path contains whitespace, the
+flags go in a `--config` array instead, which Cargo cannot merge into a string
+`build.rustflags`. Explicit target-specific Cargo rustflags keep their normal
+precedence, which drops these flags; include equivalent path remapping if you
+set them.
 
 Petal repositories should publish with the reusable workflow documented in
 [`docs/releasing-petals.md`](docs/releasing-petals.md). The Petal repository

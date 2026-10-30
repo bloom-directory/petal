@@ -412,7 +412,9 @@ policy and does not replace route-level tests or a runtime VFS smoke test. A
 rebuild sees only the current environment: when the Petal's build command
 supplies compile-time values, such as a key read with `option_env!`, run that
 command and then `petal package --no-build`, which packages the components it
-produced. The reusable release workflow does this.
+produced. The reusable release workflow does this. `--no-build` refuses a
+component with no route controller, but like `petal check` it cannot tell that
+sources changed after the build, so run it straight after the build command.
 
 ## Run it in Bloom
 
@@ -452,10 +454,11 @@ Know what an install changes:
   or checkout locations. The `petal build` released with this contract builds
   from the route workspace's committed `Cargo.lock`, refusing any change to the
   dependency graph, and keeps the paths of the checkout, the Cargo home and
-  the Rust toolchain out of its components. The same sources, compiler and
-  flags therefore give the same components in another directory; another
-  compiler, other flags or another builder give new ones. Propose
-  installer provenance and wallet policy only for the hash of the exact
+  the Rust toolchain out of its components, unless target-specific rustflags,
+  which Cargo uses instead of `build.rustflags`, drop its remapping. The same
+  sources, compiler and flags therefore give the same components in another
+  directory; another compiler, other flags or another builder give new ones.
+  Propose installer provenance and wallet policy only for the hash of the exact
   package that will be installed: the hash `bloom petals build` reports for
   the package directory you will install as it is (or for the archive it
   writes with `--out`), or, for a release built by the reusable release
@@ -483,9 +486,10 @@ Know what an install changes:
   runs that command natively with the installing user's privileges and does
   not sandbox it, so keep the build non-interactive and dependency-light, and
   test installs by tag and by immutable commit. Bloom builds each install in a
-  fresh temporary checkout, so with this builder its hash differs on every
-  install and cannot be approved in advance; publish a release archive, and
-  install that archive, when the hash must be known before install.
+  fresh temporary checkout with the installing machine's toolchain and Cargo
+  config, so its hash depends on that machine and cannot be approved in
+  advance; publish a release archive, and install that archive, when the hash
+  must be known before install.
 
 Exercise the installed tree both through direct VFS
 (`bloom vfs ls|cat|write /petals/<name>/...`) and through a mounted daemon:
