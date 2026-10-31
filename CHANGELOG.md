@@ -9,7 +9,8 @@
   change is required.
   Hosts remain responsible for removing credentials and internal request data
   before sending explanations; this is not a generic secret redactor.
-  A reason is recorded only when its label matches the classified status.
+  A reason is recorded after any recognized status label, paired with the
+  classified status, so `denied: APPROVAL_NOT_FOUND: …` keeps its reason.
   Local argument validation clears stale reasons. Store and address helpers
   append the current read's reason; Machine still drops -2 denial messages at IPC.
 

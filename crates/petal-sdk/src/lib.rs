@@ -740,9 +740,11 @@ pub mod sdk {
 
     const REASON_MAX_CHARS: usize = 512;
 
-    /// Classifies a host error exactly as earlier SDK releases did. The text
-    /// after `label: ` is recorded as the reason only when the label names the
-    /// same status, so classification never depends on the feature.
+    /// Classifies a host error exactly as earlier SDK releases did, so
+    /// classification never depends on the feature. The text after a
+    /// recognized `label: ` is recorded as the reason with that classified
+    /// status, even when the label names another status: `denied:
+    /// APPROVAL_NOT_FOUND: …` is `NotFound` and keeps its Broker reason.
     pub(crate) fn host_err(message: String) -> SdkError {
         let lower = message.to_ascii_lowercase();
         let status = if lower.contains("not found") {
@@ -759,14 +761,12 @@ pub mod sdk {
             .filter(|_| cfg!(feature = "host-error-detail"))
             .and_then(|status| {
                 let (label, reason) = message.split_once(": ")?;
-                let labelled = match label.to_ascii_lowercase().as_str() {
-                    "not found" => HostStatus::NotFound,
-                    "denied" | "permission denied" => HostStatus::Denied,
-                    "invalid" => HostStatus::Invalid,
-                    _ => return None,
-                };
+                let labelled = matches!(
+                    label.to_ascii_lowercase().as_str(),
+                    "not found" | "denied" | "permission denied" | "invalid"
+                );
                 let reason = bounded_reason(reason);
-                (labelled == status && !reason.trim().is_empty()).then_some((status, reason))
+                (labelled && !reason.trim().is_empty()).then_some((status, reason))
             });
         LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = recorded);
         status.map_or(SdkError::Message(message), SdkError::Host)
@@ -930,10 +930,6 @@ pub mod sdk {
         fn classification_matches_earlier_releases() {
             for (message, expected) in [
                 (
-                    "denied: APPROVAL_NOT_FOUND: approval not found",
-                    Some(HostStatus::NotFound),
-                ),
-                (
                     "backend: confirm EVM outbox: approval denied",
                     Some(HostStatus::Denied),
                 ),
@@ -952,9 +948,22 @@ pub mod sdk {
                     error,
                     expected.map_or(SdkError::Message(message.into()), SdkError::Host)
                 );
-                // A reason is kept only when the label names the same status.
+                // `backend:` is not a host status label, so it records nothing.
                 assert_eq!(last_host_reason(), None, "{message}");
             }
+        }
+
+        #[test]
+        fn a_label_naming_another_status_keeps_its_reason() {
+            let error = host_err("denied: APPROVAL_NOT_FOUND: approval not found".into());
+            assert_eq!(error, SdkError::Host(HostStatus::NotFound));
+            let expected = cfg!(feature = "host-error-detail").then(|| {
+                (
+                    HostStatus::NotFound,
+                    "APPROVAL_NOT_FOUND: approval not found".into(),
+                )
+            });
+            assert_eq!(last_host_reason(), expected);
         }
 
         #[test]
