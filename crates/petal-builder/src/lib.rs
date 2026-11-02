@@ -379,16 +379,31 @@ fn absolute_from(root: &Path, path: &Path) -> PathBuf {
 /// `path` as the file system will see it once the rest is created: its
 /// longest existing prefix resolved through links (which on macOS also fixes
 /// letter case), and the rest, which will be created as plain directories,
-/// with `.` and `..` applied.
+/// with `.` and `..` applied. Applying `..` past a directory that does not
+/// exist yet can reach an existing link, so this repeats until the path
+/// stops changing.
 fn resolve_existing(path: &Path) -> PathBuf {
-    for ancestor in path.ancestors() {
-        if let Ok(resolved) = ancestor.canonicalize() {
-            return lexical_normalize(
-                &resolved.join(path.strip_prefix(ancestor).unwrap_or(Path::new(""))),
-            );
+    let once = |path: &Path| {
+        for ancestor in path.ancestors() {
+            if let Ok(resolved) = ancestor.canonicalize() {
+                return lexical_normalize(
+                    &resolved.join(path.strip_prefix(ancestor).unwrap_or(Path::new(""))),
+                );
+            }
         }
+        lexical_normalize(path)
+    };
+    let mut path = once(path);
+    // Each pass resolves at least one more component, so a path settles
+    // within as many passes as it has components.
+    for _ in 0..path.components().count() {
+        let next = once(&path);
+        if next == path {
+            break;
+        }
+        path = next;
     }
-    lexical_normalize(path)
+    path
 }
 
 /// `path` with `.` and `..` components applied without touching the file
@@ -716,18 +731,25 @@ fn component_profile_config() -> Vec<String> {
 /// so components do not depend on where the checkout is.
 const SOURCE_LINK: &str = "source";
 
-/// The deepest directory holding the Petal root, the route workspace and every
-/// path dependency reachable from them: what the source link points at.
-fn source_anchor(root: &Path, config: &BuildConfig) -> Result<PathBuf, String> {
-    let resolved = |path: PathBuf| path.canonicalize().unwrap_or(path);
-    let crate_dir = resolved(root.join(&config.route_crate.path));
-    let workspace = resolved(workspace_dir(
-        &crate_dir,
-        &read_toml(&crate_dir.join("Cargo.toml"))?,
-    )?);
+/// The local path packages a route build can use, found by following path
+/// dependencies from the route crate and its workspace.
+struct RouteSources {
+    /// The deepest directory holding the Petal root, the route workspace and
+    /// every one of `packages`: what the source link points at.
+    anchor: PathBuf,
+    /// Each local package's directory, resolved through links.
+    packages: BTreeSet<PathBuf>,
+}
+
+fn route_sources(root: &Path, config: &BuildConfig) -> Result<RouteSources, String> {
+    // Cargo applies `..` to a path dependency as written, not through links,
+    // and finds a path package's workspace the same way, so this does too.
+    let crate_dir = lexical_normalize(&root.join(&config.route_crate.path));
+    let workspace = workspace_dir(&crate_dir, &read_toml(&crate_dir.join("Cargo.toml"))?)?;
     let mut anchor = common_ancestor(root, &workspace);
-    let mut pending = vec![crate_dir, workspace];
+    let mut pending = vec![crate_dir];
     let mut seen = BTreeSet::new();
+    let mut packages = BTreeSet::new();
     while let Some(dir) = pending.pop() {
         if !seen.insert(dir.clone()) {
             continue;
@@ -736,18 +758,53 @@ fn source_anchor(root: &Path, config: &BuildConfig) -> Result<PathBuf, String> {
         let Ok(manifest) = read_toml(&dir.join("Cargo.toml")) else {
             continue;
         };
-        for (_, table) in dependency_tables(&manifest) {
-            for path in table
-                .values()
-                .filter_map(|value| value.get("path")?.as_str())
+        if manifest.contains_key("package") {
+            packages.insert(dir.clone());
+        }
+        // Cargo reaches the package's workspace through the link as well, to
+        // resolve what it inherits.
+        let own_workspace = workspace_dir(&dir, &manifest)?;
+        anchor = common_ancestor(&common_ancestor(&anchor, &dir), &own_workspace);
+        let workspace_manifest = if own_workspace == dir {
+            Some(manifest.clone())
+        } else {
+            read_toml(&own_workspace.join("Cargo.toml")).ok()
+        };
+        for (section, table) in dependency_tables(&manifest) {
+            // Components never build a path package's dev-dependencies, and
+            // `[workspace.dependencies]` counts only where a package inherits it.
+            if section.ends_with("dev-dependencies]")
+                || section.ends_with("dev_dependencies]")
+                || section == "[workspace.dependencies]"
             {
-                let dependency = resolved(lexical_normalize(&dir.join(path)));
-                anchor = common_ancestor(&anchor, &dependency);
-                pending.push(dependency);
+                continue;
+            }
+            for (key, value) in table {
+                let path = if value.get("workspace").and_then(toml::Value::as_bool) == Some(true) {
+                    workspace_manifest
+                        .as_ref()
+                        .and_then(|workspace| {
+                            workspace
+                                .get("workspace")?
+                                .get("dependencies")?
+                                .get(key)?
+                                .get("path")?
+                                .as_str()
+                        })
+                        .map(|path| own_workspace.join(path))
+                } else {
+                    value
+                        .get("path")
+                        .and_then(toml::Value::as_str)
+                        .map(|path| dir.join(path))
+                };
+                if let Some(path) = path {
+                    pending.push(lexical_normalize(&path));
+                }
             }
         }
     }
-    Ok(anchor)
+    Ok(RouteSources { anchor, packages })
 }
 
 fn common_ancestor(left: &Path, right: &Path) -> PathBuf {
@@ -805,10 +862,10 @@ fn generate_workspace(
             "[workspace]\nresolver = \"2\"\nmembers = [\n{members}\n]\nexclude = [{SOURCE_LINK:?}]\n\n[profile.release]\n{profile}"
         ),
     )?;
-    let anchor = source_anchor(root, config)?;
+    let anchor = route_sources(root, config)?.anchor;
     let reach = link_checkout(workspace, &anchor)?;
     let through = |path: &Path| -> Result<PathBuf, String> {
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_owned());
+        let path = lexical_normalize(path);
         let inside = path.strip_prefix(&anchor).map_err(|_| {
             format!(
                 "{} is outside {}, which the generated workspace reaches",
@@ -905,17 +962,24 @@ fn reuse_route_lockfile(
         let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)
             .map_err(|error| format!("parse component graph metadata: {error}"))?;
         let cargo_home = cargo_home().ok_or("cannot find Cargo home")?;
-        let anchor = source_anchor(root, config)?;
-        require_locked_sources(&old, &metadata, &cargo_home, &wrappers, &anchor)?;
+        let packages = route_sources(root, config)?.packages;
+        require_locked_sources(
+            &old,
+            &metadata,
+            &cargo_home,
+            generated,
+            &wrappers,
+            &packages,
+        )?;
     }
     Ok(())
 }
 
 /// With `PETAL_REQUIRE_LOCKED_SOURCES=1`, the component build may use only
-/// what the tested lockfile names: a generated wrapper; a package the lockfile
-/// takes from git or a registry, with that source, read from the copy Cargo
-/// fetched into Cargo home; or a local path package the lockfile names, inside
-/// `anchor`. The lockfile cannot show a Cargo config `paths` override, which
+/// what the tested lockfile names: a wrapper generated in `generated`; a
+/// package the lockfile takes from git or a registry, with that source, read
+/// from the copy Cargo fetched into Cargo home; or a local path package the
+/// lockfile names, read from one of the route's own path `packages`. The lockfile cannot show a Cargo config `paths` override, which
 /// gives a package another path and possibly another version, or a source
 /// replacement such as a vendored directory, which keeps the source but reads
 /// other files; Cargo's metadata for the generated workspace shows both.
@@ -923,8 +987,9 @@ fn require_locked_sources(
     tested: &toml::Table,
     metadata: &serde_json::Value,
     cargo_home: &Path,
+    generated: &Path,
     wrappers: &BTreeSet<&str>,
-    anchor: &Path,
+    packages: &BTreeSet<PathBuf>,
 ) -> Result<(), String> {
     let mut locked = BTreeSet::new();
     let mut local = BTreeSet::new();
@@ -947,11 +1012,47 @@ fn require_locked_sources(
         };
     }
     let resolved = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_owned());
-    let fetched = [
-        resolved(&cargo_home.join("git/checkouts")),
-        resolved(&cargo_home.join("registry/src")),
-    ];
-    let anchor = resolved(anchor);
+    let checkouts = resolved(&cargo_home.join("git/checkouts"));
+    let downloads = resolved(&cargo_home.join("registry/src"));
+    let hashed = |component: &std::path::Component| {
+        component
+            .as_os_str()
+            .to_str()
+            .and_then(|name| name.rsplit_once('-'))
+            .is_some_and(|(_, hash)| {
+                hash.len() == 16 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+            })
+    };
+    // Cargo keeps a registry package in `registry/src/<index>-<hash>/<name>-<version>/`
+    // and a git package under `git/checkouts/<repository>-<hash>/<short commit>/`.
+    // Cargo home itself is trusted; this keeps a replacement such as a
+    // vendored directory from passing for Cargo's own copy.
+    let cargo_copy = |manifest: &Path, name: &str, version: &str, source: &str| {
+        if let Some((_, commit)) = source
+            .strip_prefix("git+")
+            .and_then(|source| source.rsplit_once('#'))
+        {
+            let Ok(rest) = manifest.strip_prefix(&checkouts) else {
+                return false;
+            };
+            let parts = rest.components().collect::<Vec<_>>();
+            parts.len() >= 3
+                && hashed(&parts[0])
+                && parts[1].as_os_str() == std::ffi::OsStr::new(&commit[..commit.len().min(7)])
+        } else {
+            let Ok(rest) = manifest.strip_prefix(&downloads) else {
+                return false;
+            };
+            let parts = rest.components().collect::<Vec<_>>();
+            parts.len() == 3
+                && hashed(&parts[0])
+                && parts[1].as_os_str() == std::ffi::OsStr::new(&format!("{name}-{version}"))
+        }
+    };
+    let packages = packages
+        .iter()
+        .map(|dir| resolved(dir))
+        .collect::<BTreeSet<_>>();
     let mut refused = Vec::new();
     for package in metadata["packages"].as_array().into_iter().flatten() {
         let (Some(name), Some(version)) = (package["name"].as_str(), package["version"].as_str())
@@ -964,19 +1065,30 @@ fn require_locked_sources(
         let shown = manifest
             .as_ref()
             .map_or("an unknown path".into(), |path| path.display().to_string());
-        match package["source"].as_str().map(percent_decode) {
-            None if wrappers.contains(name)
-                || (local.contains(&(name, version))
-                    && manifest
-                        .as_ref()
-                        .is_some_and(|path| path.starts_with(&anchor))) => {}
+        let wrapper = || {
+            wrappers.contains(name)
+                && manifest.as_ref()
+                    == Some(&resolved(
+                        &generated.join("members").join(name).join("Cargo.toml"),
+                    ))
+        };
+        let route_package = || {
+            local.contains(&(name, version))
+                && manifest
+                    .as_ref()
+                    .and_then(|path| path.parent())
+                    .is_some_and(|dir| packages.contains(dir))
+        };
+        // Metadata shows a branch or tag as written; only the lockfile encodes it.
+        match package["source"].as_str().map(str::to_owned) {
+            None if wrapper() || route_package() => {}
             None => refused.push(format!(
                 "{name} {version} is read from {shown}, which the tested lockfile does not name"
             )),
             Some(source) if locked.contains(&(name, version, source.clone())) => {
                 if !manifest
                     .as_ref()
-                    .is_some_and(|path| fetched.iter().any(|dir| path.starts_with(dir)))
+                    .is_some_and(|path| cargo_copy(path, name, version, &source))
                 {
                     refused.push(format!(
                         "{name} {version} is read from {shown}, not Cargo's copy of {source}"
@@ -1842,7 +1954,9 @@ fn route_sdk_dependency(root: &Path, config: &BuildConfig) -> Result<toml::Value
         }
         if let Some(path) = table.get("path").and_then(toml::Value::as_str) {
             let base = if inherited { &workspace } else { &crate_dir };
-            let path = resolve_sdk_path(base, Path::new(path))?;
+            // Cargo applies `..` to the path as written, not through links.
+            resolve_sdk_path(base, Path::new(path))?;
+            let path = lexical_normalize(&base.join(path));
             table.insert(
                 "path".into(),
                 toml::Value::String(path.to_string_lossy().into_owned()),
@@ -1964,11 +2078,12 @@ fn percent_decode(text: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
+        let hex = |byte: u8| char::from(byte).to_digit(16);
         if bytes[index] == b'%'
             && index + 2 < bytes.len()
-            && let Ok(byte) = u8::from_str_radix(&text[index + 1..index + 3], 16)
+            && let (Some(high), Some(low)) = (hex(bytes[index + 1]), hex(bytes[index + 2]))
         {
-            out.push(byte);
+            out.push((high * 16 + low) as u8);
             index += 3;
             continue;
         }
@@ -2154,10 +2269,8 @@ fn workspace_dir(crate_dir: &Path, manifest: &toml::Table) -> Result<PathBuf, St
             .get("workspace")?
             .as_str()
             .map(|path| dir.join(path))?;
-        Some(
-            path.canonicalize()
-                .map_err(|error| format!("resolve package.workspace {}: {error}", path.display())),
-        )
+        // Cargo applies `..` to the pointer as written.
+        Some(Ok(lexical_normalize(&path)))
     };
     if let Some(root) = pointer(manifest, crate_dir) {
         return root;
@@ -2299,6 +2412,17 @@ pub fn check_sdk_pin(root: impl AsRef<Path>, config: &BuildConfig) -> Result<(),
                     .join(", ")
             ));
         }
+        let toolchains = custom_toolchain_files(&cwd);
+        if !toolchains.is_empty() {
+            return Err(format!(
+                "PETAL_REQUIRE_LOCKED_SOURCES=1 refuses a rust-toolchain file that names a toolchain by path, which can replace rustc: {}",
+                toolchains
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
     }
     check_sdk_pin_with(root.as_ref(), config, allow_patch, |manifest, package| {
         let mut cargo = Command::new("cargo");
@@ -2306,6 +2430,28 @@ pub fn check_sdk_pin(root: impl AsRef<Path>, config: &BuildConfig) -> Result<(),
         cargo_resolves_to_a_path(cargo, manifest, package)
             .map_err(|error| format!("{error} (Cargo run from {})", cwd.display()))
     })
+}
+
+/// The rust-toolchain files rustup reads from `cwd` and its ancestors that
+/// name a toolchain by path, which can replace rustc. A channel names a
+/// toolchain rustup installs itself, which release builds accept.
+fn custom_toolchain_files(cwd: &Path) -> Vec<PathBuf> {
+    cwd.ancestors()
+        .flat_map(|dir| ["rust-toolchain.toml", "rust-toolchain"].map(|name| dir.join(name)))
+        .filter(|path| {
+            let Ok(text) = fs::read_to_string(path) else {
+                return false;
+            };
+            match toml::from_str::<toml::Table>(&text) {
+                Ok(table) => table
+                    .get("toolchain")
+                    .and_then(|toolchain| toolchain.get("path"))
+                    .is_some(),
+                // The legacy form holds only a toolchain name.
+                Err(_) => text.trim().contains(['/', '\\']),
+            }
+        })
+        .collect()
 }
 
 /// The Cargo config files Cargo reads from `cwd` and its ancestors, apart
@@ -3948,6 +4094,7 @@ mod tests {
             // a case-sensitive one keeps them apart.
             if fixture.path().join(directory.to_uppercase()).exists() {
                 outputs.push(directory.to_uppercase());
+                outputs.push(format!("not-yet/../{}", directory.to_uppercase()));
             }
             for named in outputs {
                 let out = fixture.path().join(&named).join("demo.petal.tar.gz");
@@ -3958,6 +4105,24 @@ mod tests {
                 );
                 assert!(!out.exists(), "{named}");
             }
+        }
+        // A link that only `..` past a missing directory reaches.
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                fixture.path().join("petal/demo"),
+                fixture.path().join("dist-link"),
+            )
+            .unwrap();
+            let out = fixture
+                .path()
+                .join("not-yet/../dist-link/demo.petal.tar.gz");
+            let error = package(fixture.path(), &package_config(), &out).unwrap_err();
+            assert!(
+                error.contains("outside the packaged petal/ tree"),
+                "{error}"
+            );
+            fs::remove_file(fixture.path().join("dist-link")).unwrap();
         }
         // An archive left in a packaged tree is not packaged.
         for archive in ["components/old.petal.tar.gz", "modules/old.petal.tar"] {
@@ -4041,9 +4206,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("cargo-home");
         let checkout = tmp.path().join("checkout");
+        let generated = checkout.join("target/petal-routes/workspace");
         let git = format!("git+{SDK_GIT}?rev={REV_A}#{REV_A}");
-        let branch_locked = format!("git+{SDK_GIT}?branch=feat%2Fx#{REV_A}");
-        let branch_shown = format!("git+{SDK_GIT}?branch=feat/x#{REV_A}");
+        // Cargo percent-encodes the branch in the lockfile, `%` included, and
+        // shows it as written in metadata.
+        let branch_locked = format!("git+{SDK_GIT}?branch=feat%2Fx%2541#{REV_A}");
+        let branch_shown = format!("git+{SDK_GIT}?branch=feat/x%41#{REV_A}");
         let registry = "registry+https://github.com/rust-lang/crates.io-index";
         let tested: toml::Table = toml::from_str(&format!(
             "version = 4\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"0.1.0\"\nsource = \"{git}\"\n[[package]]\nname = \"hex\"\nversion = \"0.4.3\"\nsource = \"{registry}\"\n[[package]]\nname = \"helper\"\nversion = \"0.1.0\"\nsource = \"{branch_locked}\"\n[[package]]\nname = \"demo-route\"\nversion = \"0.1.0\"\n"
@@ -4051,21 +4219,22 @@ mod tests {
         .unwrap();
         let package = |name: &str, version: &str, source: Option<&str>, manifest: PathBuf| serde_json::json!({"name": name, "version": version, "source": source, "manifest_path": manifest});
         let sdk_checkout =
-            home.join("git/checkouts/petal-0123/2225574/crates/petal-sdk/Cargo.toml");
+            home.join("git/checkouts/petal-0123456789abcdef/2225574/crates/petal-sdk/Cargo.toml");
         let check = |sdk: serde_json::Value| {
             let metadata = serde_json::json!({"packages": [
                 sdk,
-                package("hex", "0.4.3", Some(registry), home.join("registry/src/index-6f17/hex-0.4.3/Cargo.toml")),
-                package("helper", "0.1.0", Some(&branch_shown), home.join("git/checkouts/helper-1/2225574/Cargo.toml")),
-                package("demo-route", "0.1.0", None, checkout.join("target/petal-routes/workspace/source/route/Cargo.toml")),
-                package("petal-route-status", "0.1.0", None, checkout.join("target/petal-routes/workspace/members/petal-route-status/Cargo.toml")),
+                package("hex", "0.4.3", Some(registry), home.join("registry/src/index.crates.io-1949cf8c6b5b557f/hex-0.4.3/Cargo.toml")),
+                package("helper", "0.1.0", Some(&branch_shown), home.join("git/checkouts/helper-0123456789abcdef/2225574/Cargo.toml")),
+                package("demo-route", "0.1.0", None, checkout.join("route/Cargo.toml")),
+                package("petal-route-status", "0.1.0", None, generated.join("members/petal-route-status/Cargo.toml")),
             ]});
             require_locked_sources(
                 &tested,
                 &metadata,
                 &home,
+                &generated,
                 &BTreeSet::from(["petal-route-status"]),
-                &checkout,
+                &BTreeSet::from([checkout.join("route")]),
             )
         };
         // Cargo's own copies, with a percent-encoded branch, and the
@@ -4106,10 +4275,13 @@ mod tests {
             "bloom-petal-sdk 0.1.1 is read from",
         );
         // A source replacement keeps the source but reads other files, even
-        // elsewhere in Cargo home.
+        // from inside Cargo home's own folders.
         for elsewhere in [
             tmp.path().join("vendor/bloom-petal-sdk/Cargo.toml"),
             home.join("vendor/bloom-petal-sdk/Cargo.toml"),
+            home.join("registry/src/vendored/bloom-petal-sdk-0.1.0/Cargo.toml"),
+            home.join("git/checkouts/petal-0123456789abcdef/2beed2f/crates/petal-sdk/Cargo.toml"),
+            home.join("git/checkouts/vendored/2225574/crates/petal-sdk/Cargo.toml"),
         ] {
             refused(
                 package("bloom-petal-sdk", "0.1.0", Some(&git), elsewhere.clone()),
@@ -4119,6 +4291,22 @@ mod tests {
                 ),
             );
         }
+        // A registry package outside Cargo's `<index>/<name>-<version>` layout.
+        let vendored_hex = serde_json::json!({"packages": [
+            package("hex", "0.4.3", Some(registry), home.join("registry/src/vendored/hex/Cargo.toml")),
+        ]});
+        assert!(
+            require_locked_sources(
+                &tested,
+                &vendored_hex,
+                &home,
+                &generated,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            )
+            .unwrap_err()
+            .contains("hex 0.4.3 is read from")
+        );
         // A source the lockfile does not name.
         refused(
             package(
@@ -4133,11 +4321,132 @@ mod tests {
         let metadata = serde_json::json!({"packages": [
             package("demo-route", "0.1.0", None, tmp.path().join("elsewhere/route/Cargo.toml")),
         ]});
+        let packages = BTreeSet::from([checkout.join("route")]);
+        let only = |metadata: serde_json::Value| {
+            require_locked_sources(
+                &tested,
+                &metadata,
+                &home,
+                &generated,
+                &BTreeSet::from(["petal-route-status"]),
+                &packages,
+            )
+        };
         assert!(
-            require_locked_sources(&tested, &metadata, &home, &BTreeSet::new(), &checkout)
+            only(metadata)
                 .unwrap_err()
                 .contains("demo-route 0.1.0 is read from")
         );
+        // So is a copy of it elsewhere in the checkout, and a wrapper read
+        // from anywhere but where it was generated.
+        for (name, manifest) in [
+            (
+                "demo-route",
+                checkout.join("fixtures/route-copy/Cargo.toml"),
+            ),
+            ("petal-route-status", checkout.join("elsewhere/Cargo.toml")),
+        ] {
+            let metadata =
+                serde_json::json!({"packages": [package(name, "0.1.0", None, manifest)]});
+            assert!(
+                only(metadata)
+                    .unwrap_err()
+                    .contains(&format!("{name} 0.1.0 is read from")),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn release_builds_refuse_toolchains_named_by_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path().join("work/petal");
+        fs::create_dir_all(&cwd).unwrap();
+        // A channel, in either form, names a toolchain rustup installs.
+        fs::write(
+            cwd.join("rust-toolchain.toml"),
+            "[toolchain]\nchannel = \"1.98.0\"\n",
+        )
+        .unwrap();
+        fs::write(tmp.path().join("work/rust-toolchain"), "stable\n").unwrap();
+        assert!(custom_toolchain_files(&cwd).is_empty());
+        fs::write(
+            cwd.join("rust-toolchain.toml"),
+            "[toolchain]\npath = \"/opt/rustc\"\n",
+        )
+        .unwrap();
+        fs::write(tmp.path().join("rust-toolchain"), "/opt/rustc\n").unwrap();
+        assert_eq!(
+            custom_toolchain_files(&cwd),
+            [
+                cwd.join("rust-toolchain.toml"),
+                tmp.path().join("rust-toolchain")
+            ]
+        );
+    }
+
+    #[test]
+    fn percent_decoding_never_splits_a_character() {
+        assert_eq!(percent_decode("feat%2Fx"), "feat/x");
+        assert_eq!(percent_decode("x%a€"), "x%a€");
+        assert_eq!(percent_decode("%2"), "%2");
+        assert_eq!(percent_decode("%2541"), "%41");
+    }
+
+    /// Cargo applies `..` to a path dependency as written, so the generated
+    /// workspace must reach a symlinked route crate the same way, or its
+    /// `..` dependencies resolve elsewhere than in the route's tests.
+    #[cfg(unix)]
+    #[test]
+    fn route_sources_follow_paths_as_cargo_writes_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap().join("petal");
+        let outside = tmp.path().canonicalize().unwrap().join("outside");
+        let write = |path: &Path, body: &str| {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, body).unwrap();
+        };
+        let package = |name: &str| format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n");
+        write(
+            &root.join("crates/route/Cargo.toml"),
+            &format!(
+                "{}[workspace]\n[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", version = \"=0.1.0\" }}\nshared = {{ path = \"../shared\" }}\nvendored = {{ path = \"../vendor/vendored\" }}\n[dev-dependencies]\ntools = {{ path = \"../../../tools\" }}\n",
+                package("demo-route")
+            ),
+        );
+        std::os::unix::fs::symlink(root.join("crates/route"), root.join("route")).unwrap();
+        write(&root.join("shared/Cargo.toml"), &package("shared"));
+        write(&root.join("crates/shared/Cargo.toml"), &package("shared"));
+        write(&outside.join("vendored/Cargo.toml"), &package("vendored"));
+        std::os::unix::fs::symlink(&outside, root.join("vendor")).unwrap();
+        let mut config = package_config();
+        config.sdk = SdkDependency::default();
+        let sources = route_sources(&root, &config).unwrap();
+        // `route/../shared` is `shared`, not `crates/shared`; the vendored
+        // dependency stays inside the Petal through its link; and a
+        // dev-dependency outside it, which components never build, does not
+        // move the anchor.
+        assert_eq!(sources.anchor, root);
+        assert_eq!(
+            sources.packages,
+            BTreeSet::from([
+                root.join("route"),
+                root.join("shared"),
+                root.join("vendor/vendored"),
+            ])
+        );
+        let workspace = root.join("target/petal-routes/workspace");
+        let mut status = route("status.json");
+        status.source = root.join("route/files/status.json.rs");
+        generate_workspace(&root, &workspace, &[status.clone()], &config).unwrap();
+        let member = fs::read_to_string(
+            workspace
+                .join("members")
+                .join(&status.package)
+                .join("Cargo.toml"),
+        )
+        .unwrap();
+        assert!(member.contains("path = \"../../source/route\""), "{member}");
     }
 
     #[test]
@@ -4200,10 +4509,7 @@ mod tests {
             "p/route/Cargo.toml",
             &format!("{package}workspace = \"../ws\"\n"),
         );
-        assert_eq!(
-            found("p/route"),
-            tmp.path().join("p/ws").canonicalize().unwrap()
-        );
+        assert_eq!(found("p/route"), tmp.path().join("p/ws"));
         // So does an ancestor package's, for the crates below it.
         write(
             "q/ws/Cargo.toml",
@@ -4214,10 +4520,7 @@ mod tests {
             &format!("{package}workspace = \"../ws\"\n"),
         );
         write("q/pkg/route/Cargo.toml", package);
-        assert_eq!(
-            found("q/pkg/route"),
-            tmp.path().join("q/ws").canonicalize().unwrap()
-        );
+        assert_eq!(found("q/pkg/route"), tmp.path().join("q/ws"));
     }
 
     /// In a monorepo, the route crate's workspace and lockfile can sit above
@@ -4322,6 +4625,53 @@ mod tests {
         }
     }
 
+    #[test]
+    fn route_sources_follow_every_declared_path_dependency() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outer = tmp.path().canonicalize().unwrap();
+        let root = outer.join("a/petal");
+        let write = |path: &Path, body: &str| {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, body).unwrap();
+        };
+        let package = |name: &str| format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n");
+        // The route crate inherits one path dependency from its workspace and
+        // builds with another, which has a path dependency of its own.
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"route\"]\n[workspace.dependencies]\ninherited = { path = \"../inherited\" }\n",
+        );
+        write(
+            &root.join("route/Cargo.toml"),
+            &format!(
+                "{}[dependencies]\ninherited.workspace = true\n[build-dependencies]\ngenerator = {{ path = \"../../../generator\" }}\n",
+                package("demo-route")
+            ),
+        );
+        write(&outer.join("a/inherited/Cargo.toml"), &package("inherited"));
+        write(
+            &outer.join("generator/Cargo.toml"),
+            &format!(
+                "{}[dependencies]\ndeep = {{ path = \"../deep/x\" }}\n",
+                package("generator")
+            ),
+        );
+        write(&outer.join("deep/x/Cargo.toml"), &package("deep"));
+        let mut config = package_config();
+        config.sdk = SdkDependency::default();
+        let sources = route_sources(&root, &config).unwrap();
+        assert_eq!(sources.anchor, outer);
+        assert_eq!(
+            sources.packages,
+            BTreeSet::from([
+                root.join("route"),
+                outer.join("a/inherited"),
+                outer.join("generator"),
+                outer.join("deep/x"),
+            ])
+        );
+    }
+
     /// Cargo hashes a path package's absolute location into its symbol
     /// names unless the package is inside the workspace, so the generated
     /// workspace reaches the route crate and a path SDK through its link.
@@ -4343,7 +4693,7 @@ mod tests {
         manifest("");
         let mut config = package_config();
         config.sdk = SdkDependency::default();
-        assert_eq!(source_anchor(&root, &config).unwrap(), root);
+        assert_eq!(route_sources(&root, &config).unwrap().anchor, root);
 
         let workspace = root.join("target/petal-routes/workspace");
         let mut status = route("status.json");
@@ -4379,7 +4729,7 @@ mod tests {
         )
         .unwrap();
         manifest("shared = { path = \"../../shared\" }\n");
-        assert_eq!(source_anchor(&root, &config).unwrap(), outer);
+        assert_eq!(route_sources(&root, &config).unwrap().anchor, outer);
         generate_workspace(&root, &workspace, &[status.clone()], &config).unwrap();
         assert_eq!(
             fs::read_link(workspace.join("source")).unwrap(),

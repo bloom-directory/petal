@@ -105,6 +105,14 @@ fi
 grep -q 'PETAL_REQUIRE_LOCKED_SOURCES=1 refuses Cargo config' "$scratch/a-config.err"
 rm "$copy/.cargo/config.toml"
 rmdir "$copy/.cargo"
+# So is a rust-toolchain file that names a toolchain by path.
+printf '[toolchain]\npath = "%s"\n' "$scratch/toolchain" > "$copy/rust-toolchain.toml"
+if (cd "$copy" && PETAL_REQUIRE_LOCKED_SOURCES=1 "$petal" check --root . --config fixtures/repro-petal-build.toml) > /dev/null 2> "$scratch/a-toolchain.err"; then
+  echo 'a release check accepted a rust-toolchain file naming a toolchain by path' >&2
+  exit 1
+fi
+grep -q 'refuses a rust-toolchain file that names a toolchain by path' "$scratch/a-toolchain.err"
+rm "$copy/rust-toolchain.toml"
 # Cargo home's own config belongs to the machine, so the same override there
 # passes that check; the build must still refuse the package it moves.
 home=${CARGO_HOME:-$HOME/.cargo}

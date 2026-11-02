@@ -462,10 +462,13 @@ Know what an install changes:
   dependency graph, and keeps the paths of the checkout, the Cargo home and
   the Rust toolchain out of its components. It reaches the route crate through
   a link inside its generated workspace, because Cargo hashes a path package's
-  absolute location into symbol names otherwise. A Cargo config `[patch]` to a
-  local SDK still ties components to that SDK's location. Without one, the
-  same sources, compiler and flags give the same components in another
-  directory; another compiler, other flags or another builder give new ones.
+  absolute location into symbol names otherwise. The link points at the
+  deepest directory holding the Petal and its path dependencies, so a path
+  dependency outside the Petal makes the directory names below that point
+  part of the components, and a Cargo config `[patch]` to a local SDK ties
+  them to that SDK's location. Without those, the same sources, compiler and
+  flags give the same components in another directory; another compiler,
+  other flags or another builder give new ones.
   The builder sets its release profile on the Cargo command line and
   `CARGO_INCREMENTAL=0`, so `[profile.release]` and `build.incremental` in
   Cargo config and `CARGO_PROFILE_RELEASE_*` variables do not change

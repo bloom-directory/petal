@@ -104,19 +104,23 @@ jobs:
           path: .petal-tooling
           persist-credentials: false
 
+      # Cargo and rustup read configuration and toolchain files from the
+      # working directory and its parents. Build the tooling outside the Petal
+      # checkout, so the Petal's own Cargo config or rust-toolchain file cannot
+      # change the CLI that checks it, or the WASM tools it builds with.
+      - name: Move Petal tooling out of the Petal checkout
+        run: mv .petal-tooling "$RUNNER_TEMP/petal-tooling"
+
       - name: Install pinned WASM component tools
-        run: .petal-tooling/scripts/install-tools.sh --wasm-tools-only
+        working-directory: ${{ runner.temp }}/petal-tooling
+        run: scripts/install-tools.sh --wasm-tools-only
 
       - name: Build pinned Petal CLI
+        working-directory: ${{ runner.temp }}/petal-tooling
         run: |
           set -euo pipefail
-          cargo build \
-            --locked \
-            --release \
-            --manifest-path .petal-tooling/Cargo.toml \
-            -p bloom-petal-cli
-          cp .petal-tooling/target/release/petal "$RUNNER_TEMP/petal"
-          rm -rf .petal-tooling
+          cargo build --locked --release -p bloom-petal-cli
+          cp target/release/petal "$RUNNER_TEMP/petal"
 
       - name: Build route components with pinned Petal CLI
         env:

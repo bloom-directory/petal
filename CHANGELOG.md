@@ -27,10 +27,11 @@
   repository differently, or overrides it with `[patch]` or `[replace]`, and
   a lockfile that records a `[replace]` of any crate.
   `PETAL_REQUIRE_LOCKED_SOURCES=1`, which the release workflow sets, also
-  refuses a Cargo config patch of the SDK and any Cargo config in the
-  checkout, and builds only from the tested lockfile: a package moved by a
-  `paths` override or a source replacement in Cargo home's config is
-  refused.
+  refuses a Cargo config patch of the SDK, any Cargo config in the
+  checkout and a `rust-toolchain` file that names a toolchain by path, and
+  builds only from the tested lockfile: a package moved by a `paths`
+  override or a source replacement in Cargo home's config is refused. The
+  release workflow builds its tooling outside the Petal's checkout.
 - Build components from the route workspace's committed `Cargo.lock`,
   refusing any change to its versions, sources, checksums or dependency
   edges. A new scaffold needs that lockfile before `petal build`.

@@ -139,12 +139,17 @@ parent directory or Cargo home.
 that exception. It also refuses any Cargo config in the directory `petal`
 runs in or its parents, apart from Cargo home's own: a committed config can
 move a package, wrap or replace rustc, or change the linker, flags or
-environment, and the lockfile shows none of it. The component build then
-checks Cargo's metadata as well. It may use only the generated wrappers, the
-lockfile's path packages inside the checkout, and the packages the lockfile
-takes from git or a registry, read from Cargo's own copy in Cargo home. A
-`paths` override or a source replacement in Cargo home's config is refused
-there. This covers Cargo's configuration, not the build command: the release
+environment, and the lockfile shows none of it. For the same reason it
+refuses a `rust-toolchain` file there that names a toolchain by path; a
+channel is accepted. The component build then checks Cargo's metadata as
+well. It may use only the generated wrappers, the lockfile's path packages
+from the directories the route workspace declares, and the packages the
+lockfile takes from git or a registry, read from the folder Cargo keeps for
+that source in Cargo home. Cargo home itself is trusted, but a `paths`
+override, or a source replacement such as a vendored directory, is refused
+there. The release workflow builds its tooling outside the Petal's
+checkout, so the Petal's own files cannot change the CLI that checks it.
+This covers Cargo's configuration, not the build command: the release
 workflow runs the Petal's own build command, which must run `petal build`
 without changing Cargo's environment, and `petal package --no-build` cannot
 tell how the components it packages were built.
@@ -200,7 +205,10 @@ the checkout through a link, `target/petal-routes/workspace/source`, so the
 route crate and its path dependencies are inside it. Two different checkout
 directories with identical compiler and locked inputs then produce the same
 components. Without Unix links, path packages are reached directly and
-components can differ between checkouts. The builder passes its
+components can differ between checkouts. The link points at the deepest
+directory holding the Petal and the path dependencies it builds with, so a
+path dependency outside the Petal makes the directory names below that point
+part of the components. The builder passes its
 release profile on the Cargo command line and sets `CARGO_INCREMENTAL=0`,
 which override `[profile.release]` and `build.incremental` in Cargo config
 and `CARGO_PROFILE_RELEASE_*` variables; a per-package override, such as
