@@ -58,8 +58,12 @@ is the same as in earlier releases.
 With the feature, `petal::sdk::last_host_reason()` returns the host's
 explanation of the latest SDK host call, when that call failed with a host
 message of the form `denied: <reason>`, `not found: <reason>` or
-`invalid: <reason>`. The status is the error's classification, which can
-differ from the label: `denied: APPROVAL_NOT_FOUND: …` is `NotFound`. The reason belongs to that
+`invalid: <reason>`. The status is the error's classification, which reads
+the whole message and can differ from the label: a `denied:` message whose
+text contains `not found` is `NotFound`. To react to a specific refusal, match
+the code in the reason, such as `APPROVAL_NOT_FOUND`, not the status. Machine
+reports that code as `denied: APPROVAL_NOT_FOUND: approval does not exist`,
+which is `Denied`. The reason belongs to that
 call, not to the error value: every host call replaces it, and a success or an
 error the SDK builds itself clears it. Read it right after the failing call.
 No WIT change is required.

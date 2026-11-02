@@ -743,8 +743,8 @@ pub mod sdk {
     /// Classifies a host error exactly as earlier SDK releases did, so
     /// classification never depends on the feature. The text after a
     /// recognized `label: ` is recorded as the reason with that classified
-    /// status, even when the label names another status: `denied:
-    /// APPROVAL_NOT_FOUND: …` is `NotFound` and keeps its Broker reason.
+    /// status, even when the label names another status: a `denied:` message
+    /// containing `not found` is `NotFound` and keeps its reason.
     pub(crate) fn host_err(message: String) -> SdkError {
         let lower = message.to_ascii_lowercase();
         let status = if lower.contains("not found") {
@@ -961,6 +961,19 @@ pub mod sdk {
                 (
                     HostStatus::NotFound,
                     "APPROVAL_NOT_FOUND: approval not found".into(),
+                )
+            });
+            assert_eq!(last_host_reason(), expected);
+        }
+
+        #[test]
+        fn machine_approval_not_found_is_denied() {
+            let error = host_err("denied: APPROVAL_NOT_FOUND: approval does not exist".into());
+            assert_eq!(error, SdkError::Host(HostStatus::Denied));
+            let expected = cfg!(feature = "host-error-detail").then(|| {
+                (
+                    HostStatus::Denied,
+                    "APPROVAL_NOT_FOUND: approval does not exist".into(),
                 )
             });
             assert_eq!(last_host_reason(), expected);
