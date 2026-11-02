@@ -27,16 +27,18 @@
   repository differently, or overrides it with `[patch]` or `[replace]`, and
   a lockfile that records a `[replace]` of any crate.
   `PETAL_REQUIRE_LOCKED_SOURCES=1`, which the release workflow sets, also
-  refuses a Cargo config patch of the SDK, and any locked package that Cargo
-  config moves away from its locked source, such as through a `paths`
-  override or a vendored source replacement.
+  refuses a Cargo config patch of the SDK and any Cargo config in the
+  checkout, and builds only from the tested lockfile: a package moved by a
+  `paths` override or a source replacement in Cargo home's config is
+  refused.
 - Build components from the route workspace's committed `Cargo.lock`,
   refusing any change to its versions, sources, checksums or dependency
   edges. A new scaffold needs that lockfile before `petal build`.
 - Make components reproducible across checkout directories: remap the
-  checkout, Cargo home and toolchain paths, strip symbols and use one codegen
-  unit, with the release profile set on the Cargo command line and
-  `CARGO_INCREMENTAL=0`.
+  checkout, Cargo home and toolchain paths, reach the route crate through a
+  link inside the generated workspace so Cargo's symbol hashes do not depend
+  on the checkout's location, strip symbols and use one codegen unit, with the
+  release profile set on the Cargo command line and `CARGO_INCREMENTAL=0`.
 - Replace the runtime output with a fresh build, keeping the replaced output
   under `target/petal-routes/staging/`. `petal check` and
   `package --no-build` refuse a component with no route controller.

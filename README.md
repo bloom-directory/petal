@@ -133,13 +133,23 @@ from the Petal root for the patch, or any rustflags there, to apply. The pin
 check accepts a lockfile that resolves the SDK to a local path only while
 Cargo, run from that same directory, resolves the SDK to a local path, as such
 a patch does wherever its config sets it, including through `include`, a
-parent directory or Cargo home. `PETAL_REQUIRE_LOCKED_SOURCES=1` refuses that
-exception. The build then also refuses any package that Cargo config moves
-away from its locked source, which the lockfile cannot show: a `paths`
-override, or a source replacement such as a vendored directory. Every package
-the lockfile takes from git or a registry must be read from Cargo's own copy
-in Cargo home. The release workflow sets it, so a committed Cargo config
-cannot ship other code under the pins. Pins outside Cargo are not checked:
+parent directory or Cargo home.
+
+`PETAL_REQUIRE_LOCKED_SOURCES=1`, which the release workflow sets, refuses
+that exception. It also refuses any Cargo config in the directory `petal`
+runs in or its parents, apart from Cargo home's own: a committed config can
+move a package, wrap or replace rustc, or change the linker, flags or
+environment, and the lockfile shows none of it. The component build then
+checks Cargo's metadata as well. It may use only the generated wrappers, the
+lockfile's path packages inside the checkout, and the packages the lockfile
+takes from git or a registry, read from Cargo's own copy in Cargo home. A
+`paths` override or a source replacement in Cargo home's config is refused
+there. This covers Cargo's configuration, not the build command: the release
+workflow runs the Petal's own build command, which must run `petal build`
+without changing Cargo's environment, and `petal package --no-build` cannot
+tell how the components it packages were built.
+
+Pins outside Cargo are not checked:
 scripts that install the `petal` CLI, and the release workflow's `uses:`
 reference and `petal-tooling-ref`. Keep them at the same commit.
 
@@ -183,8 +193,14 @@ Machine assigns a separate final identity when composing the installed package.
 Component builds remap the checkout, Cargo home and Rust toolchain source
 paths, omit symbol names and use one codegen unit at compile time. Multiple
 units produced path-dependent empty-function ordering on Rust 1.99.1 even after
-remapping. Two different checkout directories with identical compiler and
-locked inputs produce the same tested components. The builder passes its
+remapping. Cargo also hashes a path package's location into its symbol
+names, as an absolute path unless the package is inside the workspace, and
+those names order some functions. The generated workspace therefore reaches
+the checkout through a link, `target/petal-routes/workspace/source`, so the
+route crate and its path dependencies are inside it. Two different checkout
+directories with identical compiler and locked inputs then produce the same
+components. Without Unix links, path packages are reached directly and
+components can differ between checkouts. The builder passes its
 release profile on the Cargo command line and sets `CARGO_INCREMENTAL=0`,
 which override `[profile.release]` and `build.incremental` in Cargo config
 and `CARGO_PROFILE_RELEASE_*` variables; a per-package override, such as

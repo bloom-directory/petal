@@ -88,22 +88,38 @@ result = {'schema': 'bloom.petal.reproducibility.v1', 'components': {
 (root / 'reproducibility-result.json').write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result, indent=2))
 PY
-# A release build reads every locked package from Cargo's own copy of its
-# source. A Cargo config paths override, which the lockfile cannot show, must
-# make it refuse; an identical copy of one registry dependency is enough.
+# A release build refuses Cargo config in the checkout, which could move a
+# package, wrap rustc or change flags without changing the lockfile. A paths
+# override of an identical copy of one registry dependency is enough.
 copy=$scratch/a
 dependency=$(cargo metadata --locked --format-version 1 --manifest-path "$copy/target/petal-routes/workspace/Cargo.toml" \
   | python3 -I -c 'import json, os, sys; print(next(os.path.dirname(p["manifest_path"]) for p in json.load(sys.stdin)["packages"] if (p["source"] or "").startswith("registry+")))')
 cp -R "$dependency" "$scratch/overridden-dependency"
+override=$(printf 'paths = ["%s"]' "$scratch/overridden-dependency")
 mkdir "$copy/.cargo"
-printf 'paths = ["%s"]\n' "$scratch/overridden-dependency" > "$copy/.cargo/config.toml"
-if (cd "$copy" && PETAL_REQUIRE_LOCKED_SOURCES=1 "$petal" build --root . --config fixtures/repro-petal-build.toml) > /dev/null 2> "$scratch/a-paths.err"; then
-  echo 'a release build accepted a Cargo config paths override' >&2
+printf '%s\n' "$override" > "$copy/.cargo/config.toml"
+if (cd "$copy" && PETAL_REQUIRE_LOCKED_SOURCES=1 "$petal" build --root . --config fixtures/repro-petal-build.toml) > /dev/null 2> "$scratch/a-config.err"; then
+  echo 'a release build accepted Cargo config in the checkout' >&2
   exit 1
 fi
-grep -q 'resolves from a local path, not the locked registry+' "$scratch/a-paths.err"
+grep -q 'PETAL_REQUIRE_LOCKED_SOURCES=1 refuses Cargo config' "$scratch/a-config.err"
 rm "$copy/.cargo/config.toml"
 rmdir "$copy/.cargo"
+# Cargo home's own config belongs to the machine, so the same override there
+# passes that check; the build must still refuse the package it moves.
+home=${CARGO_HOME:-$HOME/.cargo}
+mkdir "$scratch/cargo-home"
+for cached in registry git; do
+  if [ -d "$home/$cached" ]; then
+    ln -s "$home/$cached" "$scratch/cargo-home/$cached"
+  fi
+done
+printf '%s\n' "$override" > "$scratch/cargo-home/config.toml"
+if (cd "$copy" && CARGO_HOME="$scratch/cargo-home" PETAL_REQUIRE_LOCKED_SOURCES=1 "$petal" build --root . --config fixtures/repro-petal-build.toml) > /dev/null 2> "$scratch/a-paths.err"; then
+  echo 'a release build accepted a package moved by a Cargo home paths override' >&2
+  exit 1
+fi
+grep -q 'which the tested lockfile does not name' "$scratch/a-paths.err"
 # The release workflow packages what a Petal's own build command produced,
 # which can hold compile-time values a rebuild would not see. After a route
 # changes, --no-build still ships the built components; package rebuilds.

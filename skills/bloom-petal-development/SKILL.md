@@ -460,17 +460,20 @@ Know what an install changes:
   or checkout locations. The `petal build` released with this contract builds
   from the route workspace's committed `Cargo.lock`, refusing any change to the
   dependency graph, and keeps the paths of the checkout, the Cargo home and
-  the Rust toolchain out of its components. A path dependency outside the
-  checkout, such as a `[patch]` to a local SDK, keeps its absolute path.
-  Without one, the same sources, compiler and flags give the same components
-  in another directory; another compiler, other flags or another builder give
-  new ones. The builder sets its release profile on the Cargo command line and
+  the Rust toolchain out of its components. It reaches the route crate through
+  a link inside its generated workspace, because Cargo hashes a path package's
+  absolute location into symbol names otherwise. A Cargo config `[patch]` to a
+  local SDK still ties components to that SDK's location. Without one, the
+  same sources, compiler and flags give the same components in another
+  directory; another compiler, other flags or another builder give new ones.
+  The builder sets its release profile on the Cargo command line and
   `CARGO_INCREMENTAL=0`, so `[profile.release]` and `build.incremental` in
   Cargo config and `CARGO_PROFILE_RELEASE_*` variables do not change
   components, but a per-package profile override does. Each build keeps the
   output it replaced under `target/petal-routes/staging/`; delete those
-  directories when you no longer need them. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, the builder adds
-  its remapping to `CARGO_ENCODED_RUSTFLAGS`. Otherwise it adds it to
+  directories when you no longer need them. With `RUSTFLAGS` or
+  `CARGO_ENCODED_RUSTFLAGS` set, the builder adds its remapping to
+  `CARGO_ENCODED_RUSTFLAGS`. Otherwise it adds it to
   `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which Cargo uses
   instead of `build.rustflags`, drop it. Cargo splits that variable on
   whitespace, so for a path containing whitespace the builder uses a

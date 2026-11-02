@@ -123,8 +123,8 @@ jobs:
           BUILD_COMMAND: ${{ inputs['build-command'] }}
           PETAL_COMPILE_TIME_SECRET: ${{ secrets['compile-time-secret'] }}
           PETAL_BIN: ${{ runner.temp }}/petal
-          # A release builds only from the tested lockfile's own sources: no Cargo
-          # config patch, paths override or source replacement.
+          # Refuse the checkout's Cargo config, and any package Cargo would read
+          # from somewhere the tested lockfile does not name.
           PETAL_REQUIRE_LOCKED_SOURCES: "1"
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
