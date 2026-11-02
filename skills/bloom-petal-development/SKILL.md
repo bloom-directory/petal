@@ -472,16 +472,18 @@ Know what an install changes:
   The builder sets its release profile on the Cargo command line and
   `CARGO_INCREMENTAL=0`, so `[profile.release]` and `build.incremental` in
   Cargo config and `CARGO_PROFILE_RELEASE_*` variables do not change
-  components, but a per-package profile override does. Each build keeps the
-  output it replaced under `target/petal-routes/staging/`; delete those
-  directories when you no longer need them. With `RUSTFLAGS` or
-  `CARGO_ENCODED_RUSTFLAGS` set, the builder adds its remapping to
-  `CARGO_ENCODED_RUSTFLAGS`. Otherwise it adds it to
-  `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which Cargo uses
-  instead of `build.rustflags`, drop it. Cargo splits that variable on
-  whitespace, so for a path containing whitespace the builder uses a
-  `--config` array, which Cargo cannot merge into a string `build.rustflags`;
-  write that as an array.
+  components, but a per-package profile override does. Each build moves the
+  output it replaces under `target/petal-routes/staging/` and removes it only
+  when it holds exactly the components the previous build of that output
+  recorded, apart from Finder's `.DS_Store`; it keeps anything else there,
+  such as a file it did not write, for you to inspect and delete. A failed
+  build removes what it staged. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS`
+  set, the builder adds its remapping to `CARGO_ENCODED_RUSTFLAGS`. Otherwise
+  it adds it to `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which
+  Cargo uses instead of `build.rustflags`, drop it. Cargo splits that
+  variable on whitespace, so for a path containing whitespace the builder uses
+  a `--config` array, which Cargo cannot merge into a string
+  `build.rustflags`; write that as an array.
   Propose installer provenance and wallet policy only for the hash of the exact
   package that will be installed: the hash `bloom petals build` reports for
   the package directory you will install as it is (or for the archive it

@@ -215,9 +215,15 @@ and `CARGO_PROFILE_RELEASE_*` variables; a per-package override, such as
 `[profile.release.package."*"]`, still applies to the packages it names.
 
 Each build moves the output it replaces to
-`target/petal-routes/staging/<name>-<process>-<time>.previous` instead of
-deleting it, and keeps it there; delete those directories when you no longer
-need them.
+`target/petal-routes/staging/<name>-<process>-<time>.previous` rather than
+deleting it outright. It then removes that copy, file by file, when it holds
+exactly the components the previous build of the same Petal name and output
+recorded under `target/petal-routes/reports/`, since a rebuild reproduces
+them; Finder's `.DS_Store` goes with it. Otherwise, for example when the copy
+holds a file the builder did not write, a component changed since, or a link,
+the builder keeps it there and says so; delete it when you no longer need it.
+A build that fails removes the components it staged.
+`target/petal-routes/build-report.json` still describes the latest build.
 
 The builder adds its flags to `CARGO_BUILD_RUSTFLAGS`, after any value set
 there, and Cargo appends that to the configured `build.rustflags`. When a

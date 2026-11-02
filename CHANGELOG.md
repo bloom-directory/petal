@@ -40,9 +40,12 @@
   link inside the generated workspace so Cargo's symbol hashes do not depend
   on the checkout's location, strip symbols and use one codegen unit, with the
   release profile set on the Cargo command line and `CARGO_INCREMENTAL=0`.
-- Replace the runtime output with a fresh build, keeping the replaced output
-  under `target/petal-routes/staging/`. `petal check` and
-  `package --no-build` refuse a component with no route controller.
+- Replace the runtime output with a fresh build, moving the replaced output
+  under `target/petal-routes/staging/` and removing it again only when it
+  holds exactly the components the previous build of that output recorded,
+  ignoring Finder's `.DS_Store`. A failed build removes what it staged.
+  `petal check` and `package --no-build` refuse a component with no route
+  controller.
 - `petal package` rebuilds current sources first, and its archive holds only
   what Bloom installs: `petal.toml`, `README.md`, `AGENTS.md`,
   `petal/<name>/`, `components/`, `modules/`, `wit/` and the development
