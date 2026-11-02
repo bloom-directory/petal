@@ -4,8 +4,56 @@ on:
   pull_request:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      machine_ref:
+        description: Full Machine commit used for compiled error forwarding
+        required: true
+        type: string
 
 jobs:
+  compiled-error-detail:
+    name: Compiled error detail through Machine VM
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      MACHINE_REF: ${{ inputs.machine_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: sdk
+          persist-credentials: false
+      - name: Require an immutable Machine input
+        shell: bash
+        run: '[[ "$MACHINE_REF" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v7
+        with:
+          repository: bloom-directory/bloom
+          ref: ${{ inputs.machine_ref }}
+          path: machine
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk -> target
+      - run: sdk/scripts/install-tools.sh --wasm-tools-only
+      - name: Verify two distinct compiled host refusals
+        working-directory: sdk
+        run: sh scripts/check-component-errors.sh "$GITHUB_WORKSPACE/machine"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compiled-error-detail
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/petal-errors.*/error-result.json
+            ${{ runner.temp }}/petal-errors.*/machine-test.log
+
   test:
     runs-on: ubuntu-latest
     steps:
