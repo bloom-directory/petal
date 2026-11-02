@@ -25,19 +25,25 @@ allowed_intents = ["conformance.sign"]
 EOF
   printf '# Structural conformance fixture\nNo signing authorization is implied.\n' > "$copy/README.md"
   printf '# Fixture guidance\nUse only for component and package checks.\n' > "$copy/AGENTS.md"
+  side_env=
   if [ "$side" = b ]; then
     printf 'unrelated development report\n' > "$copy/audit-notes.md"
     # A developer's own Cargo config, with build.rustflags as a string reached
     # through include, keeps its flags beside the builder's path remapping.
+    # Its release profile, one set through CARGO_PROFILE_RELEASE_*, and
+    # build.incremental must not change the components: the builder sets its
+    # profile on the command line and CARGO_INCREMENTAL=0, which override them.
     mkdir "$copy/.cargo"
     printf 'include = ["team.toml"]\n' > "$copy/.cargo/config.toml"
-    printf '[build]\nrustflags = "--cfg petal_reproducibility_probe"\n' > "$copy/.cargo/team.toml"
+    printf '[build]\nrustflags = "--cfg petal_reproducibility_probe"\nincremental = true\n[profile.release]\nopt-level = 1\n' > "$copy/.cargo/team.toml"
+    side_env=CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
   fi
   # Packaging must rebuild current sources and discard stale active output.
   mkdir -p "$copy/petal/conformance"
   printf 'stale component\n' > "$copy/petal/conformance/obsolete.wasm"
   # Cargo reads config from the directory it runs in.
-  (cd "$copy" && "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz") > "$scratch/$side-package.json"
+  # shellcheck disable=SC2086 # side_env is one assignment or empty.
+  (cd "$copy" && env $side_env "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz") > "$scratch/$side-package.json"
   test ! -e "$copy/petal/conformance/obsolete.wasm"
 done
 if ! grep -rqF petal_reproducibility_probe "$scratch/b/target/petal-routes/target/wasm32-unknown-unknown/release/.fingerprint"/petal-route-*; then
@@ -82,10 +88,25 @@ result = {'schema': 'bloom.petal.reproducibility.v1', 'components': {
 (root / 'reproducibility-result.json').write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result, indent=2))
 PY
+# A release build reads every locked package from Cargo's own copy of its
+# source. A Cargo config paths override, which the lockfile cannot show, must
+# make it refuse; an identical copy of one registry dependency is enough.
+copy=$scratch/a
+dependency=$(cargo metadata --locked --format-version 1 --manifest-path "$copy/target/petal-routes/workspace/Cargo.toml" \
+  | python3 -I -c 'import json, os, sys; print(next(os.path.dirname(p["manifest_path"]) for p in json.load(sys.stdin)["packages"] if (p["source"] or "").startswith("registry+")))')
+cp -R "$dependency" "$scratch/overridden-dependency"
+mkdir "$copy/.cargo"
+printf 'paths = ["%s"]\n' "$scratch/overridden-dependency" > "$copy/.cargo/config.toml"
+if (cd "$copy" && PETAL_REQUIRE_LOCKED_SOURCES=1 "$petal" build --root . --config fixtures/repro-petal-build.toml) > /dev/null 2> "$scratch/a-paths.err"; then
+  echo 'a release build accepted a Cargo config paths override' >&2
+  exit 1
+fi
+grep -q 'resolves from a local path, not the locked registry+' "$scratch/a-paths.err"
+rm "$copy/.cargo/config.toml"
+rmdir "$copy/.cargo"
 # The release workflow packages what a Petal's own build command produced,
 # which can hold compile-time values a rebuild would not see. After a route
 # changes, --no-build still ships the built components; package rebuilds.
-copy=$scratch/a
 route=$copy/fixtures/conformance-route/files/static.txt.rs
 sed 's/canonical petal fixture/edited after the build/' "$route" > "$route.edited"
 mv "$route.edited" "$route"

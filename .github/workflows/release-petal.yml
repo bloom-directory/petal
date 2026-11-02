@@ -123,6 +123,9 @@ jobs:
           BUILD_COMMAND: ${{ inputs['build-command'] }}
           PETAL_COMPILE_TIME_SECRET: ${{ secrets['compile-time-secret'] }}
           PETAL_BIN: ${{ runner.temp }}/petal
+          # A release builds only from the tested lockfile's own sources: no Cargo
+          # config patch, paths override or source replacement.
+          PETAL_REQUIRE_LOCKED_SOURCES: "1"
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
       - name: Package deterministic release archive
@@ -131,6 +134,7 @@ jobs:
           EXPECTED_ROUTE_COUNT: ${{ inputs['expected-route-count'] }}
           PACKAGE_ROOT: ${{ inputs['package-root'] }}
           PETAL_NAME: ${{ inputs['petal-name'] }}
+          PETAL_REQUIRE_LOCKED_SOURCES: "1"
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail

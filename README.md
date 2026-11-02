@@ -66,11 +66,15 @@ a version requirement such as `=0.1.0`, or a local `path`. `petal build`,
   `bloom-petal-contract`, is pinned at a different revision, in the route crate
   or in `[dependencies]` of `petal-build.toml`;
 - the lockfile resolves any of them from another source or revision;
-- the route crate or its workspace overrides the SDK with `[patch]` or
-  `[replace]`, which generated route components ignore.
+- the route crate or its workspace overrides the SDK, or another crate from
+  its repository, with `[patch]` or `[replace]`, which generated route
+  components ignore;
+- the lockfile records a `[replace]` of any crate, for the same reason.
 
 The component build starts from the route workspace's committed lockfile and
-resolves wrapper packages without accepting dependency graph changes. Missing
+resolves wrapper packages without accepting dependency graph changes. The
+route workspace is the one Cargo finds for the route crate, which in a
+monorepo can sit above the Petal root. Missing
 locked sources may be fetched; provision them first to use Cargo's offline mode.
 Declare any additional wrapper dependencies in the route workspace so route
 tests and generated components exercise the same graph.
@@ -87,11 +91,17 @@ A local checkout can still be tested through a `[patch]` in
 file from the directory `petal` runs in, not from `--root`, so run `petal`
 from the Petal root for the patch, or any rustflags there, to apply. The pin
 check accepts a lockfile that resolves the SDK to a local path only while
-Cargo, run from that same directory, applies such a patch, wherever its config
-sets it, including through `include`, a parent directory or Cargo home. Pins
-outside Cargo are not checked: scripts that install the `petal` CLI, and the
-release workflow's `uses:` reference and `petal-tooling-ref`. Keep them at the
-same commit.
+Cargo, run from that same directory, resolves the SDK to a local path, as such
+a patch does wherever its config sets it, including through `include`, a parent
+directory or Cargo home. `PETAL_REQUIRE_LOCKED_SOURCES=1` refuses that
+exception. The build then also refuses any package that Cargo config moves
+away from its locked source, which the lockfile cannot show: a `paths`
+override, or a source replacement such as a vendored directory. Every package
+the lockfile takes from git or a registry must be read from Cargo's own copy
+in Cargo home. The release workflow sets it, so a committed Cargo config
+cannot ship other code under the pins. Pins outside Cargo are not checked: scripts that install the
+`petal` CLI, and the release workflow's `uses:` reference and
+`petal-tooling-ref`. Keep them at the same commit.
 
 ## Packaging a Petal
 
@@ -115,10 +125,16 @@ composition and installation still apply the host's authoritative checks. The
 archive uses sorted strict ustar entries, normalized ownership, permissions and
 timestamps, and a gzip header with a zero timestamp. Repeating the command over
 the same clean package tree produces identical bytes. It refuses to overwrite
-an existing output. It includes the complete `petal/` runtime tree, `petal.toml`,
-`README.md`, `AGENTS.md`, and, when present, the pinned development skill that
-`petal new` writes to `.agents/skills/bloom-petal-development/SKILL.md`. The
-configured output must be `petal/<name>`.
+an existing output. It includes `petal.toml`, `README.md`, `AGENTS.md` and
+the runtime tree `petal/<name>/`. When present, it also includes the pinned
+development skill that `petal new` writes to
+`.agents/skills/bloom-petal-development/SKILL.md`, and the optional
+`components/`, `modules/` and `wit/` directories of Bloom's package format;
+route sidecars compose from `components/` and `modules/`. Each is taken only
+under exactly that name, and links and other non-regular files are refused.
+Bloom refuses any other entry under `petal/`, such as a `.DS_Store`, so the
+archive leaves it out. An archive is never packaged, and the output may not be
+written inside a packaged tree. The configured output must be `petal/<name>`.
 Unrelated development files do not change runtime identity; code, capabilities
 and runtime documents do. This deliberately changes older source-tree package
 hashes: publish a new immutable package and preserve its predecessor lineage.
@@ -128,7 +144,14 @@ Component builds remap the checkout, Cargo home and Rust toolchain source
 paths, omit symbol names and use one codegen unit at compile time. Multiple
 units produced path-dependent empty-function ordering on Rust 1.99.1 even after
 remapping. Two different checkout directories with identical compiler and
-locked inputs produce the same tested components. The builder adds its flags to
+locked inputs produce the same tested components. The builder passes its
+release profile on the Cargo command line and sets `CARGO_INCREMENTAL=0`,
+which override `[profile.release]` and `build.incremental` in Cargo config
+and `CARGO_PROFILE_RELEASE_*` variables; a per-package override, such as
+`[profile.release.package."*"]`, still applies to the packages it names. Each build moves the output it replaces to
+`target/petal-routes/staging/<name>-<process>-<time>.previous` instead of
+deleting it, and keeps it there; delete those directories when you no longer
+need them. The builder adds its flags to
 `CARGO_BUILD_RUSTFLAGS`, after any value set there, and Cargo appends that to
 the configured `build.rustflags`. When a remapped path contains whitespace, the
 flags go in a `--config` array instead, which Cargo cannot merge into a string

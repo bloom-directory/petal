@@ -391,7 +391,8 @@ Use the repository's pinned commands and scripts. At minimum:
 3. Run the repository's route-architecture source check.
 4. Run `petal build --root <root>` to compile every route component. Run it
    from the Petal root: Cargo reads `.cargo/config.toml` from the directory it
-   runs in, not from `--root`.
+   runs in, not from `--root`. It builds from the route workspace's
+   `Cargo.lock`, which the step 1 tests write; commit that lockfile.
 5. Run `petal check --root <root>` against the just-built components.
 6. Inspect changed components' imports and compare all three policy scopes.
 7. Run `petal package --root <root> --out <versioned>.petal.tar.gz` or the
@@ -445,8 +446,11 @@ Know what an install changes:
   `.zip`, changes that hash (`bloom petals build` regenerates
   `artifacts/routes/` and `artifacts/build-manifest.json` before it hashes
   them). The archive `petal package` writes holds only the runtime inputs:
-  `petal.toml`, `README.md`, `AGENTS.md`, the `petal/` tree and the
-  development skill at `.agents/skills/bloom-petal-development/SKILL.md`.
+  `petal.toml`, `README.md`, `AGENTS.md`, `petal/<name>/` (Bloom refuses any
+  other entry under `petal/`), the optional `components/`, `modules/` and
+  `wit/` package directories (route sidecars compose from the first two), and
+  the development skill at `.agents/skills/bloom-petal-development/SKILL.md`,
+  each under exactly that name.
   Other files change neither the archive nor the hash Bloom computes when it
   installs it. Pass a deliberate runtime tree or a validated runtime archive,
   rather than the whole development checkout, when that is what you intend to
@@ -460,7 +464,12 @@ Know what an install changes:
   checkout, such as a `[patch]` to a local SDK, keeps its absolute path.
   Without one, the same sources, compiler and flags give the same components
   in another directory; another compiler, other flags or another builder give
-  new ones. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, the builder adds
+  new ones. The builder sets its release profile on the Cargo command line and
+  `CARGO_INCREMENTAL=0`, so `[profile.release]` and `build.incremental` in
+  Cargo config and `CARGO_PROFILE_RELEASE_*` variables do not change
+  components, but a per-package profile override does. Each build keeps the
+  output it replaced under `target/petal-routes/staging/`; delete those
+  directories when you no longer need them. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, the builder adds
   its remapping to `CARGO_ENCODED_RUSTFLAGS`. Otherwise it adds it to
   `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which Cargo uses
   instead of `build.rustflags`, drop it. Cargo splits that variable on
