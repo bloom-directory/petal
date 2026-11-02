@@ -10,6 +10,10 @@ description = "Rust SDK for authoring Bloom Petal route components"
 [lib]
 name = "petal"
 
+[features]
+default = []
+host-error-detail = []
+
 [dependencies]
 getrandom.workspace = true
 serde.workspace = true
