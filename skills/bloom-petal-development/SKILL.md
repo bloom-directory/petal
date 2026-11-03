@@ -450,7 +450,7 @@ Know what an install changes:
   other entry under `petal/`), the optional `components/`, `modules/` and
   `wit/` package directories (route sidecars compose from the first two), and
   the development skill at `.agents/skills/bloom-petal-development/SKILL.md`,
-  each under exactly that name.
+  each under exactly that name, with each directory a real directory.
   Other files change neither the archive nor the hash Bloom computes when it
   installs it. Pass a deliberate runtime tree or a validated runtime archive,
   rather than the whole development checkout, when that is what you intend to
@@ -484,7 +484,8 @@ Know what an install changes:
   Cargo uses instead of `build.rustflags`, drop it. Cargo splits that
   variable on whitespace, so for a path containing whitespace the builder uses
   a `--config` array, which Cargo cannot merge into a string
-  `build.rustflags`; write that as an array.
+  `build.rustflags` from Cargo config. The build then stops before compiling
+  and says so; write that as an array.
   Propose installer provenance and wallet policy only for the hash of the exact
   package that will be installed: the hash `bloom petals build` reports for
   the package directory you will install as it is (or for the archive it

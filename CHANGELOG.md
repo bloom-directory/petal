@@ -24,8 +24,9 @@
   when set it must match. The route SDK must be an exact pin, and `petal build`,
   `check` and `package` refuse a Petal whose route crate, workspace,
   `[dependencies]` or lockfile pins the SDK or another crate from its
-  repository differently, or overrides it with `[patch]` or `[replace]`, and
-  a lockfile that records a `[replace]` of any crate.
+  repository differently, a route crate that makes the SDK optional, a route
+  crate or workspace that overrides any crate with `[patch]` or `[replace]`,
+  and a lockfile that records a `[replace]` of any crate.
   `PETAL_REQUIRE_LOCKED_SOURCES=1`, which the release workflow sets, also
   refuses a Cargo config patch of the SDK, any Cargo config in the
   checkout and a `rust-toolchain` file that names a toolchain by path, and

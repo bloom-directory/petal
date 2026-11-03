@@ -260,6 +260,18 @@ pub fn package(
     collect_package_files(&root, &runtime_dir, &mut files)?;
     for directory in OPTIONAL_PACKAGE_DIRECTORIES {
         if let Some(path) = exact_entry(&root, Path::new(directory), "Petal package")? {
+            // Bloom reads these as directories; a file of the same name would
+            // be packaged as one entry that nothing composes from. Links and
+            // other non-regular files are refused as anywhere else.
+            if fs::symlink_metadata(&path)
+                .map_err(display_err("inspect", &path))?
+                .is_file()
+            {
+                return Err(format!(
+                    "Petal package {directory} must be a directory: {}",
+                    path.display()
+                ));
+            }
             collect_package_files(&root, &path, &mut files)?;
         }
     }
@@ -1238,13 +1250,14 @@ fn build_workspace(
                 cmd.env("CARGO_BUILD_RUSTFLAGS", value);
             }
             // Cargo splits the variable on whitespace, so a path containing
-            // whitespace goes in an array, which Cargo appends to a configured
-            // array but cannot merge into a configured string.
+            // whitespace goes in an array.
             None => {
-                cmd.arg("--config").arg(format!(
-                    "build.rustflags={}",
-                    serde_json::to_string(&flags).map_err(|error| error.to_string())?
-                ));
+                let setting = rustflags_array_setting(
+                    Command::new("cargo"),
+                    &workspace.join("Cargo.toml"),
+                    &flags,
+                )?;
+                cmd.arg("--config").arg(setting);
             }
         }
     }
@@ -1325,6 +1338,43 @@ fn appended_build_rustflags(developer: Option<&str>, flags: &[&str]) -> Option<S
             .collect::<Vec<_>>()
             .join(" "),
     )
+}
+
+/// The `--config` setting that gives Cargo `flags` as a `build.rustflags`
+/// array, which keeps a path containing whitespace in one flag. Cargo appends
+/// it to an array that Cargo config sets, but stops at a string with only
+/// "expected string, but found array", so ask `cargo` first and say why.
+fn rustflags_array_setting(
+    mut cargo: Command,
+    manifest: &Path,
+    flags: &[&str],
+) -> Result<String, String> {
+    let setting = format!(
+        "build.rustflags={}",
+        serde_json::to_string(flags).map_err(|error| error.to_string())?
+    );
+    let output = cargo
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--offline",
+        ])
+        .arg("--manifest-path")
+        .arg(manifest)
+        .arg("--config")
+        .arg(&setting)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("run cargo metadata: {error}"))?;
+    // Any other failure is the build's to report.
+    if !output.status.success()
+        && String::from_utf8_lossy(&output.stderr).contains("expected string, but found array")
+    {
+        return Err("the checkout, Cargo home or toolchain path contains whitespace, so the builder passes its path remapping as a build.rustflags array, which Cargo cannot merge into the string build.rustflags that Cargo config sets. Set build.rustflags as an array there, such as rustflags = [\"--cfg\", \"name\"], or build from paths without whitespace".into());
+    }
+    Ok(setting)
 }
 
 fn rustflags_variable(name: &str) -> Result<Option<String>, String> {
@@ -1909,8 +1959,10 @@ fn route_sdk_dependency(root: &Path, config: &BuildConfig) -> Result<toml::Value
             toml::Value::Table(table) => table.clone(),
             _ => return Err("SDK dependency must be a version or table".into()),
         };
+        // An inheriting entry may add features, drop default features or make
+        // the dependency optional; Cargo allows `optional` only there.
         if inherited {
-            for field in ["features", "default-features"] {
+            for field in ["features", "default-features", "optional"] {
                 if let Some(local) = value.get(field) {
                     if field == "features" {
                         let existing = table
@@ -2183,23 +2235,26 @@ fn dependency_tables(manifest: &toml::Table) -> Vec<(String, &toml::Table)> {
     tables
 }
 
-/// `[patch.<source>]` and `[replace]` entries that override `package`.
-fn overrides(manifest: &toml::Table, package: &str) -> Vec<String> {
+/// Every `[patch.<source>]` and `[replace]` entry in `manifest`, with the
+/// package it overrides.
+fn overrides(manifest: &toml::Table) -> Vec<(String, String)> {
     let mut found = Vec::new();
     if let Some(patches) = manifest.get("patch").and_then(toml::Value::as_table) {
         for (source, table) in patches {
             for (key, value) in table.as_table().into_iter().flatten() {
-                if dependency_package(key, value) == package {
-                    found.push(format!("[patch.{source:?}] {key}"));
-                }
+                found.push((
+                    format!("[patch.{source:?}] {key}"),
+                    dependency_package(key, value).to_owned(),
+                ));
             }
         }
     }
     if let Some(replace) = manifest.get("replace").and_then(toml::Value::as_table) {
         for spec in replace.keys() {
-            if spec_package_name(spec) == package {
-                found.push(format!("[replace] {spec:?}"));
-            }
+            found.push((
+                format!("[replace] {spec:?}"),
+                spec_package_name(spec).to_owned(),
+            ));
         }
     }
     found
@@ -2369,8 +2424,9 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
 ///   repository (such as `bloom-petal-contract`), here and in the build
 ///   configuration's `[dependencies]`;
 /// - every lockfile entry for those packages;
-/// - that no `[patch]` or `[replace]` in the route crate or its workspace
-///   overrides the SDK, because generated components ignore them.
+/// - that the route crate does not make the SDK optional;
+/// - that the route crate and its workspace have no `[patch]` or `[replace]`
+///   of any crate, because generated components ignore them.
 ///
 /// A lockfile entry with no source is accepted only while Cargo, run from the
 /// current directory as the component build is, resolves the SDK to a local
@@ -2592,6 +2648,10 @@ fn check_sdk_pin_with(
             &mut disagreements,
         )?;
     }
+    // Generated route components ignore every override in the route crate and
+    // its workspace, whichever crate it moves, so the route's tests would run
+    // a dependency graph the components do not.
+    let mut overridden = Vec::new();
     for (path, table) in [
         (&manifest_path, Some(&manifest)),
         (&workspace_manifest_path, workspace_manifest.as_ref()),
@@ -2599,14 +2659,11 @@ fn check_sdk_pin_with(
         let Some(table) = table else {
             continue;
         };
-        // The SDK and every crate checked with it from its repository.
-        for name in &checked_packages {
-            for entry in overrides(table, name) {
-                disagreements.push(format!(
-                    "{} {entry} overrides {name}, which generated route components ignore",
-                    shown(path)
-                ));
-            }
+        for (entry, name) in overrides(table) {
+            overridden.push(format!(
+                "{} {entry} overrides {name}, which generated route components ignore",
+                shown(path)
+            ));
         }
     }
 
@@ -2630,7 +2687,7 @@ fn check_sdk_pin_with(
             // Generated components ignore them, so the route's tests would run
             // code the components do not, whichever crate is replaced.
             if let Some(replacement) = entry.get("replace").and_then(toml::Value::as_str) {
-                disagreements.push(format!(
+                overridden.push(format!(
                     "{} replaces {name} {} with {replacement}, which generated route components ignore",
                     shown(&lock_path),
                     version.unwrap_or("?"),
@@ -2689,18 +2746,32 @@ fn check_sdk_pin_with(
         }
     }
 
-    if disagreements.is_empty() {
-        return Ok(());
-    }
-    Err(format!(
-        "{package} is pinned inconsistently with the route SDK {expected}:\n{}\nAlign these sources, remove manifest SDK [patch] or [replace] overrides, then refresh the lockfile:\n  cargo update --manifest-path {} -p {package}",
-        disagreements
+    let list = |lines: &[String]| {
+        lines
             .iter()
             .map(|line| format!("  - {line}"))
             .collect::<Vec<_>>()
-            .join("\n"),
-        shown(&workspace_manifest_path),
-    ))
+            .join("\n")
+    };
+    let mut errors = Vec::new();
+    if !disagreements.is_empty() {
+        errors.push(format!(
+            "{package} is pinned inconsistently with the route SDK {expected}:\n{}\nAlign these sources, then refresh the lockfile:\n  cargo update --manifest-path {} -p {package}",
+            list(&disagreements),
+            shown(&workspace_manifest_path),
+        ));
+    }
+    if !overridden.is_empty() {
+        errors.push(format!(
+            "the route workspace overrides dependencies that generated route components build without:\n{}\nRemove these overrides, then run the route's tests again to refresh the lockfile.",
+            list(&overridden),
+        ));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
 }
 
 fn path_from_member(member: &Path, target: &Path) -> Result<String, String> {
@@ -3829,6 +3900,77 @@ mod tests {
         );
     }
 
+    /// Generated components always enable the SDK, so route tests must too.
+    #[test]
+    fn an_optional_sdk_is_refused_however_it_is_declared() {
+        let direct = format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", rev = \"{REV_A}\", optional = true }}\n"
+        );
+        let (tmp, config) = pin_fixture(git_sdk(REV_A), &direct, None);
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("must not be optional"), "{error}");
+
+        // Cargo takes `optional` only from the inheriting entry.
+        let (tmp, config) = pin_fixture(
+            git_sdk(REV_A),
+            "[dependencies]\npetal = { workspace = true, optional = true }\n",
+            None,
+        );
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            format!(
+                "[workspace]\nmembers = [\"route\"]\n[workspace.dependencies]\n{}",
+                git_dep("petal", "bloom-petal-sdk", REV_A)
+            ),
+        )
+        .unwrap();
+        let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+        assert!(error.contains("must not be optional"), "{error}");
+    }
+
+    /// Generated components ignore the route workspace's overrides of any
+    /// crate, not only the SDK's, and `petal build` then refuses the changed
+    /// graph; `check` and `package --no-build` must refuse it too.
+    #[test]
+    fn sdk_pin_refuses_any_patch_or_replace_in_the_route_workspace() {
+        let manifest = format!(
+            "[dependencies]\n{}",
+            git_dep("petal", "bloom-petal-sdk", REV_A)
+        );
+        for overrides in [
+            "[patch.crates-io]\nsha2 = { path = \"../sha2\" }\n",
+            "[replace]\n\"sha2:0.11.0\" = { path = \"../sha2\" }\n",
+        ] {
+            let (tmp, config) =
+                pin_fixture(git_sdk(REV_A), &format!("{manifest}{overrides}"), None);
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(
+                error.contains(
+                    "  - route/Cargo.toml [patch.\"crates-io\"] sha2 overrides sha2, which generated route components ignore"
+                ) || error.contains(
+                    "  - route/Cargo.toml [replace] \"sha2:0.11.0\" overrides sha2, which generated route components ignore"
+                ),
+                "{error}"
+            );
+            // The SDK pin itself is consistent, so the error says only this.
+            assert!(!error.contains("pinned inconsistently"), "{error}");
+            assert!(error.contains("Remove these overrides"), "{error}");
+
+            let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
+            fs::write(
+                tmp.path().join("Cargo.toml"),
+                format!("[workspace]\nmembers = [\"route\"]\n{overrides}"),
+            )
+            .unwrap();
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(error.contains("  - Cargo.toml ["), "{error}");
+            assert!(
+                error.contains("overrides sha2, which generated route components ignore"),
+                "{error}"
+            );
+        }
+    }
+
     #[test]
     fn sdk_pin_canonicalizes_urls_and_lockfile_revs_like_cargo() {
         // GitHub paths are case-insensitive and http means https.
@@ -4240,6 +4382,35 @@ mod tests {
         );
     }
 
+    /// Cargo cannot merge that array into a string `build.rustflags` from
+    /// Cargo config, so the build stops first and says why.
+    #[test]
+    fn a_rustflags_array_against_a_configured_string_says_why() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("src")).unwrap();
+        fs::create_dir_all(tmp.path().join(".cargo")).unwrap();
+        fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(tmp.path().join("src/lib.rs"), "").unwrap();
+        let flags = ["--remap-path-prefix=/my root=/petal"];
+        let setting = |config: &str| {
+            fs::write(tmp.path().join(".cargo/config.toml"), config).unwrap();
+            let mut cargo = Command::new("cargo");
+            cargo.current_dir(tmp.path());
+            rustflags_array_setting(cargo, &tmp.path().join("Cargo.toml"), &flags)
+        };
+        let error = setting("[build]\nrustflags = \"--cfg developer\"\n").unwrap_err();
+        assert!(error.contains("path contains whitespace"), "{error}");
+        assert!(error.contains("Set build.rustflags as an array"), "{error}");
+        assert_eq!(
+            setting("[build]\nrustflags = [\"--cfg\", \"developer\"]\n").unwrap(),
+            "build.rustflags=[\"--remap-path-prefix=/my root=/petal\"]"
+        );
+    }
+
     #[test]
     fn toolchain_sources_map_to_the_path_rustc_embeds_without_rust_src() {
         let Some((source, embedded)) = toolchain_source().unwrap() else {
@@ -4462,6 +4633,22 @@ mod tests {
                 .any(|path| path.to_ascii_lowercase().starts_with("components/")),
             "{entries:?}"
         );
+    }
+
+    #[test]
+    fn package_refuses_a_file_in_place_of_an_optional_directory() {
+        for directory in OPTIONAL_PACKAGE_DIRECTORIES {
+            let fixture = tempfile::tempdir().unwrap();
+            package_fixture(fixture.path());
+            fs::write(fixture.path().join(directory), b"not a directory").unwrap();
+            let out = fixture.path().join("dist/demo.petal.tar.gz");
+            let error = package(fixture.path(), &package_config(), &out).unwrap_err();
+            assert!(
+                error.contains(&format!("{directory} must be a directory")),
+                "{error}"
+            );
+            assert!(!out.exists(), "{directory}");
+        }
     }
 
     /// A later package would take an archive written into a packaged tree.

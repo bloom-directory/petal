@@ -106,9 +106,10 @@ commit, a version requirement such as `=0.1.0`, or a local `path`. Then
   `bloom-petal-contract`, is pinned at a different revision, in the route crate
   or in `[dependencies]` of `petal-build.toml`;
 - the lockfile resolves any of them from another source or revision;
-- the route crate or its workspace overrides the SDK, or another crate from
-  its repository, with `[patch]` or `[replace]`, which generated route
-  components ignore;
+- the route crate makes the SDK optional, directly or on an entry that
+  inherits it, since generated components always enable it;
+- the route crate or its workspace overrides any crate with `[patch]` or
+  `[replace]`, which generated route components ignore;
 - the lockfile records a `[replace]` of any crate, for the same reason.
 
 The component build starts from the route workspace's committed lockfile and
@@ -186,7 +187,8 @@ development skill that `petal new` writes to
 `.agents/skills/bloom-petal-development/SKILL.md`, and the optional
 `components/`, `modules/` and `wit/` directories of Bloom's package format;
 route sidecars compose from `components/` and `modules/`. Each is taken only
-under exactly that name, and links and other non-regular files are refused.
+under exactly that name and must be a directory, and links and other
+non-regular files are refused.
 Bloom refuses any other entry under `petal/`, such as a `.DS_Store`, so the
 archive leaves it out. An archive is never packaged, and the output may not be
 written inside a packaged tree. The configured output must be `petal/<name>`.
@@ -231,7 +233,9 @@ what it staged; one that is killed can leave its directory under
 The builder adds its flags to `CARGO_BUILD_RUSTFLAGS`, after any value set
 there, and Cargo appends that to the configured `build.rustflags`. When a
 remapped path contains whitespace, the flags go in a `--config` array
-instead, which Cargo cannot merge into a string `build.rustflags`. With
+instead, which Cargo cannot merge into a string `build.rustflags` from Cargo
+config; the build then stops before compiling and says to set it as an array
+or build from paths without whitespace. With
 `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` set, Cargo ignores configured
 rustflags and the builder adds its flags to `CARGO_ENCODED_RUSTFLAGS`.
 Otherwise explicit target-specific Cargo rustflags keep their normal
