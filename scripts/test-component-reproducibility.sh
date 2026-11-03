@@ -151,3 +151,11 @@ if cmp -s "$scratch/a.petal.tar.gz" "$scratch/a-rebuilt.petal.tar.gz"; then
   echo 'package did not rebuild the edited route' >&2
   exit 1
 fi
+# That rebuild removed the components it replaced, which the first package
+# recorded. Only the first package's copy of the planted component remains.
+set -- "$copy/target/petal-routes/staging"/*
+if [ "$#" -ne 1 ] || [ "$(ls -A "$1")" != obsolete.wasm ]; then
+  echo 'builds left more under staging than the planted component' >&2
+  ls -AR "$copy/target/petal-routes/staging" >&2
+  exit 1
+fi

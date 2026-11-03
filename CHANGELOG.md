@@ -42,10 +42,10 @@
   release profile set on the Cargo command line and `CARGO_INCREMENTAL=0`.
 - Replace the runtime output with a fresh build, moving the replaced output
   under `target/petal-routes/staging/` and removing it again only when it
-  holds exactly the components the previous build of that output recorded,
-  ignoring Finder's `.DS_Store`. A failed build removes what it staged.
-  `petal check` and `package --no-build` refuse a component with no route
-  controller.
+  holds exactly the components an earlier build recorded writing to that
+  output, ignoring Finder's `.DS_Store`. A build that stops with an error
+  removes what it staged. `petal check` and `package --no-build` refuse a
+  component with no route controller.
 - `petal package` rebuilds current sources first, and its archive holds only
   what Bloom installs: `petal.toml`, `README.md`, `AGENTS.md`,
   `petal/<name>/`, `components/`, `modules/`, `wit/` and the development

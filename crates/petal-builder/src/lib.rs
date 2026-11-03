@@ -636,9 +636,8 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
         routes.len(),
         out_dir.display()
     );
-    // The reports still describe the output just replaced. The legacy
-    // build-report.json, of whichever configuration built last, only stands
-    // in until this output has a report of its own.
+    // The reports still describe the output just replaced. Older builders
+    // update only the legacy build-report.json, so it is tried as well.
     let report_path = build_root.join("build-report.json");
     let output_report = output_report_path(&build_root, config);
     if let Some(backup) = backup {
@@ -2755,14 +2754,11 @@ fn replace_dir(staging: &Path, destination: &Path) -> Result<Option<PathBuf>, St
     Ok(had_destination.then_some(backup))
 }
 
-/// The files a directory tree holds, by path relative to its root.
-type TreeFiles = BTreeMap<String, PathBuf>;
-
-/// The regular files under `root` and its directories, when `root` is a real
-/// directory holding only real directories and regular files. `None` when the
-/// root or anything in it is a link or another kind of file: nothing here may
-/// read or remove through one, since it could reach outside the tree.
-fn owned_tree(root: &Path) -> Result<Option<(TreeFiles, Vec<PathBuf>)>, String> {
+/// The regular files under `root`, by path relative to it, when `root` is a
+/// real directory holding only real directories and regular files. `None`
+/// when the root or anything in it is a link or another kind of file, since
+/// a link can reach outside the tree.
+fn owned_tree(root: &Path) -> Result<Option<BTreeMap<String, PathBuf>>, String> {
     if !fs::symlink_metadata(root)
         .map_err(display_err("inspect", root))?
         .is_dir()
@@ -2770,14 +2766,12 @@ fn owned_tree(root: &Path) -> Result<Option<(TreeFiles, Vec<PathBuf>)>, String> 
         return Ok(None);
     }
     let mut files = BTreeMap::new();
-    let mut directories = Vec::new();
     let mut pending = vec![root.to_owned()];
     while let Some(directory) = pending.pop() {
         for entry in fs::read_dir(&directory).map_err(display_err("read", &directory))? {
             let path = entry.map_err(|error| error.to_string())?.path();
             let metadata = fs::symlink_metadata(&path).map_err(display_err("inspect", &path))?;
             if metadata.is_dir() {
-                directories.push(path.clone());
                 pending.push(path);
             } else if metadata.is_file() {
                 let relative = path
@@ -2791,36 +2785,18 @@ fn owned_tree(root: &Path) -> Result<Option<(TreeFiles, Vec<PathBuf>)>, String> 
             }
         }
     }
-    Ok(Some((files, directories)))
-}
-
-/// Remove what [`owned_tree`] found, then `root`: files one at a time and each
-/// directory only once empty, never recursively.
-fn remove_owned_tree(
-    root: &Path,
-    files: &TreeFiles,
-    mut directories: Vec<PathBuf>,
-) -> Result<(), String> {
-    for path in files.values() {
-        fs::remove_file(path).map_err(display_err("remove", path))?;
-    }
-    // Deepest first, so each directory is empty when it is removed.
-    directories.sort_by_key(|directory| std::cmp::Reverse(directory.components().count()));
-    for directory in directories.iter().map(PathBuf::as_path).chain([root]) {
-        fs::remove_dir(directory).map_err(display_err("remove", directory))?;
-    }
-    Ok(())
+    Ok(Some(files))
 }
 
 /// The folder metadata macOS Finder writes into any directory it shows.
 const FINDER_METADATA: &str = ".DS_Store";
 
 /// Remove `backup` when it holds exactly the components that `report_path`
-/// records for this Petal's output, file for file and byte for byte: a
-/// rebuild reproduces all of it. Finder's `.DS_Store` does not count and goes
-/// with it. Anything else, such as a file the builder did not write, a
-/// component changed since, a link or another output's report, keeps the
-/// whole backup for its owner.
+/// records an earlier build writing to this output, file for file and byte
+/// for byte, whichever Petal that build was for: it holds nothing but builder
+/// output. Finder's `.DS_Store` does not count and goes with it. Anything
+/// else, such as a file the builder did not write, a component changed since,
+/// a link or another output's report, keeps the whole backup for its owner.
 fn discard_rebuilt_backup(
     backup: &Path,
     report_path: &Path,
@@ -2832,17 +2808,15 @@ fn discard_rebuilt_backup(
     let Ok(report) = serde_json::from_str::<serde_json::Value>(&body) else {
         return Ok(false);
     };
-    let (Some(petal), Some(output), Some(artifacts)) = (
-        report["petal"].as_str(),
-        report["output"].as_str(),
-        report["artifacts"].as_object(),
-    ) else {
+    let (Some(output), Some(artifacts)) =
+        (report["output"].as_str(), report["artifacts"].as_object())
+    else {
         return Ok(false);
     };
-    if petal != config.name || Path::new(output) != config.output {
+    if Path::new(output) != config.output {
         return Ok(false);
     }
-    let Some((files, directories)) = owned_tree(backup)? else {
+    let Some(files) = owned_tree(backup)? else {
         return Ok(false);
     };
     let components = files
@@ -2863,13 +2837,16 @@ fn discard_rebuilt_backup(
             return Ok(false);
         }
     }
-    remove_owned_tree(backup, &files, directories)?;
+    // std's remove_dir_all never follows a link, even one swapped in after
+    // the check above, so it cannot reach outside the copy. Anything added to
+    // the copy since goes too; it is still inside target/petal-routes/staging/.
+    fs::remove_dir_all(backup).map_err(display_err("remove", backup))?;
     Ok(true)
 }
 
-/// Where a build records the components it wrote for this Petal's name and
-/// output. Keeping one report per output lets a later build of it recognise
-/// its own backup, whichever other configuration built in the same root in
+/// Where a build records the components it wrote to its output. Each output
+/// has one report, whichever Petal built it last, so a build recognises the
+/// output it replaces whichever configurations built in the same root in
 /// between.
 fn output_report_path(build_root: &Path, config: &BuildConfig) -> PathBuf {
     let output = config
@@ -2881,27 +2858,26 @@ fn output_report_path(build_root: &Path, config: &BuildConfig) -> PathBuf {
     let key = blake3::hash(output.as_bytes()).to_hex();
     build_root
         .join("reports")
-        .join(format!("{}-{}.json", config.name, &key[..16]))
+        .join(format!("{}.json", &key[..16]))
 }
 
-/// Discard `backup` when the first of `reports` that exists shows a rebuild
-/// reproduces it, and say so when it is kept.
+/// Discard `backup` when any of `reports` shows it holds nothing but builder
+/// output, and say so when it is kept. Each is tried in turn: an older
+/// builder updates only the legacy report, so this output's own report can
+/// describe an earlier build than the one replaced.
 fn retire_backup(backup: &Path, reports: &[&Path], config: &BuildConfig) -> bool {
-    let result = match reports.iter().find(|report| report.is_file()) {
-        Some(report) => discard_rebuilt_backup(backup, report, config),
-        None => Ok(false),
-    };
-    match result {
-        Ok(true) => true,
-        Ok(false) => {
-            eprintln!("previous output retained at {}", backup.display());
-            false
-        }
-        Err(error) => {
-            eprintln!("previous output retained at {}: {error}", backup.display());
-            false
+    for report in reports {
+        match discard_rebuilt_backup(backup, report, config) {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("previous output retained at {}: {error}", backup.display());
+                return false;
+            }
         }
     }
+    eprintln!("previous output retained at {}", backup.display());
+    false
 }
 
 /// Create the fresh generation `staging`, write each route's component into
@@ -2950,20 +2926,16 @@ fn install_generation(
     result
 }
 
-/// Remove a generation that did not become the output. It holds only what
-/// this build wrote, but still goes file by file, and stays if it holds a link.
+/// Remove a generation that did not become the output. This build created it
+/// and wrote everything in it, and std's remove_dir_all never follows a link.
 fn discard_failed_staging(staging: &Path) {
-    let removed = match owned_tree(staging) {
-        Ok(Some((files, directories))) => remove_owned_tree(staging, &files, directories),
-        Ok(None) => Err("it holds a link".into()),
-        Err(_) if !staging.exists() => Ok(()),
-        Err(error) => Err(error),
-    };
-    if let Err(error) = removed {
-        eprintln!(
+    match fs::remove_dir_all(staging) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => eprintln!(
             "failed build output retained at {}: {error}",
             staging.display()
-        );
+        ),
     }
 }
 
@@ -3140,6 +3112,14 @@ mod tests {
         let missing = tmp.path().join("target/missing");
         assert!(replace_dir(&missing, &output).is_err());
         assert_eq!(fs::read(output.join("new.wasm")).unwrap(), b"new component");
+
+        // A first build replaces nothing, so there is no backup to retire.
+        let first = tmp.path().join("target/first");
+        fs::create_dir_all(&first).unwrap();
+        let fresh = tmp.path().join("petal/fresh");
+        assert_eq!(replace_dir(&first, &fresh).unwrap(), None);
+        assert!(fresh.is_dir());
+        assert!(!first.with_extension("previous").exists());
     }
 
     /// A build report for `petal`'s `output` recording `components`.
@@ -3170,13 +3150,20 @@ mod tests {
     const REPORTED: &[(&str, &[u8])] =
         &[("status.wasm", b"status"), ("nested/plan.md.wasm", b"plan")];
 
+    /// Whichever Petal's build recorded them, the components are all builder
+    /// output.
     #[test]
     fn a_backup_of_exactly_the_reported_components_is_discarded() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (backup, report) = backup_fixture(tmp.path(), "demo", REPORTED);
-        assert!(discard_rebuilt_backup(&backup, &report, &package_config()).unwrap());
-        assert!(!backup.exists());
-        assert!(tmp.path().join("staging").is_dir());
+        for petal in ["demo", "other"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (backup, report) = backup_fixture(tmp.path(), petal, REPORTED);
+            assert!(
+                discard_rebuilt_backup(&backup, &report, &package_config()).unwrap(),
+                "{petal}"
+            );
+            assert!(!backup.exists(), "{petal}");
+            assert!(tmp.path().join("staging").is_dir(), "{petal}");
+        }
     }
 
     #[test]
@@ -3186,16 +3173,10 @@ mod tests {
             "changed component",
             "missing component",
             "no report",
-            "another petal",
             "another output",
         ] {
             let tmp = tempfile::tempdir().unwrap();
-            let petal = if case == "another petal" {
-                "other"
-            } else {
-                "demo"
-            };
-            let (backup, report) = backup_fixture(tmp.path(), petal, REPORTED);
+            let (backup, report) = backup_fixture(tmp.path(), "demo", REPORTED);
             match case {
                 "extra file" => fs::write(backup.join("notes.txt"), b"keep me").unwrap(),
                 "changed component" => fs::write(backup.join("status.wasm"), b"edited").unwrap(),
@@ -3227,8 +3208,9 @@ mod tests {
         assert!(!backup.exists());
     }
 
-    /// Two configurations building in one root each keep their own report, so
-    /// a build retires its backup whichever one built in between.
+    /// Configurations building in one root keep one report per output, so a
+    /// build retires its backup whichever ones built in between, including
+    /// another Petal's build of the same output.
     #[test]
     fn each_output_keeps_its_own_report() {
         let tmp = tempfile::tempdir().unwrap();
@@ -3237,9 +3219,12 @@ mod tests {
         other.output = "fixtures/components".into();
         let mut slashed = package_config();
         slashed.output = "petal/demo/".into();
+        let mut renamed = package_config();
+        renamed.name = "renamed".into();
         let own = output_report_path(tmp.path(), &demo);
         assert_ne!(own, output_report_path(tmp.path(), &other));
         assert_eq!(own, output_report_path(tmp.path(), &slashed));
+        assert_eq!(own, output_report_path(tmp.path(), &renamed));
 
         // The other configuration built last, so build-report.json is its.
         let (backup, legacy) = backup_fixture(tmp.path(), "demo", REPORTED);
@@ -3250,7 +3235,25 @@ mod tests {
         .unwrap();
         assert!(!retire_backup(&backup, &[&own, &legacy], &demo));
         fs::create_dir_all(own.parent().unwrap()).unwrap();
-        fs::write(&own, report_body("demo", "petal/demo", REPORTED)).unwrap();
+        fs::write(&own, report_body("renamed", "petal/demo", REPORTED)).unwrap();
+        assert!(retire_backup(&backup, &[&own, &legacy], &demo));
+        assert!(!backup.exists());
+    }
+
+    /// An older builder updates only build-report.json, so this output's own
+    /// report can describe an earlier build than the one replaced.
+    #[test]
+    fn a_stale_output_report_does_not_hide_a_matching_legacy_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let demo = package_config();
+        let own = output_report_path(tmp.path(), &demo);
+        let (backup, legacy) = backup_fixture(tmp.path(), "demo", REPORTED);
+        fs::create_dir_all(own.parent().unwrap()).unwrap();
+        let earlier: &[(&str, &[u8])] = &[
+            ("status.wasm", b"earlier"),
+            ("nested/plan.md.wasm", b"plan"),
+        ];
+        fs::write(&own, report_body("demo", "petal/demo", earlier)).unwrap();
         assert!(retire_backup(&backup, &[&own, &legacy], &demo));
         assert!(!backup.exists());
     }
@@ -3292,15 +3295,27 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_backup_holding_a_link_is_kept_whole() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (backup, report) = backup_fixture(tmp.path(), "demo", REPORTED);
-        let outside = tmp.path().join("outside.wasm");
-        fs::write(&outside, b"plan").unwrap();
-        fs::remove_file(backup.join("nested/plan.md.wasm")).unwrap();
-        std::os::unix::fs::symlink(&outside, backup.join("nested/plan.md.wasm")).unwrap();
-        assert!(!discard_rebuilt_backup(&backup, &report, &package_config()).unwrap());
-        assert!(backup.join("status.wasm").is_file());
-        assert!(outside.is_file());
+        // A link in place of a component, or beside exactly the components.
+        for beside in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (backup, report) = backup_fixture(tmp.path(), "demo", REPORTED);
+            let outside = tmp.path().join("outside.wasm");
+            fs::write(&outside, b"plan").unwrap();
+            let link = if beside {
+                backup.join("nested/link.wasm")
+            } else {
+                fs::remove_file(backup.join("nested/plan.md.wasm")).unwrap();
+                backup.join("nested/plan.md.wasm")
+            };
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(
+                !discard_rebuilt_backup(&backup, &report, &package_config()).unwrap(),
+                "beside: {beside}"
+            );
+            assert!(backup.join("status.wasm").is_file(), "beside: {beside}");
+            assert!(fs::symlink_metadata(&link).is_ok(), "beside: {beside}");
+            assert!(outside.is_file(), "beside: {beside}");
+        }
     }
 
     /// `replace_dir` moves a linked output as the link itself, so the backup

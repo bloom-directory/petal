@@ -474,10 +474,11 @@ Know what an install changes:
   Cargo config and `CARGO_PROFILE_RELEASE_*` variables do not change
   components, but a per-package profile override does. Each build moves the
   output it replaces under `target/petal-routes/staging/` and removes it only
-  when it holds exactly the components the previous build of that output
-  recorded, apart from Finder's `.DS_Store`; it keeps anything else there,
-  such as a file it did not write, for you to inspect and delete. A failed
-  build removes what it staged. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS`
+  when it holds exactly the components an earlier build recorded writing to
+  that output, apart from Finder's `.DS_Store`; it keeps anything else there,
+  such as a file it did not write, for you to inspect and delete. A build that
+  stops with an error removes what it staged; a killed one can leave its
+  directory there. With `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS`
   set, the builder adds its remapping to `CARGO_ENCODED_RUSTFLAGS`. Otherwise
   it adds it to `CARGO_BUILD_RUSTFLAGS`, so target-specific rustflags, which
   Cargo uses instead of `build.rustflags`, drop it. Cargo splits that
