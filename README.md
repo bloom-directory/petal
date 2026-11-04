@@ -314,3 +314,13 @@ from an explicit `None`. Declarations are not proof of economic effects.
 The host must validate the DTO, independently recompute the suite-specific hash,
 and derive identity and policy from authenticated context. For Ed25519 the
 hash binds the message with SHA-256; the signature is over the message itself.
+
+### Certified zero-spend classes
+
+A package may opt specific signing classes into zero-spend consent with
+`[sign].zero_spend_classes = ["app.login"]`. Every class must also appear in
+`allowed_intents`, with `economic_effects_schema = 1`. The builder and package
+checks reject missing consent prerequisites and duplicate or unknown classes.
+Machine binds this declaration into installed route provenance. An individual
+action must still explicitly declare `Spend::None`; omitting spend does not
+make it zero spend. Coverage depends on an active grant and its rate cap.
