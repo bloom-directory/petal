@@ -235,7 +235,7 @@ impl Spend {
                 {
                     return Err(invalid("duplicate debit asset"));
                 }
-                if !network(&d.network) || !uint256(&d.amount) {
+                if !network(&d.network) || !uint256(&d.amount) || d.amount == "0" {
                     return Err(invalid("invalid debit network or amount"));
                 }
                 match &d.asset {
@@ -327,7 +327,11 @@ mod tests {
     fn raw_uint256_and_canonical_asset_boundaries() {
         let a = "0x0123456789abcdef0123456789abcdef01234567";
         assert!(Spend::erc20("evm-137", a, MAX_U256).is_ok());
+        assert!(Spend::None.validate().is_ok());
+        assert!(Spend::Unspecified.validate().is_ok());
+        assert!(Spend::Bounded { debits: vec![] }.validate().is_err());
         for bad in [
+            "0",
             "",
             "00",
             "01",
