@@ -4,8 +4,56 @@ on:
   pull_request:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      machine_ref:
+        description: Full Machine commit used for compiled error forwarding
+        required: true
+        type: string
 
 jobs:
+  compiled-error-detail:
+    name: Compiled error detail through Machine VM
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      MACHINE_REF: ${{ inputs.machine_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: sdk
+          persist-credentials: false
+      - name: Require an immutable Machine input
+        shell: bash
+        run: '[[ "$MACHINE_REF" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v7
+        with:
+          repository: bloom-directory/bloom
+          ref: ${{ inputs.machine_ref }}
+          path: machine
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk -> target
+      - run: sdk/scripts/install-tools.sh --wasm-tools-only
+      - name: Verify two distinct compiled host refusals
+        working-directory: sdk
+        run: sh scripts/check-component-errors.sh "$GITHUB_WORKSPACE/machine"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compiled-error-detail
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/petal-errors.*/error-result.json
+            ${{ runner.temp }}/petal-errors.*/machine-test.log
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -13,10 +61,30 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          # With rust-src, rustc embeds toolchain paths unless the builder
+          # remaps them, so the reproducibility check can catch a leak.
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
       - name: Install component tools
         run: scripts/install-tools.sh
       - run: scripts/check.sh
+      - name: Retain public reproducibility result or mismatch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-reproducibility
+          path: ${{ runner.temp }}/petal-repro.*/reproducibility-*
+          if-no-files-found: ignore
+
+  # macOS file systems ignore case, which some builder tests depend on.
+  builder-on-macos:
+    name: Builder tests on macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked -p bloom-petal-builder
 
   first-party-consumers:
     name: First-party consumer (${{ matrix.name }})

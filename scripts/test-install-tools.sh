@@ -3,7 +3,7 @@ set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+printf 'Installer test evidence retained at %s\n' "$tmp" >&2
 export REAL_CARGO
 REAL_CARGO=$(command -v cargo)
 export INSTALL_LOG="$tmp/install.log"

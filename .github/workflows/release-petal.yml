@@ -104,25 +104,32 @@ jobs:
           path: .petal-tooling
           persist-credentials: false
 
+      # Cargo and rustup read configuration and toolchain files from the
+      # working directory and its parents. Build the tooling outside the Petal
+      # checkout, so the Petal's own Cargo config or rust-toolchain file cannot
+      # change the CLI that checks it, or the WASM tools it builds with.
+      - name: Move Petal tooling out of the Petal checkout
+        run: mv .petal-tooling "$RUNNER_TEMP/petal-tooling"
+
       - name: Install pinned WASM component tools
-        run: .petal-tooling/scripts/install-tools.sh --wasm-tools-only
+        working-directory: ${{ runner.temp }}/petal-tooling
+        run: scripts/install-tools.sh --wasm-tools-only
 
       - name: Build pinned Petal CLI
+        working-directory: ${{ runner.temp }}/petal-tooling
         run: |
           set -euo pipefail
-          cargo build \
-            --locked \
-            --release \
-            --manifest-path .petal-tooling/Cargo.toml \
-            -p bloom-petal-cli
-          cp .petal-tooling/target/release/petal "$RUNNER_TEMP/petal"
-          rm -rf .petal-tooling
+          cargo build --locked --release -p bloom-petal-cli
+          cp target/release/petal "$RUNNER_TEMP/petal"
 
       - name: Build route components with pinned Petal CLI
         env:
           BUILD_COMMAND: ${{ inputs['build-command'] }}
           PETAL_COMPILE_TIME_SECRET: ${{ secrets['compile-time-secret'] }}
           PETAL_BIN: ${{ runner.temp }}/petal
+          # Refuse the checkout's Cargo config, and any package Cargo would read
+          # from somewhere the tested lockfile does not name.
+          PETAL_REQUIRE_LOCKED_SOURCES: "1"
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
       - name: Package deterministic release archive
@@ -131,12 +138,17 @@ jobs:
           EXPECTED_ROUTE_COUNT: ${{ inputs['expected-route-count'] }}
           PACKAGE_ROOT: ${{ inputs['package-root'] }}
           PETAL_NAME: ${{ inputs['petal-name'] }}
+          PETAL_REQUIRE_LOCKED_SOURCES: "1"
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           ARCHIVE="$PETAL_NAME-$RELEASE_TAG.petal.tar.gz"
           mkdir -p dist
+          # Package exactly what the build command produced. A rebuild here
+          # would not see PETAL_COMPILE_TIME_SECRET or the values the build
+          # command derives from it, and would ship components without them.
           "$RUNNER_TEMP/petal" package \
+            --no-build \
             --root "$PACKAGE_ROOT" \
             --out "$RUNNER_TEMP/$ARCHIVE" \
             > "$RUNNER_TEMP/package-report.json"

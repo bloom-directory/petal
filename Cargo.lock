@@ -123,6 +123,7 @@ dependencies = [
  "bloom-petal-contract",
  "clap",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

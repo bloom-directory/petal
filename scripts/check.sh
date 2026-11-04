@@ -7,13 +7,16 @@ cd "$root"
 scripts/test-install-tools.sh
 cargo fmt --all -- --check
 cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo build --locked -p bloom-petal-sdk --features host-error-detail --target wasm32-unknown-unknown
 wasm-tools component wit wit/route >/dev/null
 for package in wit/route/deps/*; do
   wasm-tools component wit "$package" >/dev/null
 done
 scripts/generate-bindings.sh
 git diff --exit-code -- crates/petal-sdk/src/route_file.rs
+cargo test --locked --manifest-path fixtures/conformance-route/Cargo.toml
 cargo run --quiet -p bloom-petal-cli -- build --config fixtures/petal-build.toml
 cargo run --quiet -p bloom-petal-cli -- check --config fixtures/petal-build.toml
 test "$(wasm-tools component wit fixtures/components/static.txt.wasm | grep -c 'import bloom:sign/signing@0.2.0' || true)" = 0
@@ -23,3 +26,5 @@ test "$(wasm-tools component wit fixtures/components/prepared.wasm | grep -c 'im
 test "$(wasm-tools component wit fixtures/components/static.txt.wasm | grep -c 'import bloom:prepared-sign/signing@0.1.0' || true)" = 0
 test "$(wasm-tools component wit fixtures/components/prepared-status.wasm | grep -c 'import bloom:prepared-sign/status@0.1.0' || true)" = 1
 test "$(wasm-tools component wit fixtures/components/prepared-status.wasm | grep -c 'import bloom:prepared-sign/signing@0.1.0' || true)" = 0
+scripts/test-release-artifacts.sh
+sh scripts/test-component-reproducibility.sh "$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/petal-repro.XXXXXX")"

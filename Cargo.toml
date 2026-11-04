@@ -13,6 +13,7 @@ include = [
   "templates/rust-route-petal/route/Cargo.toml.template",
   "templates/rust-route-petal/route/src/**",
   "templates/rust-route-petal/route/files/**",
+  "skills/bloom-petal-development/SKILL.md",
   "README.md",
   "LICENSE",
 ]
