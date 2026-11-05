@@ -315,6 +315,33 @@ The host must validate the DTO, independently recompute the suite-specific hash,
 and derive identity and policy from authenticated context. For Ed25519 the
 hash binds the message with SHA-256; the signature is over the message itself.
 
+### Prepared signing helpers
+
+Enable the SDK's `evm` feature for `signing::eip712_action` and
+`signing::erc20_spend`. The former derives the payload and review from the
+same typed data; the latter declares raw token units. Petals still construct
+protocol messages, calculate their complete debit (including fees), and
+validate returned signatures for their protocol.
+
+`Attempt::open(&mut CtxHost(ctx), scope, build)` freezes a prepared action and
+its Petal-owned context together. `sign_or_resume` retries the same Machine
+operation and returns its signature. `approval_read` supplies a read-only
+`approval.json` projection. Routes using attempts need `bloom:store` as well
+as their signing/status capability; `.caps(...)` replaces the default list.
+
+Use a stable scope unique to the package, wallet and logical operation, and
+always submit using the returned attempt's context. Concurrent builders use
+the first stored action, not their own losing proposal. Machine remains the
+only outcome authority. Petals retain venue submission/reconciliation state.
+
+`renew` requires a terminal expired/cancelled operation, or a zero-spend
+refresh after signing. It never renews pending, ambiguous or unstarted
+attempts. Records are create-only, with at most 32 generations per scope.
+Package upgrades refuse in-flight spending continuation; reconcile before
+creating a new logical action. Lost Petal records are not a supported recovery
+path, and replayed signatures do not prevent venue-level duplicate submission.
+A typed `NotFound` status means unstarted; backend/decode errors never do.
+
 ### Certified zero-spend classes
 
 A package may opt specific signing classes into zero-spend consent with

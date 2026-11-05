@@ -73,3 +73,41 @@ pub fn status(
         &encode(&request)?,
     ))
 }
+
+mod attempt;
+pub use attempt::{
+    Attempt, AttemptState, CtxHost, SignHalt, SigningHost, approval_read, sign_or_resume,
+};
+
+/// Construct payload and review from the same EIP-712 typed data.
+#[cfg(feature = "evm")]
+pub fn eip712_action(
+    class: &str,
+    typed_data: &serde_json::Value,
+) -> Result<PreparedAction, SigningError> {
+    let typed: alloy_dyn_abi::TypedData =
+        serde_json::from_value(typed_data.clone()).map_err(|e| invalid(e.to_string()))?;
+    let domain = typed.domain.separator();
+    let message = typed.hash_struct().map_err(|e| invalid(e.to_string()))?;
+    let payload = SigningPayload::keccak256(
+        [&[0x19, 0x01][..], domain.as_slice(), message.as_slice()].concat(),
+    )?;
+    let review = ReviewArtifact::new("bloom.message.review", 1, serde_json::to_vec(&serde_json::json!({"schema":"bloom.message.review.v1", "kind":"eip712", "typed_data":typed_data})).map_err(|e| invalid(e.to_string()))?)?;
+    PreparedAction::new(class, payload, review)
+}
+/// Declare a canonical raw-unit ERC-20 debit.
+#[cfg(feature = "evm")]
+pub fn erc20_spend(
+    chain_id: u64,
+    token: alloy_primitives::Address,
+    amount: alloy_primitives::U256,
+) -> Result<Spend, SigningError> {
+    Spend::erc20(
+        format!("evm-{chain_id}"),
+        format!("{token:#x}"),
+        amount.to_string(),
+    )
+}
+
+#[cfg(all(test, feature = "evm"))]
+mod evm_tests;

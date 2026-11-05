@@ -26,5 +26,7 @@ test "$(wasm-tools component wit fixtures/components/prepared.wasm | grep -c 'im
 test "$(wasm-tools component wit fixtures/components/static.txt.wasm | grep -c 'import bloom:prepared-sign/signing@0.1.0' || true)" = 0
 test "$(wasm-tools component wit fixtures/components/prepared-status.wasm | grep -c 'import bloom:prepared-sign/status@0.1.0' || true)" = 1
 test "$(wasm-tools component wit fixtures/components/prepared-status.wasm | grep -c 'import bloom:prepared-sign/signing@0.1.0' || true)" = 0
+test "$(wasm-tools component wit fixtures/components/prepared-attempt.wasm | grep -c 'import bloom:prepared-sign/signing@0.1.0' || true)" = 1
+test "$(wasm-tools component wit fixtures/components/prepared-attempt-status.wasm | grep -c 'import bloom:prepared-sign/signing@0.1.0' || true)" = 0
 scripts/test-release-artifacts.sh
 sh scripts/test-component-reproducibility.sh "$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/petal-repro.XXXXXX")"

@@ -13,6 +13,7 @@ name = "petal"
 [features]
 default = []
 host-error-detail = []
+evm = ["dep:alloy-dyn-abi", "dep:alloy-primitives"]
 
 [dependencies]
 bloom-petal-contract = { path = "../.." }
@@ -22,3 +23,6 @@ serde_json.workspace = true
 serde_jcs = "0.2"
 sha2.workspace = true
 wit-bindgen.workspace = true
+
+alloy-dyn-abi = { version = "1.6", features = ["eip712"], optional = true }
+alloy-primitives = { version = "1.6", optional = true }
