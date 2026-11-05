@@ -13,6 +13,7 @@ const ALL_CAPS: &[&str] = &[
     "bloom:http",
     "bloom:store",
     "bloom:sign",
+    "bloom:sign.status",
     "bloom:tx.outbox",
     "bloom:chain",
     "bloom:vfs.read",
@@ -110,6 +111,36 @@ pub struct PackageReport {
 struct PackageManifest {
     schema: String,
     name: String,
+    #[serde(default)]
+    sign: SigningPolicy,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SigningPolicy {
+    #[serde(default)]
+    economic_effects_schema: Option<u16>,
+    #[serde(default)]
+    allowed_intents: Vec<String>,
+    #[serde(default)]
+    zero_spend_classes: Vec<String>,
+}
+
+impl SigningPolicy {
+    fn validate(&self) -> Result<(), String> {
+        if self.zero_spend_classes.is_empty() {
+            return Ok(());
+        }
+        if self.economic_effects_schema != Some(1) {
+            return Err("zero_spend_classes requires economic_effects_schema = 1".into());
+        }
+        let mut seen = BTreeSet::new();
+        for class in &self.zero_spend_classes {
+            if class.is_empty() || !seen.insert(class) || !self.allowed_intents.contains(class) {
+                return Err("zero_spend_classes must be unique members of allowed_intents".into());
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -204,6 +235,7 @@ pub fn package(
         fs::read_to_string(&manifest_path).map_err(display_err("read", &manifest_path))?;
     let manifest: PackageManifest = toml::from_str(&manifest_body)
         .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
+    manifest.sign.validate()?;
     if manifest.schema != bloom_petal_contract::PACKAGE_SCHEMA {
         return Err(format!(
             "{} must set schema = {:?}",
@@ -566,6 +598,14 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
     let root = root
         .canonicalize()
         .map_err(|error| format!("resolve {}: {error}", root.display()))?;
+    let manifest_path = root.join("petal.toml");
+    if manifest_path.is_file() {
+        let manifest: PackageManifest = toml::from_str(
+            &fs::read_to_string(&manifest_path).map_err(display_err("read", &manifest_path))?,
+        )
+        .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
+        manifest.sign.validate()?;
+    }
     check_sdk_pin(&root, config)?;
     check_shared_route_architecture(&root, config)?;
     let routes = discover_routes(&root.join(&config.routes))?;
@@ -1716,7 +1756,7 @@ fn required_caps(source: &Path) -> Result<BTreeSet<&'static str>, String> {
         return Ok(ALL_CAPS
             .iter()
             .copied()
-            .filter(|cap| rest[..end].contains(cap))
+            .filter(|cap| rest[..end].contains(&format!("\"{cap}\"")))
             .collect());
     }
     let caps: &[&str] = if source.contains("store_dir_spec()") {
@@ -4207,6 +4247,41 @@ mod tests {
             "[package]\nname = \"demo-route\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\npetal = { package = \"bloom-petal-sdk\", version = \"=0.1.0\" }\n",
         )
         .unwrap();
+    }
+
+    #[test]
+    fn zero_spend_classes_require_certified_effects_and_allowed_intents() {
+        let policy = |schema, classes: Vec<String>| SigningPolicy {
+            economic_effects_schema: schema,
+            allowed_intents: vec!["fixture.login".into()],
+            zero_spend_classes: classes,
+        };
+        assert!(
+            policy(Some(1), vec!["fixture.login".into()])
+                .validate()
+                .is_ok()
+        );
+        assert!(
+            policy(None, vec!["fixture.login".into()])
+                .validate()
+                .is_err()
+        );
+        assert!(
+            policy(Some(2), vec!["fixture.login".into()])
+                .validate()
+                .is_err()
+        );
+        assert!(
+            policy(Some(1), vec!["fixture.other".into()])
+                .validate()
+                .is_err()
+        );
+        assert!(
+            policy(Some(1), vec!["fixture.login".into(); 2])
+                .validate()
+                .is_err()
+        );
+        assert!(policy(None, vec![]).validate().is_ok());
     }
 
     #[test]

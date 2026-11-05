@@ -28,6 +28,9 @@ pub use claim::{
 pub use bindings::bloom::route::types::EntryKind;
 pub use bindings::{Ctx as RawCtx, Entry, Guest as RawGuest, RouteError, RouteMeta};
 
+pub mod effects;
+pub mod signing;
+
 pub trait RouteIdentity {
     const PATH: &'static str;
     const CANONICAL_PATH: &'static str;

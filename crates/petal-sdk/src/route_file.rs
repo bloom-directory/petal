@@ -2405,6 +2405,162 @@ pub mod bloom {
             }
         }
     }
+    pub mod prepared_sign {
+        /// Version 1 JSON request and response are defined by bloom-petal-contract's
+        /// prepared module. Hosts validate all fields and enforce the documented bounds.
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod signing {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[allow(unused_unsafe, clippy::all)]
+            #[allow(async_fn_in_trait)]
+            pub fn sign(
+                request: &[u8],
+            ) -> ::core::result::Result<_rt::Vec<u8>, _rt::Vec<u8>> {
+                unsafe {
+                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+                    struct RetArea(
+                        [::core::mem::MaybeUninit<
+                            u8,
+                        >; 3 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let mut ret_area = RetArea(
+                        [::core::mem::MaybeUninit::uninit(); 3
+                            * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let vec0 = request;
+                    let ptr0 = vec0.as_ptr().cast::<u8>();
+                    let len0 = vec0.len();
+                    let ptr1 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    #[cfg(target_arch = "wasm32")]
+                    #[link(wasm_import_module = "bloom:prepared-sign/signing@0.1.0")]
+                    unsafe extern "C" {
+                        #[link_name = "sign"]
+                        fn wit_import2(_: *mut u8, _: usize, _: *mut u8);
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    unsafe extern "C" fn wit_import2(_: *mut u8, _: usize, _: *mut u8) {
+                        unreachable!()
+                    }
+                    wit_import2(ptr0.cast_mut(), len0, ptr1);
+                    let l3 = i32::from(*ptr1.add(0).cast::<u8>());
+                    let result10 = match l3 {
+                        0 => {
+                            let e = {
+                                let l4 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l5 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len6 = l5;
+                                <_ as From<
+                                    _rt::Vec<_>,
+                                >>::from(_rt::Vec::from_raw_parts(l4.cast(), len6, len6))
+                            };
+                            Ok(e)
+                        }
+                        1 => {
+                            let e = {
+                                let l7 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l8 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len9 = l8;
+                                <_ as From<
+                                    _rt::Vec<_>,
+                                >>::from(_rt::Vec::from_raw_parts(l7.cast(), len9, len9))
+                            };
+                            Err(e)
+                        }
+                        _ => _rt::invalid_enum_discriminant(),
+                    };
+                    result10
+                }
+            }
+        }
+        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
+        pub mod status {
+            #[used]
+            #[doc(hidden)]
+            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
+            use super::super::super::_rt;
+            #[allow(unused_unsafe, clippy::all)]
+            #[allow(async_fn_in_trait)]
+            pub fn status(
+                request: &[u8],
+            ) -> ::core::result::Result<_rt::Vec<u8>, _rt::Vec<u8>> {
+                unsafe {
+                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+                    struct RetArea(
+                        [::core::mem::MaybeUninit<
+                            u8,
+                        >; 3 * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let mut ret_area = RetArea(
+                        [::core::mem::MaybeUninit::uninit(); 3
+                            * ::core::mem::size_of::<*const u8>()],
+                    );
+                    let vec0 = request;
+                    let ptr0 = vec0.as_ptr().cast::<u8>();
+                    let len0 = vec0.len();
+                    let ptr1 = ret_area.0.as_mut_ptr().cast::<u8>();
+                    #[cfg(target_arch = "wasm32")]
+                    #[link(wasm_import_module = "bloom:prepared-sign/status@0.1.0")]
+                    unsafe extern "C" {
+                        #[link_name = "status"]
+                        fn wit_import2(_: *mut u8, _: usize, _: *mut u8);
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    unsafe extern "C" fn wit_import2(_: *mut u8, _: usize, _: *mut u8) {
+                        unreachable!()
+                    }
+                    wit_import2(ptr0.cast_mut(), len0, ptr1);
+                    let l3 = i32::from(*ptr1.add(0).cast::<u8>());
+                    let result10 = match l3 {
+                        0 => {
+                            let e = {
+                                let l4 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l5 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len6 = l5;
+                                <_ as From<
+                                    _rt::Vec<_>,
+                                >>::from(_rt::Vec::from_raw_parts(l4.cast(), len6, len6))
+                            };
+                            Ok(e)
+                        }
+                        1 => {
+                            let e = {
+                                let l7 = *ptr1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>();
+                                let l8 = *ptr1
+                                    .add(2 * ::core::mem::size_of::<*const u8>())
+                                    .cast::<usize>();
+                                let len9 = l8;
+                                <_ as From<
+                                    _rt::Vec<_>,
+                                >>::from(_rt::Vec::from_raw_parts(l7.cast(), len9, len9))
+                            };
+                            Err(e)
+                        }
+                        _ => _rt::invalid_enum_discriminant(),
+                    };
+                    result10
+                }
+            }
+        }
+    }
     pub mod route {
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod types {
@@ -5204,10 +5360,10 @@ macro_rules! __export_route_file_impl {
         "wasm32")] #[unsafe (link_section =
         "component-type:wit-bindgen:0.61.1:bloom:route@0.1.0:route-file:imports and exports")]
         #[doc(hidden)] #[allow(clippy::octal_escapes)] pub static
-        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 3036] = *
+        __WIT_BINDGEN_COMPONENT_TYPE : [u8; 3183] = *
         b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xdb\x16\x01A\x02\x01\
-A+\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xee\x17\x01A\x02\x01\
+A/\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\x04\
 body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04body\x02\
 \x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\0\x05\
 fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01j\x01\
@@ -5233,47 +5389,50 @@ tch-sign-request\x03\0\x0e\x01p\x02\x01q\x02\x0asignatures\x01\x10\0\x10approval
 -pending\x01\x01\0\x04\0\x11sign-batch-result\x03\0\x11\x01j\x01\x04\x01s\x01@\x01\
 \x07request\x0a\0\x13\x04\0\x0csign-payload\x01\x14\x01j\x01\x12\x01s\x01@\x01\x07\
 request\x0f\0\x15\x04\0\x12sign-payload-batch\x01\x16\x03\0\x18bloom:sign/signin\
-g@0.2.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09val\
-ue-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-per-g\
-as\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action-ids\x0aexpires-msw\x04\
-\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07plan-mds\x08\
-approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01r\x04\x09outbox-ids\x05sta\
-tes\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspection\x03\0\x09\x01j\x01\x08\
-\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\x01@\x04\x06wallets\x05cha\
-ins\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\0\x07confirm\x01\x0d\x01\
-j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-ids\0\x0e\x04\0\x07inspec\
-t\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x04\x01B\x07\x01r\x03\x05chains\x06\
-methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\x0bresult-jsons\x04\0\x08\
-response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\0\x04\x04\0\x04call\x01\
-\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x05\x01B\x14\x01m\x03\x03dir\x04file\x07\
-symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\x04names\x04kind\x01\x04\
-modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01j\x01\x05\x01s\x01\
-@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\x01j\x01\x08\x01s\x01@\x01\
-\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01@\x01\x04paths\0\
-\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\x0b\0\x0e\x04\0\
-\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x06\x01B\x0b\x01j\x01w\x01\
-s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03leny\0\x03\
-\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03keys\0\x06\x04\
-\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x0f\x01o\x02\
-ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06params\x01\x05\
-actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\0\x0aent\
-ry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\x0bli\
-nk-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\x0cca\
-che-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescription\x02\x0f\
-consent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutable\x7f\x04\
-\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01s\0\x06d\
-enied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\0\x0b\
-route-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x08\x02\x03\0\x08\x03\
-ctx\x03\0\x03ctx\x03\0\x09\x02\x03\0\x08\x05entry\x03\0\x05entry\x03\0\x0b\x02\x03\
-\0\x08\x0broute-error\x03\0\x0broute-error\x03\0\x0d\x02\x03\0\x08\x0aroute-meta\
-\x03\0\x0aroute-meta\x03\0\x0f\x01j\x01\x10\x01\x0e\x01@\x01\x03ctx\x0a\0\x11\x04\
-\0\x08metadata\x01\x12\x01j\x01\x0c\x01\x0e\x01@\x01\x03ctx\x0a\0\x13\x04\0\x06l\
-ookup\x01\x14\x01p\x0c\x01j\x01\x15\x01\x0e\x01@\x01\x03ctx\x0a\0\x16\x04\0\x04l\
-ist\x01\x17\x01p}\x01j\x01\x18\x01\x0e\x01@\x01\x03ctx\x0a\0\x19\x04\0\x04read\x01\
-\x1a\x01j\0\x01\x0e\x01@\x02\x03ctx\x0a\x04body\x18\0\x1b\x04\0\x05write\x01\x1c\
-\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\x0b\x10\x01\0\x0aroute-file\x03\0\0\
-\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.258.0\x10wit-bind\
-gen-rust\x060.61.1";
+g@0.2.0\x05\x03\x01B\x04\x01p}\x01j\x01\0\x01\0\x01@\x01\x07request\0\0\x01\x04\0\
+\x04sign\x01\x02\x03\0!bloom:prepared-sign/signing@0.1.0\x05\x04\x01B\x04\x01p}\x01\
+j\x01\0\x01\0\x01@\x01\x07request\0\0\x01\x04\0\x06status\x01\x02\x03\0\x20bloom\
+:prepared-sign/status@0.1.0\x05\x05\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05\
+chains\x02tos\x09value-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18ma\
+x-priority-fee-per-gas\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action\
+-ids\x0aexpires-msw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09ou\
+tbox-ids\x07plan-mds\x08approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01r\x04\
+\x09outbox-ids\x05states\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspection\x03\
+\0\x09\x01j\x01\x08\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\x01@\x04\
+\x06wallets\x05chains\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\0\x07c\
+onfirm\x01\x0d\x01j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-ids\0\x0e\
+\x04\0\x07inspect\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x06\x01B\x07\x01r\x03\
+\x05chains\x06methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\x0bresul\
+t-jsons\x04\0\x08response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\0\x04\x04\
+\0\x04call\x01\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x07\x01B\x14\x01m\x03\x03\
+dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\x04names\
+\x04kind\x01\x04modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01\
+j\x01\x05\x01s\x01@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\x01j\x01\
+\x08\x01s\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01\
+@\x01\x04paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\
+\x0b\0\x0e\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x08\x01\
+B\x0b\x01j\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01\
+@\x01\x03leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\
+\x03keys\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x09\
+\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04pa\
+ths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07\
+symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04mod\
+ey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kin\
+d\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\
+\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\
+\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09\
+not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsuppo\
+rted\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x0a\
+\x02\x03\0\x0a\x03ctx\x03\0\x03ctx\x03\0\x0b\x02\x03\0\x0a\x05entry\x03\0\x05ent\
+ry\x03\0\x0d\x02\x03\0\x0a\x0broute-error\x03\0\x0broute-error\x03\0\x0f\x02\x03\
+\0\x0a\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x11\x01j\x01\x12\x01\x10\x01@\x01\
+\x03ctx\x0c\0\x13\x04\0\x08metadata\x01\x14\x01j\x01\x0e\x01\x10\x01@\x01\x03ctx\
+\x0c\0\x15\x04\0\x06lookup\x01\x16\x01p\x0e\x01j\x01\x17\x01\x10\x01@\x01\x03ctx\
+\x0c\0\x18\x04\0\x04list\x01\x19\x01p}\x01j\x01\x1a\x01\x10\x01@\x01\x03ctx\x0c\0\
+\x1b\x04\0\x04read\x01\x1c\x01j\0\x01\x10\x01@\x02\x03ctx\x0c\x04body\x1a\0\x1d\x04\
+\0\x05write\x01\x1e\x04\0\x1cbloom:route/route-file@0.1.0\x04\0\x0b\x10\x01\0\x0a\
+route-file\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070\
+.258.0\x10wit-bindgen-rust\x060.61.1";
         };
     };
 }
@@ -5286,9 +5445,9 @@ pub use __export_route_file_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2957] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xec\x15\x01A\x02\x01\
-A\x1a\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 3104] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xff\x16\x01A\x02\x01\
+A\x1e\x01B\x0a\x01o\x02ss\x01p\0\x01p}\x01r\x04\x06methods\x03urls\x07headers\x01\
 \x04body\x02\x04\0\x07request\x03\0\x03\x01r\x03\x06status{\x07headers\x01\x04bo\
 dy\x02\x04\0\x08response\x03\0\x05\x01j\x01\x06\x01s\x01@\x01\x03req\x04\0\x07\x04\
 \0\x05fetch\x01\x08\x03\0\x16bloom:http/fetch@0.1.0\x05\0\x01B\x11\x01p}\x01k\0\x01\
@@ -5314,43 +5473,46 @@ ad-batch-sign-request\x03\0\x0e\x01p\x02\x01q\x02\x0asignatures\x01\x10\0\x10app
 roval-pending\x01\x01\0\x04\0\x11sign-batch-result\x03\0\x11\x01j\x01\x04\x01s\x01\
 @\x01\x07request\x0a\0\x13\x04\0\x0csign-payload\x01\x14\x01j\x01\x12\x01s\x01@\x01\
 \x07request\x0f\0\x15\x04\0\x12sign-payload-batch\x01\x16\x03\0\x18bloom:sign/si\
-gning@0.2.0\x05\x03\x01B\x13\x01kw\x01ks\x01r\x08\x06wallets\x05chains\x02tos\x09\
-value-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18max-priority-fee-pe\
-r-gas\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09action-ids\x0aexpires-m\
-sw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09outbox-ids\x07plan-\
-mds\x08approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01r\x04\x09outbox-ids\
-\x05states\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspection\x03\0\x09\x01j\
-\x01\x08\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\x01@\x04\x06wallet\
-s\x05chains\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\0\x07confirm\x01\
-\x0d\x01j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-ids\0\x0e\x04\0\x07\
-inspect\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x04\x01B\x07\x01r\x03\x05chai\
-ns\x06methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\x0bresult-jsons\x04\
-\0\x08response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\0\x04\x04\0\x04ca\
-ll\x01\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x05\x01B\x14\x01m\x03\x03dir\x04f\
-ile\x07symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\x04names\x04kind\
-\x01\x04modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\0\x04\x01j\x01\x05\
-\x01s\x01@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\x01j\x01\x08\x01s\
-\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\x01s\x01@\x01\x04\
-paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04paths\x04body\x0b\0\x0e\
-\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\x06\x01B\x0b\x01j\
-\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\x01s\x01@\x01\x03\
-leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01s\x01@\x01\x03key\
-s\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1.0\x05\x07\x01B\x0f\
-\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-hashs\x04paths\x06pa\
-rams\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04file\x07symlink\x04\
-\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\x04modey\x04size\x07\
-\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\x04kind\x06\x04modey\
-\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-async\x7f\x0bdescriptio\
-n\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-intent\x02\x0aexecutab\
-le\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01s\0\x09not-a-dir\x01\
-s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0bunsupported\x01s\0\x04\
-\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1.0\x05\x08\x02\x03\0\x08\
-\x03ctx\x03\0\x03ctx\x03\0\x09\x02\x03\0\x08\x05entry\x03\0\x05entry\x03\0\x0b\x02\
-\x03\0\x08\x0broute-error\x03\0\x0broute-error\x03\0\x0d\x02\x03\0\x08\x0aroute-\
-meta\x03\0\x0aroute-meta\x03\0\x0f\x04\0<bloom:route/route-file-with-all-of-its-\
-exports-removed@0.1.0\x04\0\x0b0\x01\0*route-file-with-all-of-its-exports-remove\
-d\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.258.0\x10\
-wit-bindgen-rust\x060.61.1";
+gning@0.2.0\x05\x03\x01B\x04\x01p}\x01j\x01\0\x01\0\x01@\x01\x07request\0\0\x01\x04\
+\0\x04sign\x01\x02\x03\0!bloom:prepared-sign/signing@0.1.0\x05\x04\x01B\x04\x01p\
+}\x01j\x01\0\x01\0\x01@\x01\x07request\0\0\x01\x04\0\x06status\x01\x02\x03\0\x20\
+bloom:prepared-sign/status@0.1.0\x05\x05\x01B\x13\x01kw\x01ks\x01r\x08\x06wallet\
+s\x05chains\x02tos\x09value-weis\x08data-hexs\x05nonce\0\x0fmax-fee-per-gas\x01\x18\
+max-priority-fee-per-gas\x01\x04\0\x0fevm-transaction\x03\0\x02\x01r\x02\x09acti\
+on-ids\x0aexpires-msw\x04\0\x11approval-required\x03\0\x04\x01k\x05\x01r\x03\x09\
+outbox-ids\x07plan-mds\x08approval\x06\x04\0\x12staged-transaction\x03\0\x07\x01\
+r\x04\x09outbox-ids\x05states\x07tx-hash\x01\x0creceipt-json\x01\x04\0\x0ainspec\
+tion\x03\0\x09\x01j\x01\x08\x01s\x01@\x01\x02tx\x03\0\x0b\x04\0\x05stage\x01\x0c\
+\x01@\x04\x06wallets\x05chains\x09outbox-ids\x14acknowledge-warnings\x7f\0\x0b\x04\
+\0\x07confirm\x01\x0d\x01j\x01\x0a\x01s\x01@\x03\x06wallets\x05chains\x09outbox-\
+ids\0\x0e\x04\0\x07inspect\x01\x0f\x03\0\x15bloom:tx/outbox@0.1.0\x05\x06\x01B\x07\
+\x01r\x03\x05chains\x06methods\x0bparams-jsons\x04\0\x07request\x03\0\0\x01r\x01\
+\x0bresult-jsons\x04\0\x08response\x03\0\x02\x01j\x01\x03\x01s\x01@\x01\x03req\x01\
+\0\x04\x04\0\x04call\x01\x05\x03\0\x16bloom:chain/read@0.1.0\x05\x07\x01B\x14\x01\
+m\x03\x03dir\x04file\x07symlink\x04\0\x0aentry-kind\x03\0\0\x01kw\x01ks\x01r\x05\
+\x04names\x04kind\x01\x04modey\x04size\x02\x0blink-target\x03\x04\0\x05entry\x03\
+\0\x04\x01j\x01\x05\x01s\x01@\x01\x04paths\0\x06\x04\0\x06lookup\x01\x07\x01p\x05\
+\x01j\x01\x08\x01s\x01@\x01\x04paths\0\x09\x04\0\x04list\x01\x0a\x01p}\x01j\x01\x0b\
+\x01s\x01@\x01\x04paths\0\x0c\x04\0\x04read\x01\x0d\x01j\0\x01s\x01@\x02\x04path\
+s\x04body\x0b\0\x0e\x04\0\x05write\x01\x0f\x03\0\x19bloom:vfs/readwrite@0.1.0\x05\
+\x08\x01B\x0b\x01j\x01w\x01s\x01@\0\0\0\x04\0\x06now-ms\x01\x01\x01p}\x01j\x01\x02\
+\x01s\x01@\x01\x03leny\0\x03\x04\0\x0crandom-bytes\x01\x04\x01ks\x01j\x01\x05\x01\
+s\x01@\x01\x03keys\0\x06\x04\0\x07setting\x01\x07\x03\0\x17bloom:env/runtime@0.1\
+.0\x05\x09\x01B\x0f\x01o\x02ss\x01p\0\x01ks\x01r\x05\x0apetal-roots\x0cpackage-h\
+ashs\x04paths\x06params\x01\x05actor\x02\x04\0\x03ctx\x03\0\x03\x01m\x03\x03dir\x04\
+file\x07symlink\x04\0\x0aentry-kind\x03\0\x05\x01kw\x01r\x05\x04names\x04kind\x06\
+\x04modey\x04size\x07\x0blink-target\x02\x04\0\x05entry\x03\0\x08\x01ps\x01r\x0a\
+\x04kind\x06\x04modey\x0ccache-ttl-ms\x07\x13side-effecting-read\x7f\x0bwrite-as\
+ync\x7f\x0bdescription\x02\x0fconsent-summary\x02\x0drequired-caps\x0a\x0bsign-i\
+ntent\x02\x0aexecutable\x7f\x04\0\x0aroute-meta\x03\0\x0b\x01q\x06\x09not-found\x01\
+s\0\x09not-a-dir\x01s\0\x06denied\x01s\0\x07invalid\x01s\0\x07backend\x01s\0\x0b\
+unsupported\x01s\0\x04\0\x0broute-error\x03\0\x0d\x03\0\x17bloom:route/types@0.1\
+.0\x05\x0a\x02\x03\0\x0a\x03ctx\x03\0\x03ctx\x03\0\x0b\x02\x03\0\x0a\x05entry\x03\
+\0\x05entry\x03\0\x0d\x02\x03\0\x0a\x0broute-error\x03\0\x0broute-error\x03\0\x0f\
+\x02\x03\0\x0a\x0aroute-meta\x03\0\x0aroute-meta\x03\0\x11\x04\0<bloom:route/rou\
+te-file-with-all-of-its-exports-removed@0.1.0\x04\0\x0b0\x01\0*route-file-with-a\
+ll-of-its-exports-removed\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit\
+-component\x070.258.0\x10wit-bindgen-rust\x060.61.1";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

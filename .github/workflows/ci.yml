@@ -131,6 +131,7 @@ jobs:
           cat > well-known-petal/.cargo/config.toml <<EOF
           [patch."https://github.com/bloom-directory/petal"]
           bloom-petal-sdk = { path = "$GITHUB_WORKSPACE/petal/crates/petal-sdk" }
+          bloom-petal-contract = { path = "$GITHUB_WORKSPACE/petal" }
           EOF
       - name: Test route crate against this checkout
         working-directory: well-known-petal
