@@ -93,6 +93,7 @@ pub struct SigningError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
+    NotFound,
     Invalid,
     Unsupported,
     Conflict,
