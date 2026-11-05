@@ -329,8 +329,11 @@ operation and returns its signature. `approval_read` supplies a read-only
 `approval.json` projection. Routes using attempts need `bloom:store` as well
 as their signing/status capability; `.caps(...)` replaces the default list.
 
-Use a stable scope unique to the package, wallet and logical operation, and
-always submit using the returned attempt's context. Concurrent builders use
+Use a stable scope unique to the package, wallet and logical operation. Each
+scope belongs to exactly one signing route: Machine binds operations to the
+route ID, so sharing a scope between signing routes does not deduplicate them.
+A separate status route may read the scope. Always submit using the returned
+attempt's context. Concurrent builders use
 the first stored action, not their own losing proposal. Machine remains the
 only outcome authority. Petals retain venue submission/reconciliation state.
 

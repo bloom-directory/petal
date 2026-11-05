@@ -87,11 +87,17 @@ pub fn eip712_action(
 ) -> Result<PreparedAction, SigningError> {
     let typed: alloy_dyn_abi::TypedData =
         serde_json::from_value(typed_data.clone()).map_err(|e| invalid(e.to_string()))?;
-    let domain = typed.domain.separator();
-    let message = typed.hash_struct().map_err(|e| invalid(e.to_string()))?;
-    let payload = SigningPayload::keccak256(
-        [&[0x19, 0x01][..], domain.as_slice(), message.as_slice()].concat(),
-    )?;
+    let mut preimage = vec![0x19, 0x01];
+    preimage.extend_from_slice(typed.domain.separator().as_slice());
+    if typed.primary_type != "EIP712Domain" {
+        preimage.extend_from_slice(
+            typed
+                .hash_struct()
+                .map_err(|e| invalid(e.to_string()))?
+                .as_slice(),
+        );
+    }
+    let payload = SigningPayload::keccak256(preimage)?;
     let review = ReviewArtifact::new("bloom.message.review", 1, serde_json::to_vec(&serde_json::json!({"schema":"bloom.message.review.v1", "kind":"eip712", "typed_data":typed_data})).map_err(|e| invalid(e.to_string()))?)?;
     PreparedAction::new(class, payload, review)
 }

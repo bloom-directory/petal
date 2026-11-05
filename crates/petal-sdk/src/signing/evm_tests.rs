@@ -44,3 +44,23 @@ fn raw_erc20_debit_is_canonical_and_nonzero() {
     assert!(erc20_spend(137, token, U256::ZERO).is_err());
     assert!(erc20_spend(0, token, U256::from(1)).is_err());
 }
+
+#[test]
+fn domain_only_typed_data_omits_the_message_hash() {
+    let data = serde_json::json!({
+        "types": {"EIP712Domain": [{"name":"name","type":"string"}]},
+        "primaryType":"EIP712Domain", "domain":{"name":"Domain only"}, "message":{}
+    });
+    let typed: alloy_dyn_abi::TypedData = serde_json::from_value(data.clone()).unwrap();
+    let action = eip712_action("domain", &data).unwrap();
+    assert_eq!(action.payload.preimage.len(), 34);
+    assert_eq!(&action.payload.preimage[..2], &[0x19, 0x01]);
+    assert_eq!(
+        &action.payload.preimage[2..],
+        typed.domain.separator().as_slice()
+    );
+    assert_eq!(
+        action.payload.hash.as_slice(),
+        typed.eip712_signing_hash().unwrap().as_slice()
+    );
+}

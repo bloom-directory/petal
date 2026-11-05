@@ -66,6 +66,7 @@ struct Record<C> {
     context: C,
 }
 /// Frozen signing input and Petal-owned submission context. Never stores outcomes.
+/// Each scope must belong to one signing route; Machine binds retries to its route ID.
 #[derive(Debug)]
 pub struct Attempt<C = ()> {
     scope: String,
