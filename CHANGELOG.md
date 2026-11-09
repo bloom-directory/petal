@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `petal::MessageReview` builds the `bloom.message.review.v1` envelope that
+  Bloom's v0.5.0 release set requires in `action` before it signs an EIP-712
+  or EIP-191 message, and checks its shape against Broker's limits.
+  `sdk::sign_payload` now refuses such a message without that envelope before
+  calling Bloom, with an error naming `MessageReview`, where Machine would
+  refuse it as a bare `invalid`. Safe confirmations, other suites and
+  payloads that do not start with `0x19` are unaffected. Released Bloom
+  v0.4.2 accepts the envelope and ignores it.
+- `sdk::describe_error(&err)` gives the error's message followed by the reason
+  `host-error-detail` recorded for it, and is `message()` without the feature.
+- Document installing the CLI from git, pinning the SDK by commit, signing
+  messages and reading Bloom's refusal reasons.
+
 - Opt-in `host-error-detail`: `sdk::last_host_reason()` returns the host's
   explanation when the latest SDK host call failed. Every host call replaces
   it; a success clears it. Errors keep the bare `SdkError::Host(status)` variant,

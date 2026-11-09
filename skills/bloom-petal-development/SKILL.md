@@ -30,6 +30,18 @@ petal new <petal-name> <destination>
 The command refuses an existing destination. Do not replace an existing
 repository with a fresh scaffold.
 
+The CLI and SDK are not on crates.io. Install the CLI from the commit you pin,
+and replace the scaffold's `version = "=0.1.0"` SDK requirement with that
+commit:
+
+```sh
+cargo install --locked --git https://github.com/bloom-directory/petal --rev <commit> bloom-petal-cli
+```
+
+```toml
+petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", rev = "<commit>", features = ["host-error-detail"] }
+```
+
 ## Resolve the product and trust contract
 
 WIT defines the portable component interface. Bloom's installer provenance,
@@ -363,6 +375,32 @@ For side-effecting routes:
 Do not exercise production writes or material funds unless the user explicitly
 authorizes that environment and action.
 
+## Sign messages and typed data
+
+A payload whose first byte is `0x19`, under `secp256k1-keccak256-recoverable`,
+is an EIP-712 typed-data or EIP-191 personal message. Bloom signs one only
+through `sdk::sign_payload` with the exact selector, and only with a
+`bloom.message.review.v1` envelope as the request's `action`:
+
+```rust
+let mut request = claim.sign_request(account.wallet(), petal::SignSelector::Exact)?;
+let review = petal::MessageReview::eip712(typed_data).map_err(|e| petal::error(-4, e))?;
+request.action = Some(review.into_bytes());
+```
+
+`typed_data` is what `eth_signTypedData_v4` takes: exactly `types`,
+`primaryType`, `domain` and `message`. Broker rebuilds the preimage from it,
+refuses it unless it hashes to the payload, and shows the owner every typed
+field, so a Petal's own record in `action` is refused, and so is a message
+field the type does not declare. Write wide integers such as `uint256` amounts
+as decimal strings. `MessageReview` checks shape only: test that the typed
+data hashes to the digest you sign with your EIP-712 library. Build it from the
+same immutable fields on every retry, because Bloom binds the `action` bytes
+into the signing operation. Bloom refuses a message in `sign_payload_batch`,
+except under Polymarket's own classes; Safe confirmations carry Safe's own
+envelope. The rule is in Bloom's v0.5.0 release set; earlier releases ignore
+the envelope.
+
 ## Protect sensitive material
 
 Private keys, derived agent keys, API secrets, bearer tokens, secret-store
@@ -546,6 +584,16 @@ first and install the same files afterwards. Any file changed or added under
 the root since enrollment changes the hash, and the provenance no longer
 matches. Machine and Broker read the catalog at startup, so enroll before the
 triad starts or restart it afterwards.
+
+## Read why Bloom refused a call
+
+With the SDK's `host-error-detail` feature, `petal::sdk::describe_error(&err)`
+reads `invalid: <reason>` where `err.message()` reads only `invalid`. Call it
+straight after the failing call: the next host call replaces the reason. On
+the mount a route error is a bare EIO or EINVAL. Bloom keeps a failed write's
+message, with its `path` and `at_ms`, at `petals/<name>/last_error.json` until
+that path's next write succeeds; for a read, reproduce with `bloom vfs cat`.
+Machine drops the message of any `-2` response, as described below.
 
 ## Troubleshoot a bare `permission denied`
 

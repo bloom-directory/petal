@@ -17,6 +17,15 @@ payload-bearing `bloom:sign/signing@0.2.0`, including atomic ordered batches.
 - `bloom-petal-cli` provides `petal build`, `petal check`, `petal package`,
   `petal inspect`, and `petal new`.
 
+## Install the CLI
+
+These crates are not published to crates.io. Install the `petal` CLI from the
+commit you pin the SDK to:
+
+```sh
+cargo install --locked --git https://github.com/bloom-directory/petal --rev <commit> bloom-petal-cli
+```
+
 ## Development
 
 With Rust, the `wasm32-unknown-unknown` target, and jq installed:
@@ -67,13 +76,17 @@ such as `denied: APPROVAL_NOT_FOUND: approval does not exist`, which are
 `Denied`. The reason belongs to that call, not to the error value: every host
 call replaces it, and a success or an error the SDK builds itself clears it.
 Read it right after the failing call. No WIT change is required.
+`petal::sdk::describe_error(&err)` gives the error's message followed by that
+reason, such as `invalid: <reason>` rather than `invalid`, and is `message()`
+without the feature.
 
 Detail is limited to 512 Unicode characters; control, bidi-control and
 zero-width characters become spaces and a truncated explanation ends with `…`.
 Hosts must supply caller-safe messages; length limits cannot redact unknown
-credentials. Machine's HTTP URL redaction is tracked in
-[Bloom #364](https://github.com/bloom-directory/bloom/pull/364). Adopt that host
-fix before enabling richer errors in consumers that perform HTTP requests.
+credentials. Machine keeps secrets in request URLs out of HTTP errors from
+[Bloom #364](https://github.com/bloom-directory/bloom/pull/364), released in
+Bloom v0.4.2. A Petal that makes HTTP requests should enable the feature only
+against that release or later.
 
 For the transport regression, run
 `sh scripts/check-component-errors.sh "$MACHINE_CHECKOUT"` against a committed
@@ -88,6 +101,25 @@ and conformance fixture use -2 for denials; VM-level evidence does not prove
 IPC propagation. Machine's owner must confirm which exact-signing explanations
 are safe to expose before a consumer routes them through another error code.
 
+## Message review
+
+A payload whose first byte is `0x19`, signed with
+`secp256k1-keccak256-recoverable`, is an EIP-712 typed-data or EIP-191
+personal message. From Bloom's v0.5.0 release set (Bloom #224, Broker #103),
+Machine signs one only with a `bloom.message.review.v1` envelope as the sign
+request's `action`, on the exact single-payload path. Broker rebuilds the
+preimage from the envelope, refuses it unless its SHA-256 and Keccak hashes
+match the payload, and shows the owner every typed field. Machine refuses a
+message in a batch, except under Polymarket's own operation classes, and Safe
+confirmations carry Safe's own envelope instead.
+
+`petal::MessageReview::eip712(typed_data)` and
+`petal::MessageReview::personal(text)` build the envelope and check its shape
+against Broker's limits. `sdk::sign_payload` refuses a message without one
+before calling Bloom, with an error that names `MessageReview`, instead of
+Machine's bare `invalid`. The SDK has no Keccak, so it cannot check that the
+typed data hashes to the payload: test that with the Petal's EIP-712 library.
+
 ## Pinning the SDK
 
 A Petal pins the SDK in the route crate's Cargo dependencies, including renamed
@@ -96,7 +128,16 @@ and feature selection. `[sdk]` in `petal-build.toml` is optional transitional
 validation: remove it, or keep it equal to the route dependency.
 
 The route SDK must be an exact pin: a git `rev` that is a full 40-character
-commit, a version requirement such as `=0.1.0`, or a local `path`. Then
+commit, a version requirement such as `=0.1.0`, or a local `path`. The SDK is
+not on crates.io, so a version requirement resolves only through a registry or
+patch that provides it; the `petal new` scaffold's `=0.1.0` needs replacing
+with a git pin:
+
+```toml
+petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", rev = "<commit>" }
+```
+
+Then
 `petal build`, `petal check` and `petal package` refuse a Petal when:
 
 - any SDK dependency of the route crate, in any dependency table or inherited
