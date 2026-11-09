@@ -64,6 +64,8 @@ pub struct SdkDependency {
     pub git: Option<String>,
     #[serde(default)]
     pub rev: Option<String>,
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 impl Default for SdkDependency {
@@ -74,6 +76,7 @@ impl Default for SdkDependency {
             path: None,
             git: None,
             rev: None,
+            tag: None,
         }
     }
 }
@@ -142,6 +145,7 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<BuildConfig, String> {
         || config.sdk.path.is_some()
         || config.sdk.git.is_some()
         || config.sdk.rev.is_some()
+        || config.sdk.tag.is_some()
     {
         validate_sdk(&config.sdk)?;
     }
@@ -567,6 +571,7 @@ fn build_inner(root: &Path, config: &BuildConfig, check_only: bool) -> Result<Bu
         .canonicalize()
         .map_err(|error| format!("resolve {}: {error}", root.display()))?;
     check_sdk_pin(&root, config)?;
+    check_tooling_version(&root, config, TOOLING_VERSION)?;
     check_shared_route_architecture(&root, config)?;
     let routes = discover_routes(&root.join(&config.routes))?;
     if routes.is_empty() {
@@ -1903,12 +1908,22 @@ fn validate_sdk(sdk: &SdkDependency) -> Result<(), String> {
     if selected != 1 {
         return Err("sdk must specify exactly one of version, path, or git".into());
     }
-    if sdk.rev.is_some() && sdk.git.is_none() {
-        return Err("sdk.rev requires sdk.git".into());
+    if (sdk.rev.is_some() || sdk.tag.is_some()) && sdk.git.is_none() {
+        return Err("sdk.rev and sdk.tag require sdk.git".into());
     }
-    // An exact pin, so every build and every test resolves the same SDK.
-    if sdk.git.is_some() && !sdk.rev.as_deref().is_some_and(is_full_commit) {
-        return Err("sdk.git requires sdk.rev, a full 40-character commit".into());
+    // An exact pin, so every build and every test resolves the same SDK. A
+    // release tag is exact once the lockfile records its commit.
+    if sdk.git.is_some() {
+        match (sdk.rev.as_deref(), sdk.tag.as_deref()) {
+            (Some(rev), None) if is_full_commit(rev) => {}
+            (None, Some(tag)) if is_release_tag(tag) => {}
+            _ => {
+                return Err(
+                    "sdk.git requires either sdk.rev, a full 40-character commit, or sdk.tag, a release tag such as \"v0.2.0\""
+                        .into(),
+                );
+            }
+        }
     }
     if let Some(version) = sdk
         .version
@@ -2029,8 +2044,9 @@ enum SdkSource {
     Git {
         url: String,
         rev: Option<String>,
-        /// A `branch` or `tag` reference, which `[sdk]` cannot express.
-        other_ref: Option<String>,
+        tag: Option<String>,
+        /// A `branch` reference, which is never an exact pin.
+        branch: Option<String>,
     },
 }
 
@@ -2051,14 +2067,18 @@ impl std::fmt::Display for SdkSource {
             Self::Git {
                 url,
                 rev,
-                other_ref,
+                tag,
+                branch,
             } => {
                 write!(f, "git {url}")?;
                 if let Some(rev) = rev {
                     write!(f, " rev {rev}")?;
                 }
-                if let Some(other) = other_ref {
-                    write!(f, " {other}")?;
+                if let Some(tag) = tag {
+                    write!(f, " tag {tag}")?;
+                }
+                if let Some(branch) = branch {
+                    write!(f, " branch {branch}")?;
                 }
                 Ok(())
             }
@@ -2108,6 +2128,13 @@ fn is_full_commit(rev: &str) -> bool {
     rev.len() == 40 && rev.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+/// A release tag of the SDK repository: `v` and an exact semantic version,
+/// such as `v0.2.0` or `v0.3.0-rc.1`.
+fn is_release_tag(tag: &str) -> bool {
+    tag.strip_prefix('v')
+        .is_some_and(|version| is_exact_version(&format!("={version}")))
+}
+
 fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -2148,7 +2175,8 @@ fn configured_sdk_source(root: &Path, sdk: &SdkDependency) -> Result<SdkSource, 
         Some(git) => Ok(SdkSource::Git {
             url: normalize_git_url(git),
             rev: sdk.rev.clone(),
-            other_ref: None,
+            tag: sdk.tag.clone(),
+            branch: None,
         }),
         None => Err("sdk must specify exactly one of version, path, or git".into()),
     }
@@ -2165,13 +2193,11 @@ fn dependency_source(base: &Path, key: &str, value: &toml::Value) -> Result<SdkS
     };
     let text = |field: &str| table.get(field).and_then(toml::Value::as_str);
     if let Some(git) = text("git") {
-        let other_ref = text("branch")
-            .map(|branch| format!("branch {branch}"))
-            .or_else(|| text("tag").map(|tag| format!("tag {tag}")));
         return Ok(SdkSource::Git {
             url: normalize_git_url(git),
             rev: text("rev").map(str::to_owned),
-            other_ref,
+            tag: text("tag").map(str::to_owned),
+            branch: text("branch").map(str::to_owned),
         });
     }
     if let Some(path) = text("path") {
@@ -2393,7 +2419,7 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
                     .is_some_and(|exact| version == Some(exact))
         }
         SdkSource::Version { .. } => false,
-        SdkSource::Git { url, rev, .. } => {
+        SdkSource::Git { url, rev, tag, .. } => {
             let Some(locked) = source.strip_prefix("git+") else {
                 return false;
             };
@@ -2401,15 +2427,23 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
                 return false;
             };
             let (locked_url, query) = locked.split_once('?').unwrap_or((locked, ""));
-            let locked_rev = query
-                .split('&')
-                .find_map(|pair| pair.strip_prefix("rev="))
-                .map(percent_decode);
+            let locked_ref = |key: &str| {
+                query
+                    .split('&')
+                    .find_map(|pair| pair.strip_prefix(key))
+                    .map(percent_decode)
+            };
+            let commit_matches = match (rev, tag) {
+                (Some(expected), None) => commit.eq_ignore_ascii_case(expected),
+                // The lockfile is what makes a tag exact: it records the
+                // commit the tag named when the lockfile was written.
+                (None, Some(_)) => is_full_commit(commit),
+                _ => false,
+            };
             normalize_git_url(locked_url) == *url
-                && locked_rev.as_deref() == rev.as_deref()
-                && rev
-                    .as_deref()
-                    .is_some_and(|expected| commit.eq_ignore_ascii_case(expected))
+                && locked_ref("rev=") == *rev
+                && locked_ref("tag=") == *tag
+                && commit_matches
         }
     }
 }
@@ -2468,6 +2502,65 @@ pub fn check_sdk_pin(root: impl AsRef<Path>, config: &BuildConfig) -> Result<(),
         cargo_resolves_to_a_path(cargo, manifest, package)
             .map_err(|error| format!("{error} (Cargo run from {})", cwd.display()))
     })
+}
+
+/// The version of this builder, the `petal` CLI and the SDK, which are
+/// released together from one tag of the petal repository.
+pub const TOOLING_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The repository the SDK and the `petal` CLI are released from.
+pub const PETAL_REPOSITORY: &str = "https://github.com/bloom-directory/petal";
+
+/// Refuse to build a Petal whose lockfile resolves the SDK at a different
+/// version from this builder's. The builder generates code against the SDK
+/// of its own release, so the CLI follows the Petal's SDK pin rather than
+/// being pinned separately.
+fn check_tooling_version(root: &Path, config: &BuildConfig, tooling: &str) -> Result<(), String> {
+    let package = &config.sdk.package;
+    let crate_dir = root.join(&config.route_crate.path);
+    let manifest = read_toml(&crate_dir.join("Cargo.toml"))?;
+    let lock_path = workspace_dir(&crate_dir, &manifest)?.join("Cargo.lock");
+    if !lock_path.is_file() {
+        return Ok(());
+    }
+    let lock = read_toml(&lock_path)?;
+    let locked = lock
+        .get("package")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_table)
+        .find(|entry| entry.get("name").and_then(toml::Value::as_str) == Some(package));
+    let Some(locked) = locked else {
+        return Ok(());
+    };
+    let version = locked
+        .get("version")
+        .and_then(toml::Value::as_str)
+        .unwrap_or_default();
+    if version == tooling {
+        return Ok(());
+    }
+    let source = locked.get("source").and_then(toml::Value::as_str);
+    let commit = source
+        .and_then(|source| source.strip_prefix("git+"))
+        .and_then(|source| source.rsplit_once('#'))
+        .map(|(_, commit)| commit)
+        .filter(|commit| is_full_commit(commit));
+    let reference = match commit {
+        Some(commit) if !source.is_some_and(|source| source.contains("?tag=")) => {
+            format!("--rev {commit}")
+        }
+        _ => format!("--tag v{version}"),
+    };
+    let shown = lock_path
+        .strip_prefix(root)
+        .unwrap_or(&lock_path)
+        .display()
+        .to_string();
+    Err(format!(
+        "{shown} resolves {package} {version}, but this petal CLI is {tooling}. Build with the CLI of the Petal's SDK version:\n  cargo install --locked --git {PETAL_REPOSITORY} {reference} bloom-petal-cli"
+    ))
 }
 
 /// The rust-toolchain files rustup reads from `cwd` and its ancestors that
@@ -2533,9 +2626,16 @@ fn check_sdk_pin_with(
     match &expected {
         SdkSource::Git {
             rev: Some(rev),
-            other_ref: None,
+            tag: None,
+            branch: None,
             ..
         } if is_full_commit(rev) => {}
+        SdkSource::Git {
+            rev: None,
+            tag: Some(tag),
+            branch: None,
+            ..
+        } if is_release_tag(tag) => {}
         SdkSource::Version {
             requirement,
             registry: None,
@@ -2604,10 +2704,18 @@ fn check_sdk_pin_with(
             }
         } else if same_repo(&source) {
             checked_packages.insert(named.to_owned());
-            if let (SdkSource::Git { rev, other_ref, .. }, SdkSource::Git { rev: want, .. }) =
-                (&source, &expected)
+            if let (
+                SdkSource::Git {
+                    rev, tag, branch, ..
+                },
+                SdkSource::Git {
+                    rev: want_rev,
+                    tag: want_tag,
+                    ..
+                },
+            ) = (&source, &expected)
             {
-                if rev != want || other_ref.is_some() {
+                if rev != want_rev || tag != want_tag || branch.is_some() {
                     disagreements.push(format!("{label}: {source} (same repository as the SDK)"));
                 }
             }
@@ -3031,6 +3139,7 @@ mod tests {
                 path: None,
                 git: None,
                 rev: None,
+                tag: None,
             },
             dependencies: BTreeMap::new(),
             jobs: None,
@@ -3048,6 +3157,7 @@ mod tests {
             path: None,
             git: Some(SDK_GIT.into()),
             rev: Some(rev.into()),
+            tag: None,
         }
     }
 
@@ -3482,14 +3592,126 @@ mod tests {
     }
 
     #[test]
-    fn sdk_pin_refuses_branches_and_tags() {
-        for reference in ["branch = \"master\"", "tag = \"v0.1.0\""] {
+    fn sdk_pin_refuses_branches_and_tags_that_are_not_releases() {
+        for reference in [
+            "branch = \"master\"",
+            "tag = \"latest\"",
+            "tag = \"v1\"",
+            "tag = \"0.2.0\"",
+        ] {
             let manifest = format!(
                 "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", {reference} }}\n"
             );
-            let (tmp, config) = pin_fixture(git_sdk(REV_A), &manifest, None);
-            assert!(check_sdk_pin(tmp.path(), &config).is_err(), "{reference}");
+            let (tmp, config) = pin_fixture(SdkDependency::default(), &manifest, None);
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(error.contains("immutable source"), "{reference}: {error}");
         }
+    }
+
+    fn tag_manifest(tag: &str) -> String {
+        format!(
+            "[dependencies]\npetal = {{ package = \"bloom-petal-sdk\", git = \"{SDK_GIT}\", tag = \"{tag}\" }}\n"
+        )
+    }
+
+    fn tag_lock(tag: &str, commit: &str, version: &str) -> String {
+        format!(
+            "version = 4\n\n[[package]]\nname = \"bloom-petal-sdk\"\nversion = \"{version}\"\nsource = \"git+{SDK_GIT}?tag={tag}#{commit}\"\n\n[[package]]\nname = \"demo-route\"\nversion = \"0.1.0\"\n"
+        )
+    }
+
+    #[test]
+    fn sdk_pin_accepts_a_release_tag_the_lockfile_pins_to_a_commit() {
+        let (tmp, config) = pin_fixture(
+            SdkDependency::default(),
+            &tag_manifest("v0.2.0"),
+            Some(&tag_lock("v0.2.0", REV_A, "0.2.0")),
+        );
+        check_sdk_pin(tmp.path(), &config).unwrap();
+        for tag in ["v0.3.0-rc.1", "v10.0.12"] {
+            let (tmp, config) = pin_fixture(SdkDependency::default(), &tag_manifest(tag), None);
+            check_sdk_pin(tmp.path(), &config).unwrap();
+        }
+    }
+
+    #[test]
+    fn sdk_pin_refuses_a_lockfile_that_does_not_pin_the_tag() {
+        for lock in [
+            tag_lock("v0.1.0", REV_A, "0.1.0"),
+            tag_lock("v0.2.0", "not-a-commit", "0.2.0"),
+            git_lock(REV_A),
+        ] {
+            let (tmp, config) = pin_fixture(
+                SdkDependency::default(),
+                &tag_manifest("v0.2.0"),
+                Some(&lock),
+            );
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(error.contains("pinned inconsistently"), "{lock}: {error}");
+        }
+    }
+
+    #[test]
+    fn sdk_table_may_name_the_same_release_tag() {
+        let tagged = |tag: &str| SdkDependency {
+            git: Some(SDK_GIT.into()),
+            tag: Some(tag.into()),
+            ..SdkDependency::default()
+        };
+        validate_sdk(&tagged("v0.2.0")).unwrap();
+        assert!(validate_sdk(&tagged("main")).is_err());
+        assert!(
+            validate_sdk(&SdkDependency {
+                rev: Some(REV_A.into()),
+                ..tagged("v0.2.0")
+            })
+            .is_err()
+        );
+        let (tmp, config) = pin_fixture(tagged("v0.2.0"), &tag_manifest("v0.2.0"), None);
+        check_sdk_pin(tmp.path(), &config).unwrap();
+        let (tmp, config) = pin_fixture(tagged("v0.1.0"), &tag_manifest("v0.2.0"), None);
+        assert!(
+            check_sdk_pin(tmp.path(), &config)
+                .unwrap_err()
+                .contains("pinned inconsistently")
+        );
+    }
+
+    #[test]
+    fn a_petal_builds_only_with_the_cli_of_its_sdk_version() {
+        let (tmp, config) = pin_fixture(
+            SdkDependency::default(),
+            &tag_manifest("v0.3.0"),
+            Some(&tag_lock("v0.3.0", REV_A, "0.3.0")),
+        );
+        check_tooling_version(tmp.path(), &config, "0.3.0").unwrap();
+        let error = check_tooling_version(tmp.path(), &config, "0.2.0").unwrap_err();
+        assert!(
+            error.contains(
+                "route/Cargo.lock resolves bloom-petal-sdk 0.3.0, but this petal CLI is 0.2.0"
+            ),
+            "{error}"
+        );
+        assert!(
+            error.contains(&format!(
+                "cargo install --locked --git {PETAL_REPOSITORY} --tag v0.3.0 bloom-petal-cli"
+            )),
+            "{error}"
+        );
+
+        // A commit pin names its commit, which may not be a release.
+        let manifest = format!(
+            "[dependencies]\n{}",
+            git_dep("petal", "bloom-petal-sdk", REV_A)
+        );
+        let (tmp, config) =
+            pin_fixture(SdkDependency::default(), &manifest, Some(&git_lock(REV_A)));
+        let error = check_tooling_version(tmp.path(), &config, "0.2.0").unwrap_err();
+        assert!(error.contains(&format!("--rev {REV_A}")), "{error}");
+
+        // No lockfile yet: the build reports that itself.
+        let (tmp, config) = pin_fixture(SdkDependency::default(), &tag_manifest("v0.3.0"), None);
+        check_tooling_version(tmp.path(), &config, "0.2.0").unwrap();
     }
 
     /// The consumer CI job patches the SDK to a local checkout through Cargo
@@ -4153,6 +4375,7 @@ mod tests {
             path: Some("sdk".into()),
             git: None,
             rev: None,
+            tag: None,
         };
         check_sdk_pin(tmp.path(), &config).unwrap();
 

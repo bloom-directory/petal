@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Release the SDK, builder and CLI together as `vX.Y.Z` tags, starting at
+  0.2.0, so every untagged 0.1.0 commit stays distinguishable. A Petal names
+  one SDK version, the tag, and everything else follows its lockfile:
+  - the builder accepts `tag = "vX.Y.Z"` SDK pins, and `[sdk].tag`, when the
+    lockfile records the tag's commit; branches and other tags are refused;
+  - `petal build`, `check` and `package` refuse a lockfile that resolves the
+    SDK at another version than the CLI's, and print the install command;
+  - the reusable release workflow takes the CLI from the lockfile's SDK
+    commit when `petal-tooling-ref` is omitted;
+  - the release workflow refuses a tag that is not the workspace version.
+- `petal new` scaffolds a Petal that builds as it is: the SDK pinned to the
+  CLI's tag with `host-error-detail`, an account route using
+  `wallet_account` and `address_evm`, a test with `petal::testing`,
+  `scripts/petal.sh` and `scripts/build.sh`, which run the CLI of the
+  lockfile's SDK commit and install it on first use, CI and release
+  workflows, and a `.gitignore`. `scripts/test-scaffold.sh` builds one in CI.
+- `petal --version`; `petal inspect` also prints the version, the SDK pin
+  and the `wasm-tools` release; `petal skill [--root]` prints or refreshes a
+  Petal's development skill, and `build` and `check` warn while it is stale.
+
 - `petal::MessageReview` builds the `bloom.message.review.v1` envelope that
   Bloom's v0.5.0 release set requires in `action` before it signs an EIP-712
   or EIP-191 message, and checks its shape against Broker's limits.

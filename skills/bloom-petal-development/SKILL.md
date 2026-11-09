@@ -21,26 +21,30 @@ typed infrastructure.
 4. Preserve unrelated work in a dirty worktree.
 
 When starting a new Petal, prefer the canonical `petal new` scaffold and adapt
-its generated structure instead of inventing a parallel layout:
+its generated structure instead of inventing a parallel layout. The CLI and
+SDK are released together as `vX.Y.Z` tags of the petal repository, not on
+crates.io. Install the CLI of the release you will build against:
 
 ```sh
+cargo install --locked --git https://github.com/bloom-directory/petal --tag v<version> bloom-petal-cli
 petal new <petal-name> <destination>
 ```
 
 The command refuses an existing destination. Do not replace an existing
 repository with a fresh scaffold.
 
-The CLI and SDK are not on crates.io. Install the CLI from the commit you pin,
-and replace the scaffold's `version = "=0.1.0"` SDK requirement with that
-commit:
+The scaffold pins the SDK to that tag in `route/Cargo.toml`, with
+`host-error-detail` on, and the tag is the Petal's only SDK version:
 
-```sh
-cargo install --locked --git https://github.com/bloom-directory/petal --rev <commit> bloom-petal-cli
-```
+- `scripts/petal.sh` runs the CLI of the SDK commit `route/Cargo.lock` pins,
+  installing it and its `wasm-tools` on first use;
+- `scripts/build.sh`, CI and the release workflow go through it;
+- `petal build` refuses an SDK of another version than its own.
 
-```toml
-petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", rev = "<commit>", features = ["host-error-detail"] }
-```
+To upgrade, change the tag, run
+`cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk`, and
+refresh this skill with `scripts/petal.sh skill --root .`. `petal build` and
+`petal check` warn while it is stale.
 
 ## Resolve the product and trust contract
 
@@ -536,7 +540,10 @@ Know what an install changes:
   workflow, the `package_hash` in its `petal-release.json`. That is the
   package hash of the published archive's contents, not its `archive_sha256`,
   and Bloom checks it when it installs a release pinned in its built-in
-  catalog. Building does not enroll a hash. Wallet policy allows Petal
+  catalog. Building does not enroll a hash, and a packaged Bloom has no
+  command that enrolls one: it signs and derives keys only for the Petals its
+  installer catalogs. A developer build can enroll a local Petal (see
+  [On a developer triad](#on-a-developer-triad)). Wallet policy allows Petal
   packages by hash (`allowed_petal_packages`), so the owner approves a policy
   update for a new hash before its routes can sign, derive keys or stage
   transactions for that wallet; reads do not need it.

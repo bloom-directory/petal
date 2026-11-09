@@ -6,8 +6,10 @@ is an installer and runtime: it does not compile Petal source during setup.
 
 ## Caller workflow
 
-Add a thin workflow to the Petal repository. Pin both the reusable workflow and
-the CLI tooling input to the same reviewed, full commit SHA:
+Add a thin workflow to the Petal repository; `petal new` writes one. The
+workflow builds and packages with the `petal` CLI of the SDK commit that the
+route workspace's `Cargo.lock` pins, so the SDK pin selects the tooling. Pin
+the reusable workflow itself to a reviewed, full commit SHA:
 
 ```yaml
 name: Release Petal
@@ -25,15 +27,20 @@ jobs:
     uses: bloom-directory/petal/.github/workflows/release-petal.yml@0123456789abcdef0123456789abcdef01234567
     with:
       petal-name: example
-      petal-tooling-ref: 0123456789abcdef0123456789abcdef01234567
       build-command: scripts/build.sh
       package-root: .
       expected-route-count: 12
 ```
 
-The workflow only accepts semantic version tags and exact 40-character tooling
-commits. It checks out the caller at the tagged commit, builds its routes,
-packages them deterministically, and refuses to replace existing assets.
+The workflow only accepts semantic version tags. It checks out the caller at
+the tagged commit, builds its routes, packages them deterministically, and
+refuses to replace existing assets.
+
+`petal-tooling-ref` is optional: an exact 40-character commit that replaces
+the lockfile's SDK commit as the tooling source. The workflow warns when the
+two differ, and the builder refuses an SDK of another version than its CLI.
+Without it, a lockfile that does not take the SDK from one
+`bloom-directory/petal` commit is refused.
 
 The tooling commit must include `scripts/install-tools.sh` and the
 `[workspace.metadata.tools]` configuration in `Cargo.toml`. The workflow runs

@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "bloom-petal-builder"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "bloom-petal-contract",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "bloom-petal-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bloom-petal-builder",
  "bloom-petal-contract",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "bloom-petal-contract"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hex",
  "sha2",
@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "bloom-petal-sdk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "getrandom 0.2.17",
  "serde",

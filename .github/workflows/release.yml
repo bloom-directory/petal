@@ -19,6 +19,16 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      # Petals pin a release tag and the scaffold writes `v<CLI version>`, so a
+      # tag must name exactly the crates' version.
+      - name: Require the tag to name the crate version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --locked |
+            jq -er '.packages[] | select(.name == "bloom-petal-sdk") | .version')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME must be v$version, the workspace version"
+            exit 1
+          fi
       - name: Install component tools
         run: scripts/install-tools.sh
       - name: Verify and assemble release artifacts

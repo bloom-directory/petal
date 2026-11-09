@@ -15,16 +15,46 @@ payload-bearing `bloom:sign/signing@0.2.0`, including atomic ordered batches.
 - `bloom-petal-builder` discovers route files and builds deterministic WebAssembly
   components.
 - `bloom-petal-cli` provides `petal build`, `petal check`, `petal package`,
-  `petal inspect`, and `petal new`.
+  `petal inspect`, `petal new` and `petal skill`.
 
-## Install the CLI
+## Start a Petal
 
-These crates are not published to crates.io. Install the `petal` CLI from the
-commit you pin the SDK to:
+The SDK, builder and CLI are released together as `vX.Y.Z` tags of this
+repository; they are not on crates.io yet. Install the CLI of a release, with
+Rust's WebAssembly target, and scaffold:
 
 ```sh
-cargo install --locked --git https://github.com/bloom-directory/petal --rev <commit> bloom-petal-cli
+rustup target add wasm32-unknown-unknown
+cargo install --locked --git https://github.com/bloom-directory/petal --tag v<version> bloom-petal-cli
+petal new my-petal ./my-petal
+cd my-petal
+cargo test --manifest-path route/Cargo.toml
+scripts/build.sh
 ```
+
+The scaffold is a working Petal: a health route and an account route that
+reads each Bloom account's own address, with a test, the route architecture
+check, CI, a release workflow and the development skill for your coding
+agent. Its `route/Cargo.toml` pins the SDK to the tag of the CLI that made it,
+and that tag is the only version it names:
+
+- `scripts/petal.sh` runs the `petal` CLI of the SDK commit in
+  `route/Cargo.lock`, installing it and the `wasm-tools` it builds with under
+  `~/.cache/bloom-petal` on first use. The build script, CI and release
+  workflow use it.
+- `petal build`, `check` and `package` refuse a Petal whose lockfile resolves
+  the SDK at another version than the CLI's, and print the command that
+  installs the right one.
+
+To upgrade, change the tag and refresh the lockfile and the skill:
+
+```sh
+cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+scripts/petal.sh skill --root .
+```
+
+A packaged Bloom builds, installs and runs any Petal, but signs and derives
+keys only for the Petals its installer catalogs.
 
 ## Development
 
@@ -127,17 +157,18 @@ or workspace-inherited dependencies. Generated components use that same source
 and feature selection. `[sdk]` in `petal-build.toml` is optional transitional
 validation: remove it, or keep it equal to the route dependency.
 
-The route SDK must be an exact pin: a git `rev` that is a full 40-character
-commit, a version requirement such as `=0.1.0`, or a local `path`. The SDK is
-not on crates.io, so a version requirement resolves only through a registry or
-patch that provides it; the `petal new` scaffold's `=0.1.0` needs replacing
-with a git pin:
+The route SDK must be an exact pin:
 
-```toml
-petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", rev = "<commit>" }
-```
+- a release `tag` such as `"v0.2.0"`, which the lockfile pins to the commit
+  it named, as `petal new` writes:
+  ```toml
+  petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", tag = "v0.2.0" }
+  ```
+- a git `rev` that is a full 40-character commit;
+- a version requirement such as `=0.2.0`, once the SDK is on a registry;
+- or a local `path`.
 
-Then
+A branch, or a tag that is not `v` and a semantic version, is refused. Then
 `petal build`, `petal check` and `petal package` refuse a Petal when:
 
 - any SDK dependency of the route crate, in any dependency table or inherited
@@ -196,9 +227,22 @@ workflow runs the Petal's own build command, which must run `petal build`
 without changing Cargo's environment, and `petal package --no-build` cannot
 tell how the components it packages were built.
 
-Pins outside Cargo are not checked:
-scripts that install the `petal` CLI, and the release workflow's `uses:`
-reference and `petal-tooling-ref`. Keep them at the same commit.
+The CLI must be the SDK's version: `petal build`, `check` and `package`
+refuse a lockfile that resolves the SDK at another version, and say how to
+install the matching CLI. The scaffold's scripts and the reusable release
+workflow take the CLI from the SDK commit in the lockfile, so a Petal that
+uses them pins nothing else. A Petal's own install scripts and an explicit
+`petal-tooling-ref` are not checked against the commit; keep them equal or
+remove them.
+
+## Releasing the SDK
+
+The workspace version is the release: bump it in `Cargo.toml`, merge, then
+tag that commit `v<version>`. The release workflow refuses a tag that does not
+match the version, because `petal new` writes `v<CLI version>`. A released tag
+is immutable: Petal lockfiles record the commit it named, and Petals' release
+workflows may reference it. Protect `v*` tags against updates and deletion
+with a repository ruleset.
 
 ## Packaging a Petal
 
