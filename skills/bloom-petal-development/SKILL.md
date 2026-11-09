@@ -604,12 +604,12 @@ the root since enrollment changes the hash, and the provenance no longer
 matches. Machine and Broker read the catalog at startup, so enroll before the
 triad starts or restart it afterwards.
 
-The Hyperliquid hook takes any Petal directory: it enrolls it once the config
-exists, before the services start, and installs it after they start. To do
-both for your Petal in one launch, set
-`BLOOM_TRIAD_DEV_HYPERLIQUID_PACKAGE=<root>` and
-`BLOOM_TRIAD_DEV_BUILD_PETALS=0`; a `petal new` scaffold has no
-`scripts/build.sh` for the hook to run.
+The Hyperliquid hook takes any Petal directory: it runs the Petal's
+`scripts/build.sh`, which `petal new` writes, enrolls the Petal once the config
+exists, before the services start, and installs it after they start. To do all
+three for your Petal in one launch, set
+`BLOOM_TRIAD_DEV_HYPERLIQUID_PACKAGE=<root>`. `BLOOM_TRIAD_DEV_BUILD_PETALS=0`
+skips the build, for a Petal without `scripts/build.sh`.
 
 ## Read why Bloom refused a call
 
