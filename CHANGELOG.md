@@ -13,7 +13,8 @@
 - `sdk::describe_error(&err)` gives the error's message followed by the reason
   `host-error-detail` recorded for it, and is `message()` without the feature.
 - Document installing the CLI from git, pinning the SDK by commit, signing
-  messages and reading Bloom's refusal reasons.
+  messages, reading Bloom's refusal reasons, and enrolling a signing Petal's
+  provenance on a new developer triad.
 
 - Opt-in `host-error-detail`: `sdk::last_host_reason()` returns the host's
   explanation when the latest SDK host call failed. Every host call replaces
