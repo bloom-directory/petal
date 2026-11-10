@@ -36,16 +36,23 @@ The workflow only accepts semantic version tags. It checks out the caller at
 the tagged commit, builds its routes, packages them deterministically, and
 refuses to replace existing assets.
 
-`petal-tooling-ref` is optional: an exact 40-character commit that replaces
-the lockfile's SDK commit as the tooling source. The workflow warns when the
-two differ, and the builder refuses an SDK of another version than its CLI.
+`petal-tooling-ref` is an exact 40-character commit that replaces the
+lockfile's SDK commit as the tooling source. The workflow warns when the two
+differ, and the builder refuses an SDK of another version than its CLI.
 Without it, a lockfile that does not take the SDK from one
 `bloom-directory/petal` commit is refused.
 
+Omit it only once the SDK pin is 0.2.0 or later. The workflow runs
+`petal package --no-build`, which the CLI of an earlier SDK commit may lack,
+so a Petal on an earlier SDK sets `petal-tooling-ref` to a commit with this
+workflow's features and pins `uses:` to the same commit.
+
 GitHub serves a commit from any fork of `bloom-directory/petal` at that
 repository's URL, so before building the CLI the workflow fetches the
-repository's `master` and release tags and refuses:
+repository's `master` and release tags (`v` and a number) and refuses:
 
+- a lockfile that takes crates from the repository at more than one commit,
+  however it spells the URL, since Cargo builds them all from one;
 - a lockfile that pins a release tag at a commit the tag does not name;
 - a lockfile `rev`, or a `petal-tooling-ref`, that is not on `master` or a
   release tag.

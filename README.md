@@ -188,7 +188,9 @@ A branch, or a tag that is not `v` and a semantic version, is refused. Then
 - for a git pin, another crate from the SDK's repository, such as
   `bloom-petal-contract`, is pinned at a different revision, in the route crate
   or in `[dependencies]` of `petal-build.toml`;
-- the lockfile resolves any of them from another source or revision;
+- the lockfile resolves any of them from another source or revision, or
+  records more than one commit for the SDK's repository, whose crates Cargo
+  builds from a single commit;
 - the route crate makes the SDK optional, directly or on an entry that
   inherits it, since generated components always enable it;
 - the route crate or its workspace overrides any crate with `[patch]` or

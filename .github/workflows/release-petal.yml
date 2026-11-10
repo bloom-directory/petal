@@ -12,7 +12,8 @@ on:
           Exact 40-character bloom-directory/petal commit whose CLI builds and
           packages the release. Defaults to the SDK commit the route
           workspace's Cargo.lock pins, so the SDK pin is the only version a
-          Petal names.
+          Petal names. Set it while the SDK pin predates 0.2.0: older CLIs
+          lack `petal package --no-build`, which this workflow runs.
         default: ""
         required: false
         type: string
@@ -111,10 +112,16 @@ jobs:
           PETAL_TOOLING_REF: ${{ inputs['petal-tooling-ref'] }}
         run: |
           set -euo pipefail
-          # The locked commit and, for a tag pin, the tag.
-          PIN="$(python3 - "$PACKAGE_ROOT" <<'PY'
+          # The one bloom-directory/petal commit, and tag if any, that the
+          # route lockfile records for every crate from that repository.
+          LOCK="$(python3 - "$PACKAGE_ROOT" <<'PY'
           import json, pathlib, re, subprocess, sys, tomllib
-          from urllib.parse import unquote
+          from urllib.parse import parse_qsl
+          def repository(url):
+              # Any spelling that reaches the repository, including those the
+              # builder accepts: scheme, user, case, ".git", trailing "/".
+              url = re.sub(r"^[a-z][a-z0-9+.-]*://([^/@]*@)?", "", url.strip(), flags=re.I)
+              return url.lower().rstrip("/").removesuffix(".git").rstrip("/")
           root = pathlib.Path(sys.argv[1])
           config = tomllib.loads((root / "petal-build.toml").read_text())
           crate = root / config["route_crate"]["path"] / "Cargo.toml"
@@ -123,55 +130,80 @@ jobs:
           ))["root"]
           lock = pathlib.Path(workspace).parent / "Cargo.lock"
           package = config.get("sdk", {}).get("package", "bloom-petal-sdk")
-          sources = {
-              entry.get("source", "")
-              for entry in tomllib.loads(lock.read_text()).get("package", [])
-              if entry.get("name") == package
-          }
-          pattern = r"git\+https://github\.com/bloom-directory/petal(?:\.git)?\?(rev|tag)=([^#&]+)#([0-9a-f]{40})"
-          pins = {m.groups() for m in map(lambda s: re.fullmatch(pattern, s, re.I), sources) if m}
-          if len(pins) == 1 and len(sources) == 1:
-              kind, ref, commit = pins.pop()
-              tag = unquote(ref) if kind.lower() == "tag" else ""
-              if tag and not re.fullmatch(r"v[0-9][0-9A-Za-z.+-]*", tag):
-                  print("")
-              else:
-                  print(commit.lower(), tag)
-          else:
-              print("")
+          entries = tomllib.loads(lock.read_text()).get("package", [])
+          pins, names, unpinned = set(), set(), set()
+          for entry in entries:
+              found = re.fullmatch(r"git\+([^?#]*)(?:\?([^#]*))?(?:#(.*))?", entry.get("source", ""))
+              if not found or repository(found.group(1)) != "github.com/bloom-directory/petal":
+                  continue
+              name = entry.get("name", "")
+              name = name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else "a crate"
+              names.add(name)
+              query = dict(parse_qsl(found.group(2) or "", keep_blank_values=True))
+              commit, tag = (found.group(3) or "").lower(), query.get("tag", "")
+              if (
+                  len(query) != 1
+                  or not set(query) <= {"rev", "tag"}
+                  or not re.fullmatch(r"[0-9a-f]{40}", commit)
+                  or (tag and not re.fullmatch(r"v[0-9][0-9A-Za-z.+-]*", tag))
+              ):
+                  unpinned.add(name)
+              pins.add((commit, tag))
+          sdk_sources = [entry.get("source", "") for entry in entries if entry.get("name") == package]
+          error = ""
+          if unpinned:
+              error = f"the route lockfile takes {', '.join(sorted(unpinned))} from bloom-directory/petal without a full commit and a rev or release tag"
+          elif len(pins) > 1:
+              error = f"the route lockfile records {', '.join(sorted(names))} from bloom-directory/petal at more than one commit or tag, and Cargo builds all of them from one"
+          commit, tag = next(iter(pins)) if len(pins) == 1 else ("", "")
+          print(json.dumps({
+              "commit": commit,
+              "tag": tag,
+              # The SDK itself is taken from that commit, alone.
+              "sdk": len(sdk_sources) == 1 and package in names,
+              "error": error,
+          }))
           PY
           )"
-          read -r LOCKED LOCKED_TAG <<<"$PIN"
+          LOCK_ERROR="$(jq -r '.error' <<<"$LOCK")"
+          if [[ -n "$LOCK_ERROR" ]]; then
+            echo "::error::$LOCK_ERROR"
+            exit 1
+          fi
+          LOCKED="$(jq -r '.commit' <<<"$LOCK")"
+          LOCKED_TAG="$(jq -r '.tag' <<<"$LOCK")"
           if [[ -z "$PETAL_TOOLING_REF" ]]; then
-            if [[ -z "$LOCKED" ]]; then
+            if [[ "$(jq -r '.sdk' <<<"$LOCK")" != true ]]; then
               echo "::error::the route lockfile does not pin the SDK to one bloom-directory/petal commit; pin a release tag or set petal-tooling-ref"
               exit 1
             fi
             PETAL_TOOLING_REF="$LOCKED"
           elif [[ -n "$LOCKED" && "$LOCKED" != "$PETAL_TOOLING_REF" ]]; then
-            echo "::warning::petal-tooling-ref $PETAL_TOOLING_REF differs from the SDK commit $LOCKED the lockfile pins; omit it to build with the SDK's own CLI"
+            echo "::warning::petal-tooling-ref $PETAL_TOOLING_REF differs from the bloom-directory/petal commit $LOCKED the lockfile pins; from SDK 0.2.0 on, omit it to build with the SDK's own CLI"
           fi
 
           # GitHub serves a commit from any fork of bloom-directory/petal at its
-          # URL. Take only commits on master or a release tag, and for a tag
-          # pin, only the commit the tag names. A full fetch, not a partial
-          # clone, which would fetch a missing commit on demand.
+          # URL. Take only commits on master or a release tag (v and a number),
+          # and for a tag pin, only the commit the tag names. Every crate the
+          # lockfile takes from the repository is checked above to share the
+          # commit checked here. A full fetch, not a partial clone, which would
+          # fetch a missing commit on demand.
           REFS="$RUNNER_TEMP/petal-refs.git"
           git init --quiet --bare "$REFS"
           git -C "$REFS" fetch --quiet --no-tags https://github.com/bloom-directory/petal \
             '+refs/heads/master:refs/heads/master' '+refs/tags/v*:refs/tags/v*'
           reviewed() {
             git -C "$REFS" merge-base --is-ancestor "$1" master 2>/dev/null ||
-              [[ -n "$(git -C "$REFS" for-each-ref --contains "$1" 'refs/tags/v*' 2>/dev/null)" ]]
+              [[ -n "$(git -C "$REFS" for-each-ref --contains "$1" 'refs/tags/v[0-9]*' 2>/dev/null)" ]]
           }
           if [[ -n "$LOCKED_TAG" ]]; then
             TAGGED="$(git -C "$REFS" rev-parse --verify --quiet "refs/tags/$LOCKED_TAG^{commit}" || true)"
             if [[ "$TAGGED" != "$LOCKED" ]]; then
-              echo "::error::the route lockfile pins SDK tag $LOCKED_TAG at $LOCKED, but bloom-directory/petal's $LOCKED_TAG names ${TAGGED:-no commit}; refresh the lockfile: cargo update -p bloom-petal-sdk"
+              echo "::error::the route lockfile pins tag $LOCKED_TAG of bloom-directory/petal at $LOCKED, but $LOCKED_TAG names ${TAGGED:-no commit}; refresh the lockfile: cargo update -p bloom-petal-sdk"
               exit 1
             fi
           elif [[ -n "$LOCKED" ]] && ! reviewed "$LOCKED"; then
-            echo "::error::the route lockfile pins SDK commit $LOCKED, which is not on bloom-directory/petal's master or a release tag"
+            echo "::error::the route lockfile pins bloom-directory/petal commit $LOCKED, which is not on its master or a release tag"
             exit 1
           fi
           if ! reviewed "$PETAL_TOOLING_REF"; then

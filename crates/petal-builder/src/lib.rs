@@ -2405,6 +2405,13 @@ fn cargo_resolves_to_a_path(
         .any(|candidate| candidate["name"] == package && candidate["source"].is_null()))
 }
 
+/// The normalized repository URL and the commit of a `git+` lockfile source.
+fn locked_git_commit(source: &str) -> Option<(String, &str)> {
+    let (locked, commit) = source.strip_prefix("git+")?.split_once('#')?;
+    let url = locked.split_once('?').map_or(locked, |(url, _)| url);
+    Some((normalize_git_url(url), commit))
+}
+
 /// Check one `Cargo.lock` source against the pin.
 fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>) -> bool {
     match expected {
@@ -2788,12 +2795,24 @@ fn check_sdk_pin_with(
             .unwrap_or_default();
         // Whether Cargo resolves each package to a local path, asked once.
         let mut patched = BTreeMap::new();
+        // The commits the lockfile records for the SDK's repository, and the
+        // crates it records at each.
+        let mut repo_commits: BTreeMap<String, Vec<&str>> = BTreeMap::new();
         for entry in entries.iter().filter_map(toml::Value::as_table) {
             let Some(name) = entry.get("name").and_then(toml::Value::as_str) else {
                 continue;
             };
             let version = entry.get("version").and_then(toml::Value::as_str);
             let source = entry.get("source").and_then(toml::Value::as_str);
+            if let (Some(repo), Some((url, commit))) =
+                (&sdk_repo, source.and_then(locked_git_commit))
+                && url == *repo
+            {
+                repo_commits
+                    .entry(commit.to_ascii_lowercase())
+                    .or_default()
+                    .push(name);
+            }
             // Cargo records every `[replace]` here, however its key is spelled.
             // Generated components ignore them, so the route's tests would run
             // code the components do not, whichever crate is replaced.
@@ -2854,6 +2873,22 @@ fn check_sdk_pin_with(
                     source.unwrap_or("a local path")
                 ));
             }
+        }
+        // Cargo builds every crate from one git source at a single commit,
+        // whichever entry it takes, so a second commit for the SDK's
+        // repository means some crate is not built from the commit recorded
+        // for it. A tag pin accepts any commit per entry, so check them here.
+        if repo_commits.len() > 1 {
+            disagreements.push(format!(
+                "{} records more than one commit for {}, and Cargo builds all of its crates from one: {}",
+                shown(&lock_path),
+                sdk_repo.as_deref().unwrap_or_default(),
+                repo_commits
+                    .iter()
+                    .map(|(commit, names)| format!("{} at {commit}", names.join(", ")))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ));
         }
     }
 
@@ -3651,6 +3686,35 @@ mod tests {
             );
             let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
             assert!(error.contains("pinned inconsistently"), "{lock}: {error}");
+        }
+    }
+
+    #[test]
+    fn sdk_pin_refuses_two_commits_for_the_sdk_repository() {
+        let contract = |commit: &str| {
+            format!(
+                "\n[[package]]\nname = \"bloom-petal-contract\"\nversion = \"0.2.0\"\nsource = \"git+{SDK_GIT}?tag=v0.2.0#{commit}\"\n"
+            )
+        };
+        let declared = format!(
+            "{}contract = {{ package = \"bloom-petal-contract\", git = \"{SDK_GIT}\", tag = \"v0.2.0\" }}\n",
+            tag_manifest("v0.2.0")
+        );
+        // Declared or not, a crate from the SDK's repository is built from
+        // the same commit as the SDK, so it must be locked there too.
+        for manifest in [declared.as_str(), &tag_manifest("v0.2.0")] {
+            let one = tag_lock("v0.2.0", REV_A, "0.2.0") + &contract(REV_A);
+            let (tmp, config) = pin_fixture(SdkDependency::default(), manifest, Some(&one));
+            check_sdk_pin(tmp.path(), &config).unwrap();
+
+            let two = tag_lock("v0.2.0", REV_A, "0.2.0") + &contract(REV_B);
+            let (tmp, config) = pin_fixture(SdkDependency::default(), manifest, Some(&two));
+            let error = check_sdk_pin(tmp.path(), &config).unwrap_err();
+            assert!(error.contains("records more than one commit"), "{error}");
+            assert!(
+                error.contains(&format!("bloom-petal-contract at {REV_B}")),
+                "{error}"
+            );
         }
     }
 
