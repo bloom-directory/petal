@@ -105,24 +105,33 @@ jobs:
       # The CLI comes from the SDK commit the route workspace's lockfile pins,
       # unless the caller names one. The builder refuses an SDK of another
       # version either way.
+      #
+      # Nothing from the Petal may run before the CLI is chosen. rustup takes
+      # a toolchain from a rust-toolchain file in the working directory or its
+      # parents, which can name the Petal's own cargo by path; Cargo reads
+      # config there; and Python imports modules from the working directory
+      # before its own. So this step runs outside the checkout, names the
+      # toolchain, and runs Python isolated.
       - name: Resolve the Petal tooling commit
         id: tooling
+        working-directory: ${{ runner.temp }}
         env:
           PACKAGE_ROOT: ${{ inputs['package-root'] }}
           PETAL_TOOLING_REF: ${{ inputs['petal-tooling-ref'] }}
+          RUSTUP_TOOLCHAIN: stable
         run: |
           set -euo pipefail
           # The one bloom-directory/petal commit, and tag if any, that the
           # route lockfile records for every crate from that repository.
-          LOCK="$(python3 - "$PACKAGE_ROOT" <<'PY'
-          import json, pathlib, re, subprocess, sys, tomllib
+          LOCK="$(python3 -I - "$PACKAGE_ROOT" <<'PY'
+          import json, os, pathlib, re, subprocess, sys, tomllib
           from urllib.parse import parse_qsl
           def repository(url):
               # Any spelling that reaches the repository, including those the
               # builder accepts: scheme, user, case, ".git", trailing "/".
               url = re.sub(r"^[a-z][a-z0-9+.-]*://([^/@]*@)?", "", url.strip(), flags=re.I)
               return url.lower().rstrip("/").removesuffix(".git").rstrip("/")
-          root = pathlib.Path(sys.argv[1])
+          root = pathlib.Path(os.environ["GITHUB_WORKSPACE"], sys.argv[1])
           config = tomllib.loads((root / "petal-build.toml").read_text())
           crate = root / config["route_crate"]["path"] / "Cargo.toml"
           workspace = json.loads(subprocess.check_output(
