@@ -32,9 +32,26 @@ jobs:
       expected-route-count: 12
 ```
 
-The workflow only accepts semantic version tags. It checks out the caller at
-the tagged commit, builds its routes, packages them deterministically, and
-refuses to replace existing assets.
+The workflow only accepts semantic version tags. It runs three jobs, so
+that no code from the Petal runs where the CLI that packages it is built or
+run:
+
+- `resolve` checks that the tag names the checked-out commit and chooses
+  the tooling commit from the lockfile. It runs Cargo and Python outside the
+  checkout, with the Rust toolchain named and Python isolated, so a
+  `rust-toolchain` file or a module in the Petal cannot run first.
+- `build` runs `build-command` with a CLI built from that commit, as
+  `PETAL_BIN`, and uploads `petal/<name>/`. The build command can change
+  anything else in its job, so the job can only read the repository.
+- `package` builds the CLI again before it checks out the Petal, puts the
+  uploaded `petal/<name>/` in place of the checkout's, runs
+  `petal package --no-build`, and publishes the release. It refuses to
+  replace existing assets.
+
+So the archive takes `petal/<name>/` from the build command and every other
+file from the tagged commit: commit `petal.toml`, `README.md`, `AGENTS.md`,
+and any `components/`, `modules/` or `wit/` rather than generating them.
+`petal-name` must be the name in `petal.toml`.
 
 `petal-tooling-ref` is an exact 40-character commit that replaces the
 lockfile's SDK commit as the tooling source. The workflow warns when the two
@@ -58,9 +75,9 @@ repository's `master` and release tags (`v` and a number) and refuses:
   release tag.
 
 The tooling commit must include `scripts/install-tools.sh` and the
-`[workspace.metadata.tools]` configuration in `Cargo.toml`. The workflow runs
-that checkout's installer before building the CLI, so the CLI source and
-`wasm-tools` version come from the same pinned tooling revision.
+`[workspace.metadata.tools]` configuration in `Cargo.toml`. The `build` job
+runs that checkout's installer before building the CLI, so the CLI source
+and `wasm-tools` version come from the same pinned tooling revision.
 
 `expected-route-count` is optional. A positive value protects against a release
 that silently omits routes; zero disables the assertion.
@@ -79,6 +96,8 @@ caller repository, exact source commit, release tag, archive filename and
 SHA-256, Bloom package hash, and exact Petal tooling commit. Bloom can pin and
 verify all of these values without cloning or building the source repository.
 
-Release jobs need `contents: write`; all other permissions remain disabled. A
-missing GitHub Release is created from the existing tag. An existing release is
-accepted only when none of the three canonical asset names already exists.
+The caller grants `contents: write`, which only the `package` job uses;
+`resolve` and `build` read the repository, and all other permissions remain
+disabled. A missing GitHub Release is created from the existing tag. An
+existing release is accepted only when none of the three canonical asset
+names already exists.

@@ -233,12 +233,12 @@ from the directories the route workspace declares, and the packages the
 lockfile takes from git or a registry, read from the folder Cargo keeps for
 that source in Cargo home. Cargo home itself is trusted, but a `paths`
 override, or a source replacement such as a vendored directory, is refused
-there. The release workflow builds its tooling outside the Petal's
-checkout, so the Petal's own files cannot change the CLI that checks it.
-This covers Cargo's configuration, not the build command: the release
-workflow runs the Petal's own build command, which must run `petal build`
-without changing Cargo's environment, and `petal package --no-build` cannot
-tell how the components it packages were built.
+there. The release workflow runs no code from the Petal where it builds or
+runs the CLI that packages it: it runs the Petal's build command in a job
+of its own, and packages in a fresh job that builds the CLI before checking
+out the Petal. The build command must run `petal build` without changing
+Cargo's environment, since `petal package --no-build` cannot tell how the
+components it packages were built.
 
 The CLI must be the SDK's version: `petal build`, `check` and `package`
 refuse a lockfile that resolves the SDK at another version, and say how to

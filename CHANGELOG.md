@@ -23,6 +23,16 @@
     records the repository at more than one commit. `scripts/petal.sh`
     checks each tag before it first runs a cached CLI for it;
   - the release workflow refuses a tag that is not the workspace version.
+- The reusable release workflow runs no code from the Petal where it builds
+  or runs the CLI that packages the release, so the `tooling_commit` in
+  `petal-release.json` names the CLI that made the archive. It chooses the
+  tooling commit outside the Petal's checkout, with the Rust toolchain named
+  and Python isolated, runs the build command in a job of its own with read
+  access only, and packages in a fresh job that builds the CLI before it
+  checks out the Petal. Before, the build command ran in the packaging job
+  and could replace the CLI or set the environment of the steps after it.
+  The archive takes `petal/<name>/` from the build and every other file from
+  the tagged commit.
 - `petal new` scaffolds a Petal that builds as it is: the SDK pinned to the
   CLI's tag with `host-error-detail`, an account route using
   `wallet_account` and `address_evm`, a test with `petal::testing`,
