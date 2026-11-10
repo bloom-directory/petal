@@ -33,15 +33,22 @@
   recursive or oversized types, the values shown to the owner, and message
   fields the type does not declare.
   `sdk::sign_payload` now refuses such a message without that envelope before
-  calling Bloom, with an error naming `MessageReview`, where Machine would
-  refuse it as a bare `invalid`. Safe confirmations, other suites and
+  calling Bloom, with an error naming `MessageReview`; from v0.5.0, Machine
+  refuses it as a bare `invalid`. Safe confirmations, other suites and
   payloads that do not start with `0x19` are unaffected. Released Bloom
   v0.4.2 accepts the envelope and ignores it.
+- Breaking for Petals that move to this SDK:
+  - a route that signs an EIP-712 or EIP-191 message without `MessageReview`,
+    or with its own record in `action` as CowSwap's does, is refused even on
+    Bloom v0.4.2, which signs it today. Adopt `MessageReview` when upgrading;
+  - the 0.2.0 CLI refuses a Petal whose lockfile resolves an earlier SDK.
+    Build it with the CLI of its own pin, as the error says, until it
+    upgrades.
 - `sdk::describe_error(&err)` gives the error's message followed by the reason
   `host-error-detail` recorded for it, and is `message()` without the feature.
-- Document installing the CLI from git, pinning the SDK by commit, signing
-  messages, reading Bloom's refusal reasons, and enrolling a signing Petal's
-  provenance on a new developer triad.
+- Document installing the CLI from a release tag, pinning the SDK to one,
+  signing messages, reading Bloom's refusal reasons, and enrolling a signing
+  Petal's provenance on a new developer triad.
 
 - Opt-in `host-error-detail`: `sdk::last_host_reason()` returns the host's
   explanation when the latest SDK host call failed. Every host call replaces

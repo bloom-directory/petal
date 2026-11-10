@@ -345,14 +345,15 @@ owns its release assets; Bloom only downloads and verifies them during setup.
 
 ## Distribution
 
-Rust packages are published to crates.io at coordinated exact versions. GitHub
-Releases carry the WIT archive, contract provenance, the Petal development
-skill, checksums and the source archive. Git tags identify source provenance
-but are not the terminal Cargo dependency channel.
+The Rust packages are not on crates.io yet: Petals take the SDK from a
+release tag of this repository. crates.io is the intended terminal channel
+(ADR 0001), at coordinated exact versions. GitHub Releases carry the WIT
+archive, contract provenance, the Petal development skill, checksums and the
+source archive.
 
 `scripts/release-check.sh` runs the release gates and assembles the canonical
 WIT archive, contract provenance, the Petal development skill, and SHA-256
 checksums under `dist/`. Assembling them needs git 2.40 or later, for
 `git archive --mtime`. A pushed version tag publishes those artifacts through
-GitHub Releases. crates.io publication is performed in dependency order:
-contract, SDK, builder, CLI.
+GitHub Releases. Once the packages go to crates.io, they publish in
+dependency order: contract, SDK, builder, CLI.
