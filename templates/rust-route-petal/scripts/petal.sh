@@ -2,10 +2,11 @@
 # Run the petal CLI of the SDK release this Petal pins.
 #
 # route/Cargo.toml names the SDK tag, and route/Cargo.lock records its commit.
-# On first use this checks that the tag still names that commit, then installs
-# the petal CLI from it, with the wasm-tools release it builds with, under
-# ~/.cache/bloom-petal. So the SDK tag is the only version to change.
-# PETAL_BIN names another binary, as the release workflow does.
+# The first time it sees that tag and commit, this checks that the tag names
+# the commit, and installs the petal CLI from it, with the wasm-tools release
+# it builds with, under ~/.cache/bloom-petal. So the SDK tag is the only
+# version to change. PETAL_BIN names another binary, as the release workflow
+# does.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -60,9 +61,13 @@ if [ "${#commit}" -ne 40 ]; then
 fi
 
 tools=${PETAL_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/bloom-petal}/$commit
-if [ ! -x "$tools/bin/petal" ]; then
-  # GitHub serves a commit from any fork of the repository at its URL, so
-  # install only the commit the tag names.
+# GitHub serves a commit from any fork of the repository at its URL, so run
+# only the commit the tag names. A file per tag records that it named this
+# commit when checked. Without one, check, even with a CLI already here: an
+# earlier petal.sh installed without checking, and the CLI may have been
+# installed for another tag.
+checked=$tools/checked-tags/$tag
+if [ ! -f "$checked" ]; then
   if ! refs=$(git ls-remote "$repo" "refs/tags/$tag" "refs/tags/$tag^{}"); then
     echo "petal.sh: could not read $tag from $repo" >&2
     exit 1
@@ -76,8 +81,12 @@ if [ ! -x "$tools/bin/petal" ]; then
     echo "petal.sh: $lock pins $tag at $commit, but $repo names ${named:-no commit} for $tag" >&2
     exit 1
   fi
-  echo "petal.sh: installing the petal CLI at $commit into $tools" >&2
-  cargo install --locked --quiet --git "$repo" --rev "$commit" --root "$tools" bloom-petal-cli
+  if [ ! -x "$tools/bin/petal" ]; then
+    echo "petal.sh: installing the petal CLI at $commit into $tools" >&2
+    cargo install --locked --quiet --git "$repo" --rev "$commit" --root "$tools" bloom-petal-cli
+  fi
+  mkdir -p "$tools/checked-tags"
+  : >"$checked"
 fi
 
 # Build with the wasm-tools release this CLI is tested with.

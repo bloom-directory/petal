@@ -22,8 +22,8 @@ scripts/petal.sh check
 ```
 
 `scripts/petal.sh` runs the `petal` CLI of the SDK release that
-`route/Cargo.toml` pins. On first use it checks that the release tag names
-the commit in `route/Cargo.lock`, then installs that CLI, and the
+`route/Cargo.toml` pins. The first time it sees a tag, it checks that the
+tag names the commit in `route/Cargo.lock`. It installs that CLI, and the
 `wasm-tools` release it builds with, under `~/.cache/bloom-petal`.
 
 ## Run it in Bloom

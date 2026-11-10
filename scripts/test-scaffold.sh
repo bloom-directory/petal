@@ -91,4 +91,26 @@ refuses "a full commit" "git+$sdk_url?tag=main#$real"
 cp "$tmp/Cargo.lock" route/Cargo.lock
 test ! -e "$tmp/unverified"
 
+# The CLI installed above was checked for v$version only. Another tag that
+# names a different commit is refused before that CLI runs, and so is a CLI
+# that an earlier petal.sh installed without checking.
+git -C "$tmp/sdk" -c user.name=test -c user.email=test@example.invalid \
+  commit --quiet --allow-empty -m "v9.9.7 candidate"
+git -C "$tmp/sdk" tag v9.9.7
+cached=$PETAL_TOOLS_DIR/$real
+test -f "$cached/checked-tags/v$version"
+sed "s|?tag=v$version#|?tag=v9.9.7#|" "$tmp/Cargo.lock" >route/Cargo.lock
+if scripts/petal.sh --version 2>"$tmp/refusal"; then
+  echo "test-scaffold: petal.sh ran the CLI cached for v$version under v9.9.7" >&2
+  exit 1
+fi
+grep -qF "names $(git -C "$tmp/sdk" rev-parse v9.9.7) for v9.9.7" "$tmp/refusal"
+test ! -e "$cached/checked-tags/v9.9.7"
+cp "$tmp/Cargo.lock" route/Cargo.lock
+mv "$cached/checked-tags" "$tmp/checked-tags"
+test "$(scripts/petal.sh --version)" = "petal $version"
+test -f "$cached/checked-tags/v$version"
+# Once checked, the tag is not checked again, so the CLI runs offline.
+test "$(GIT_CONFIG_GLOBAL=/dev/null GIT_ALLOW_PROTOCOL=none scripts/petal.sh --version)" = "petal $version"
+
 echo "test-scaffold: petal new $version builds, tests and checks"
