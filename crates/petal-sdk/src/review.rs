@@ -9,10 +9,11 @@
 //! owner every typed field. A Petal's own record in `action` is refused.
 //!
 //! [`MessageReview`] builds the envelope, and `sdk::sign_payload` refuses a
-//! message without one before it reaches Bloom. The SDK checks the envelope's
-//! shape against Broker's limits; it cannot check the hash, because it has no
-//! Keccak. Test that the typed data hashes to the payload's digest with the
-//! Petal's own EIP-712 library.
+//! message without one before it reaches Bloom. The SDK checks the envelope
+//! against Broker's limits on its size, nesting, types and the values it
+//! shows the owner. It does not check that each value fits its type, or the
+//! hash, because it has no EIP-712 encoder or Keccak. Test that the typed data
+//! hashes to the payload's digest with the Petal's own EIP-712 library.
 //!
 //! Bloom signs messages on the exact single-payload path only: it refuses one
 //! in a batch, except for Polymarket's own operation classes. Safe
@@ -36,6 +37,12 @@ const MAX_STRING_BYTES: usize = 8192;
 const MAX_KEY_BYTES: usize = 128;
 const MAX_TYPES: usize = 32;
 const MAX_TYPE_FIELDS: usize = 64;
+/// Fields in a type with every struct type it uses expanded.
+const MAX_EXPANDED_TYPE: usize = 1024;
+/// Values Broker shows the owner: one per leaf, and one per empty array.
+const MAX_SHOWN_VALUES: usize = 256;
+/// Machine's and Broker's limit on the envelope, `SINGLE_PAYLOAD_MAX_BYTES`.
+const MAX_ENVELOPE_BYTES: usize = 256 * 1024;
 const DOMAIN_FIELDS: &[&str] = &["name", "version", "chainId", "verifyingContract", "salt"];
 
 /// A `bloom.message.review.v1` envelope, ready to be a sign request's
@@ -70,6 +77,10 @@ impl MessageReview {
 
     /// An EIP-191 personal message: the exact text after
     /// `"\x19Ethereum Signed Message:\n<length>"`, at most 8192 bytes.
+    ///
+    /// The envelope carries text, so Bloom signs only a UTF-8 message. A dapp
+    /// that passes `personal_sign` a `0x`-prefixed hex string means the bytes
+    /// it encodes: decode them, and pass the text if it is UTF-8.
     pub fn personal(message: &str) -> Result<Self, String> {
         if message.len() > MAX_STRING_BYTES {
             return Err(format!(
@@ -84,9 +95,15 @@ impl MessageReview {
         envelope.insert("schema".into(), MESSAGE_REVIEW_SCHEMA.into());
         envelope.insert("kind".into(), kind.into());
         envelope.insert(field.into(), value);
-        serde_json::to_vec(&Value::Object(envelope))
-            .map(|bytes| Self { bytes })
-            .map_err(|error| format!("encode message review: {error}"))
+        let bytes = serde_json::to_vec(&Value::Object(envelope))
+            .map_err(|error| format!("encode message review: {error}"))?;
+        if bytes.len() > MAX_ENVELOPE_BYTES {
+            return Err(format!(
+                "the message review is {} bytes, and Bloom takes at most {MAX_ENVELOPE_BYTES}",
+                bytes.len()
+            ));
+        }
+        Ok(Self { bytes })
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -99,8 +116,11 @@ impl MessageReview {
 }
 
 /// Refuse a message that Bloom would refuse for want of a review envelope.
-/// This is Machine's own test: the keccak suite, a `0x19` first byte, and an
-/// `action` whose `schema` is not [`MESSAGE_REVIEW_SCHEMA`].
+/// This is Machine's test for any Petal: the keccak suite, a `0x19` first
+/// byte, and an `action` whose `schema` is not [`MESSAGE_REVIEW_SCHEMA`].
+/// Machine also requires an envelope, whatever the payload, for some
+/// first-party classes (Hyperliquid, Polymarket, gasless relay and Venice
+/// x402), which this does not check.
 pub(crate) fn require_message_review(
     signature_algorithm: &str,
     operation_class: &str,
@@ -157,40 +177,8 @@ fn check_typed_data(typed_data: &Value) -> Result<(), String> {
     if types.len() > MAX_TYPES {
         return Err(format!("typed data declares more than {MAX_TYPES} types"));
     }
-    for (name, fields) in types {
-        let fields = fields
-            .as_array()
-            .ok_or_else(|| format!("type {name:?} must be a list of fields"))?;
-        if fields.len() > MAX_TYPE_FIELDS {
-            return Err(format!(
-                "type {name:?} has more than {MAX_TYPE_FIELDS} fields"
-            ));
-        }
-        let mut seen = Vec::with_capacity(fields.len());
-        for field in fields {
-            let field = field
-                .as_object()
-                .filter(|field| field.len() == 2)
-                .ok_or_else(|| format!("each field of {name:?} needs only a name and a type"))?;
-            let (Some(field_name), Some(_)) = (
-                field.get("name").and_then(Value::as_str),
-                field.get("type").and_then(Value::as_str),
-            ) else {
-                return Err(format!(
-                    "each field of {name:?} needs a string name and type"
-                ));
-            };
-            let valid = !field_name.is_empty()
-                && field_name
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
-            if !valid || seen.contains(&field_name) {
-                return Err(format!(
-                    "field name {field_name:?} in {name:?} is invalid or repeated"
-                ));
-            }
-            seen.push(field_name);
-        }
+    for name in types.keys() {
+        expanded_size(types, name, &mut Vec::new())?;
     }
 
     let primary = root["primaryType"]
@@ -205,6 +193,131 @@ fn check_typed_data(typed_data: &Value) -> Result<(), String> {
         }
     } else if !types.contains_key(primary) {
         return Err(format!("primaryType {primary:?} is not declared in types"));
+    } else {
+        count_shown_values(types, primary, &root["message"], "message", &mut 0)?;
+    }
+    Ok(())
+}
+
+/// Broker's check of a declared type: its fields, then each struct type they
+/// use, expanded. It refuses a recursive type, struct types nested more than
+/// `MAX_DEPTH` deep, and an expansion past `MAX_EXPANDED_TYPE` fields.
+fn expanded_size(
+    types: &Map<String, Value>,
+    name: &str,
+    stack: &mut Vec<String>,
+) -> Result<usize, String> {
+    let Some(fields) = types.get(name) else {
+        return Ok(1);
+    };
+    if stack.iter().any(|seen| seen == name) {
+        return Err(format!(
+            "type {name:?} contains itself, and Broker refuses recursive types"
+        ));
+    }
+    if stack.len() >= MAX_DEPTH {
+        return Err(format!(
+            "type {name:?} is nested more than {MAX_DEPTH} struct types deep"
+        ));
+    }
+    let fields = fields
+        .as_array()
+        .ok_or_else(|| format!("type {name:?} must be a list of fields"))?;
+    if fields.len() > MAX_TYPE_FIELDS {
+        return Err(format!(
+            "type {name:?} has more than {MAX_TYPE_FIELDS} fields"
+        ));
+    }
+    stack.push(name.to_owned());
+    let mut seen = Vec::with_capacity(fields.len());
+    let mut size = 1usize;
+    for field in fields {
+        let field = field
+            .as_object()
+            .filter(|field| field.len() == 2)
+            .ok_or_else(|| format!("each field of {name:?} needs only a name and a type"))?;
+        let (Some(field_name), Some(field_type)) = (
+            field.get("name").and_then(Value::as_str),
+            field.get("type").and_then(Value::as_str),
+        ) else {
+            return Err(format!(
+                "each field of {name:?} needs a string name and type"
+            ));
+        };
+        let valid = !field_name.is_empty()
+            && field_name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
+        if !valid || seen.contains(&field_name) {
+            return Err(format!(
+                "field name {field_name:?} in {name:?} is invalid or repeated"
+            ));
+        }
+        seen.push(field_name);
+        let base = field_type.split('[').next().unwrap_or(field_type);
+        size = size.saturating_add(expanded_size(types, base, stack)?);
+        if size > MAX_EXPANDED_TYPE {
+            return Err(format!(
+                "type {name:?} expands to more than {MAX_EXPANDED_TYPE} fields"
+            ));
+        }
+    }
+    stack.pop();
+    Ok(size)
+}
+
+/// Walk the message as Broker does to show it to the owner: one value per
+/// leaf and per empty array, in field order, refusing the message once
+/// `MAX_SHOWN_VALUES` are shown and another is found. Broker also refuses a
+/// struct that does not hold exactly its declared fields, and an array type
+/// whose value is not an array. Runs only on acyclic types.
+fn count_shown_values(
+    types: &Map<String, Value>,
+    ty: &str,
+    value: &Value,
+    path: &str,
+    shown: &mut usize,
+) -> Result<(), String> {
+    if *shown >= MAX_SHOWN_VALUES {
+        return Err(format!(
+            "the message shows the owner more than {MAX_SHOWN_VALUES} values, which Broker refuses"
+        ));
+    }
+    if let Some(open) = ty.strip_suffix(']').and_then(|ty| ty.rfind('[')) {
+        let items = value
+            .as_array()
+            .ok_or_else(|| format!("{path} has type {ty} but is not an array"))?;
+        if items.is_empty() {
+            *shown += 1;
+        }
+        for (index, item) in items.iter().enumerate() {
+            count_shown_values(types, &ty[..open], item, &format!("{path}[{index}]"), shown)?;
+        }
+        return Ok(());
+    }
+    let Some(fields) = types.get(ty).and_then(Value::as_array) else {
+        *shown += 1;
+        return Ok(());
+    };
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{path} has type {ty} but is not an object"))?;
+    let names: Vec<&str> = fields
+        .iter()
+        .filter_map(|field| field["name"].as_str())
+        .collect();
+    if object.len() != names.len() || !names.iter().all(|name| object.contains_key(*name)) {
+        return Err(format!(
+            "{path} must hold exactly the fields {ty} declares, {names:?}, because Broker shows every signed field and nothing else"
+        ));
+    }
+    for field in fields {
+        let (Some(name), Some(field_type)) = (field["name"].as_str(), field["type"].as_str())
+        else {
+            continue;
+        };
+        let child = format!("{path}.{name}");
+        count_shown_values(types, field_type, &object[name], &child, shown)?;
     }
     Ok(())
 }
@@ -355,6 +468,33 @@ mod tests {
             ("an empty message", |v: &mut Value| {
                 v["primaryType"] = json!("EIP712Domain")
             }),
+            ("exactly the fields Mail declares", |v: &mut Value| {
+                v["message"]["memo"] = json!("not signed")
+            }),
+            ("exactly the fields Mail declares", |v: &mut Value| {
+                v["message"].as_object_mut().unwrap().remove("amount");
+            }),
+            (
+                "message.to has type Person but is not an object",
+                |v: &mut Value| {
+                    v["types"]["Mail"][0]["type"] = json!("Person");
+                    v["types"]["Person"] = json!([{"name": "wallet", "type": "address"}]);
+                },
+            ),
+            (
+                "message.amount has type uint256[] but is not an array",
+                |v: &mut Value| v["types"]["Mail"][1]["type"] = json!("uint256[]"),
+            ),
+            ("recursive", |v: &mut Value| {
+                v["types"]["Mail"][0]["type"] = json!("Mail")
+            }),
+            ("recursive", |v: &mut Value| {
+                v["types"]["Mail"][0]["type"] = json!("Mail[]")
+            }),
+            ("recursive", |v: &mut Value| {
+                v["types"]["Mail"][0]["type"] = json!("Person");
+                v["types"]["Person"] = json!([{"name": "inbox", "type": "Mail[2]"}]);
+            }),
         ];
         for (expected, mutate) in cases {
             let mut typed = mail();
@@ -386,6 +526,86 @@ mod tests {
         typed["message"]["to"] = nested;
         let error = MessageReview::eip712(typed).unwrap_err();
         assert!(error.contains("nested deeper"), "{error}");
+    }
+
+    #[test]
+    fn eip712_takes_struct_types_nested_as_deep_as_broker_does() {
+        let chain = |levels: usize| {
+            let mut typed = mail();
+            for level in 0..levels {
+                let next = if level + 1 == levels {
+                    "uint256".to_owned()
+                } else {
+                    format!("T{}", level + 1)
+                };
+                typed["types"][format!("T{level}")] = json!([{"name": "next", "type": next}]);
+            }
+            typed
+        };
+        MessageReview::eip712(chain(MAX_DEPTH)).unwrap();
+        let error = MessageReview::eip712(chain(MAX_DEPTH + 1)).unwrap_err();
+        assert!(error.contains("nested more than 12"), "{error}");
+    }
+
+    #[test]
+    fn eip712_refuses_a_type_that_expands_past_broker_bound() {
+        // `Wider` holds 64 `Wide` structs, so it expands to 1 + 64 * (1 + width).
+        let wide = |width: usize| {
+            let mut typed = mail();
+            typed["types"]["Wide"] = (0..width)
+                .map(|i| json!({"name": format!("f{i}"), "type": "uint256"}))
+                .collect();
+            typed["types"]["Wider"] = (0..MAX_TYPE_FIELDS)
+                .map(|i| json!({"name": format!("w{i}"), "type": "Wide"}))
+                .collect();
+            typed
+        };
+        MessageReview::eip712(wide(14)).unwrap();
+        let error = MessageReview::eip712(wide(15)).unwrap_err();
+        assert!(error.contains("expands to more than 1024"), "{error}");
+    }
+
+    #[test]
+    fn eip712_refuses_more_values_than_broker_shows() {
+        let bag = |amounts: usize| {
+            let mut typed = mail();
+            typed["types"]["Mail"][1] = json!({"name": "amounts", "type": "uint256[]"});
+            typed["message"]["amounts"] = json!(vec!["1"; amounts]);
+            typed["message"].as_object_mut().unwrap().remove("amount");
+            typed
+        };
+        // `to` and 255 amounts are 256 values, the most Broker shows.
+        MessageReview::eip712(bag(255)).unwrap();
+        let error = MessageReview::eip712(bag(256)).unwrap_err();
+        assert!(error.contains("more than 256 values"), "{error}");
+
+        // Broker shows an empty array as one value.
+        let typed = bag(0);
+        let mut shown = 0;
+        count_shown_values(
+            typed["types"].as_object().unwrap(),
+            "Mail",
+            &typed["message"],
+            "message",
+            &mut shown,
+        )
+        .unwrap();
+        assert_eq!(shown, 2);
+    }
+
+    #[test]
+    fn eip712_refuses_an_envelope_larger_than_bloom_takes() {
+        let notes = |count: usize| {
+            let mut typed = mail();
+            typed["types"]["Mail"][1] = json!({"name": "notes", "type": "string[]"});
+            typed["message"]["notes"] = json!(vec!["x".repeat(MAX_STRING_BYTES); count]);
+            typed["message"].as_object_mut().unwrap().remove("amount");
+            typed
+        };
+        let review = MessageReview::eip712(notes(31)).unwrap();
+        assert!(review.as_bytes().len() <= MAX_ENVELOPE_BYTES);
+        let error = MessageReview::eip712(notes(33)).unwrap_err();
+        assert!(error.contains("Bloom takes at most 262144"), "{error}");
     }
 
     #[test]

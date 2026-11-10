@@ -398,13 +398,17 @@ request.action = Some(review.into_bytes());
 refuses it unless it hashes to the payload, and shows the owner every typed
 field, so a Petal's own record in `action` is refused, and so is a message
 field the type does not declare. Write wide integers such as `uint256` amounts
-as decimal strings. `MessageReview` checks shape only: test that the typed
-data hashes to the digest you sign with your EIP-712 library. Build it from the
-same immutable fields on every retry, because Bloom binds the `action` bytes
-into the signing operation. Bloom refuses a message in `sign_payload_batch`,
-except under Polymarket's own classes; Safe confirmations carry Safe's own
-envelope. The rule is in Bloom's v0.5.0 release set; earlier releases ignore
-the envelope.
+as decimal strings. `MessageReview` checks Broker's limits on size, nesting,
+types and the values shown, not each value against its type: test that the
+typed data hashes to the digest you sign with your EIP-712 library. Build the
+envelope from the same immutable fields on every retry, because Bloom binds
+the `action` bytes into the signing operation. Bloom refuses a message in
+`sign_payload_batch`, except under Polymarket's own classes; Safe
+confirmations carry Safe's own envelope. The rule is in Bloom's v0.5.0
+release set; earlier releases ignore the envelope.
+
+For a personal message, `MessageReview::personal(text)` takes the exact
+signed text. Bloom signs only UTF-8 text, so decode a `0x` hex message first.
 
 As for any signing route, the Petal's installer provenance must list the
 class, or Bloom refuses with `denied: installer provenance does not authorize

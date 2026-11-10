@@ -29,7 +29,9 @@
 
 - `petal::MessageReview` builds the `bloom.message.review.v1` envelope that
   Bloom's v0.5.0 release set requires in `action` before it signs an EIP-712
-  or EIP-191 message, and checks its shape against Broker's limits.
+  or EIP-191 message, and checks it against Broker's limits: size, nesting,
+  recursive or oversized types, the values shown to the owner, and message
+  fields the type does not declare.
   `sdk::sign_payload` now refuses such a message without that envelope before
   calling Bloom, with an error naming `MessageReview`, where Machine would
   refuse it as a bare `invalid`. Safe confirmations, other suites and

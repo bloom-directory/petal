@@ -144,11 +144,18 @@ message in a batch, except under Polymarket's own operation classes, and Safe
 confirmations carry Safe's own envelope instead.
 
 `petal::MessageReview::eip712(typed_data)` and
-`petal::MessageReview::personal(text)` build the envelope and check its shape
-against Broker's limits. `sdk::sign_payload` refuses a message without one
-before calling Bloom, with an error that names `MessageReview`, instead of
-Machine's bare `invalid`. The SDK has no Keccak, so it cannot check that the
-typed data hashes to the payload: test that with the Petal's EIP-712 library.
+`petal::MessageReview::personal(text)` build the envelope and check it
+against Broker's limits: its size, its nesting, recursive or oversized types,
+the number of values it shows the owner, and message fields the type does not
+declare. `sdk::sign_payload` refuses a message without one before calling
+Bloom, with an error that names `MessageReview`, instead of Machine's bare
+`invalid`. The SDK has no EIP-712 encoder or Keccak, so it checks neither
+that each value fits its type nor that the typed data hashes to the payload:
+test that with the Petal's EIP-712 library.
+
+`personal(text)` takes the exact signed text. The envelope carries text, so
+Bloom signs only a UTF-8 personal message; when a dapp passes `personal_sign`
+a `0x`-prefixed hex string, decode it and pass the text.
 
 ## Pinning the SDK
 
