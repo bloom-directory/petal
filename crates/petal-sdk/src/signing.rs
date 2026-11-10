@@ -76,7 +76,8 @@ pub fn status(
 
 mod attempt;
 pub use attempt::{
-    Attempt, AttemptState, CtxHost, SignHalt, SigningHost, approval_read, sign_or_resume,
+    Attempt, AttemptState, CtxHost, PrepareMode, SignHalt, SigningHost, approval_read, prepare,
+    prepare_and_sign, sign_or_resume,
 };
 
 /// Construct payload and review from the same EIP-712 typed data.

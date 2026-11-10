@@ -450,3 +450,219 @@ fn retained_handle_refuses_missing_history() {
     assert_eq!(error.code, -4);
     assert_eq!(error.message, "attempt history lost");
 }
+
+#[test]
+fn preparation_is_lazy_and_existing_only_never_creates() {
+    let mut h = Host::default();
+    assert!(
+        prepare::<u8>(
+            &mut h,
+            "w",
+            "missing",
+            PrepareMode::ExistingOnly,
+            || panic!("missing builder"),
+            |_| panic!("missing validator")
+        )
+        .is_err()
+    );
+    assert_eq!(h.data.lock().unwrap().writes, 0);
+    let (first, _) = crate::prepared_sign!(host: &mut h, wallet: "w", scope: "scope",
+        mode: PrepareMode::Resume, build: || Ok((action(1), 1u8)),
+        validate: |a| { assert_eq!(*a.context(), 1); Ok(()) })
+    .unwrap();
+    let (retry, _) = prepare_and_sign(
+        &mut h,
+        "w",
+        "scope",
+        PrepareMode::ExistingOnly,
+        || panic!("retry builder"),
+        |a: &Attempt<u8>| {
+            assert_eq!(a.action(), first.action());
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(first.operation_key(), retry.operation_key());
+    let d = h.data.lock().unwrap();
+    assert_eq!((d.status_calls, d.sign_calls, d.charges), (0, 2, 1));
+}
+
+#[test]
+fn preparation_validates_frozen_candidate_before_signing() {
+    let mut h = Host::default();
+    open(&mut h);
+    let result = prepare_and_sign(
+        &mut h,
+        "w",
+        "scope",
+        PrepareMode::Resume,
+        || panic!("existing builder"),
+        |a: &Attempt<u8>| a.check_action(&action(2)),
+    );
+    assert_eq!(result.unwrap_err().code, -4);
+    assert!(
+        Attempt::<u8>::load(&mut h, "scope")
+            .unwrap()
+            .unwrap()
+            .check_action(&action(1))
+            .is_ok()
+    );
+    assert_eq!(h.data.lock().unwrap().sign_calls, 0);
+}
+
+#[test]
+fn preparation_validates_concurrent_creation_winner() {
+    let h = Host {
+        write_barrier: Some(Arc::new(Barrier::new(2))),
+        ..Host::default()
+    };
+    let run = |mut h: Host, candidate| {
+        std::thread::spawn(move || {
+            prepare_and_sign(
+                &mut h,
+                "w",
+                "scope",
+                PrepareMode::Resume,
+                || Ok((action(candidate), candidate)),
+                |a| {
+                    if *a.context() != candidate {
+                        return Err(invalid("lost race"));
+                    }
+                    Ok(())
+                },
+            )
+        })
+    };
+    let a = run(h.clone(), 1);
+    let b = run(h.clone(), 2);
+    assert_ne!(a.join().unwrap().is_ok(), b.join().unwrap().is_ok());
+    let d = h.data.lock().unwrap();
+    assert_eq!((d.writes, d.sign_calls), (1, 1));
+}
+
+#[test]
+fn preparation_renews_only_permitted_states() {
+    for mode in [PrepareMode::RenewTerminal, PrepareMode::RefreshZeroSpend] {
+        for code in [ErrorCode::Expired, ErrorCode::Cancelled] {
+            let mut h = Host::default();
+            let a = open(&mut h);
+            terminal(&mut h, &a.operation_key(), code);
+            let next = prepare(
+                &mut h,
+                "w",
+                "scope",
+                mode,
+                || Ok((action(2), 2u8)),
+                |a| {
+                    assert_eq!(*a.context(), 2);
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert_eq!(next.generation(), 1);
+        }
+        for outcome in [
+            Ok(SigningOutcome::ApprovalPending {
+                action_id: "a".into(),
+                expires_ms: 999,
+            }),
+            Ok(SigningOutcome::RecoveryRequired {
+                status: "approved_retry".into(),
+            }),
+            Ok(SigningOutcome::RecoveryRequired {
+                status: "signing_outcome_ambiguous".into(),
+            }),
+            Ok(SigningOutcome::Signed {
+                signature: vec![7; 65],
+            }),
+            Err(SigningError {
+                code: ErrorCode::Denied,
+                message: "denied".into(),
+            }),
+            Err(backend("lookup failed")),
+            Err(SigningError {
+                code: ErrorCode::NotFound,
+                message: "missing".into(),
+            }),
+        ] {
+            let mut h = Host::default();
+            open(&mut h);
+            h.data
+                .lock()
+                .unwrap()
+                .outcomes
+                .insert("scope#0".into(), outcome.clone());
+            let result = prepare(
+                &mut h,
+                "w",
+                "scope",
+                mode,
+                || panic!("ineligible builder"),
+                |_: &Attempt<u8>| Ok(()),
+            );
+            assert_eq!(
+                result.is_err(),
+                outcome
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.code == ErrorCode::Backend)
+            );
+            assert_eq!(h.data.lock().unwrap().writes, 1);
+        }
+    }
+    for mode in [PrepareMode::RenewTerminal, PrepareMode::RefreshZeroSpend] {
+        let mut h = Host::default();
+        Attempt::open(&mut h, "scope", || {
+            Ok((action(1).with_spend(Spend::None), 1u8))
+        })
+        .unwrap();
+        h.data.lock().unwrap().outcomes.insert(
+            "scope#0".into(),
+            Ok(SigningOutcome::Signed { signature: vec![] }),
+        );
+        let next = prepare(
+            &mut h,
+            "w",
+            "scope",
+            mode,
+            || Ok((action(2).with_spend(Spend::None), 2u8)),
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(
+            next.generation(),
+            u32::from(mode == PrepareMode::RefreshZeroSpend)
+        );
+    }
+}
+
+#[test]
+fn preparation_validates_concurrent_renewal_winner() {
+    let mut h = Host::default();
+    open(&mut h);
+    terminal(&mut h, "scope#0", ErrorCode::Expired);
+    h.write_barrier = Some(Arc::new(Barrier::new(2)));
+    let run = |mut h: Host, candidate| {
+        std::thread::spawn(move || {
+            prepare_and_sign(
+                &mut h,
+                "w",
+                "scope",
+                PrepareMode::RenewTerminal,
+                || Ok((action(candidate), candidate)),
+                |a| {
+                    if *a.context() != candidate {
+                        return Err(invalid("lost renewal"));
+                    }
+                    Ok(())
+                },
+            )
+        })
+    };
+    let a = run(h.clone(), 2);
+    let b = run(h.clone(), 3);
+    assert_ne!(a.join().unwrap().is_ok(), b.join().unwrap().is_ok());
+    let d = h.data.lock().unwrap();
+    assert_eq!((d.writes, d.sign_calls), (2, 1));
+    assert!(d.signed_actions.contains_key("scope#1"));
+}

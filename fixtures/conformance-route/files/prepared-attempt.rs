@@ -3,7 +3,7 @@ petal::route_file!(
     read: |_ctx: &petal::Ctx| petal::DispatchResponse::Read(b"write JSON to sign or resume\n".to_vec()),
     write: |ctx: &petal::Ctx, body: &[u8]| {
         use conformance_route::{alloy_primitives, serde_json};
-        use petal::signing::{Attempt, CtxHost, SignHalt, SigningError, ErrorCode, eip712_action, erc20_spend, sign_or_resume};
+        use petal::signing::{PrepareMode, CtxHost, SignHalt, SigningError, ErrorCode, eip712_action, erc20_spend};
         let result = (|| -> Result<(), SignHalt> {
             let input: serde_json::Value = serde_json::from_slice(body).map_err(|e| SigningError { code: ErrorCode::Invalid, message: e.to_string() })?;
             let build = || {
@@ -13,11 +13,14 @@ petal::route_file!(
                 Ok((action, message.to_owned()))
             };
             let mut host = CtxHost(ctx);
-            let mut attempt = Attempt::open(&mut host, "state/fixture/attempt", build)?;
-            if input.get("renew").and_then(|v| v.as_bool()).unwrap_or(false) {
-                attempt = attempt.renew(&mut host, "fixture", |_| build())?;
-            }
-            sign_or_resume(&mut host, "fixture", &attempt)?;
+            let mode = if input.get("renew").and_then(|v| v.as_bool()).unwrap_or(false) {
+                PrepareMode::RenewTerminal
+            } else {
+                PrepareMode::Resume
+            };
+            petal::prepared_sign!(host: &mut host, wallet: "fixture",
+                scope: "state/fixture/attempt", mode: mode, build: build,
+                validate: |_| Ok(()))?;
             Ok(())
         })();
         match result { Ok(()) => petal::DispatchResponse::Write, Err(e) => e.into() }

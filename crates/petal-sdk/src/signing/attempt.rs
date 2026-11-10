@@ -150,6 +150,16 @@ impl<C: Serialize + DeserializeOwned> Attempt<C> {
     pub fn action(&self) -> &PreparedAction {
         &self.record.action
     }
+    /// Reject changed candidate inputs instead of silently signing a frozen action.
+    pub fn check_action(&self, candidate: &PreparedAction) -> Result<(), SigningError> {
+        if self.action() != candidate {
+            return Err(SigningError {
+                code: ErrorCode::Conflict,
+                message: "signing inputs changed; reconcile or create a new scope".into(),
+            });
+        }
+        Ok(())
+    }
     pub fn context(&self) -> &C {
         &self.record.context
     }
@@ -205,6 +215,77 @@ impl<C: Serialize + DeserializeOwned> Attempt<C> {
         }
         Ok(Self::create(h, &latest.scope, n, built)?)
     }
+}
+
+/// Controls whether an existing frozen attempt may be replaced.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrepareMode {
+    Resume,
+    ExistingOnly,
+    RenewTerminal,
+    RefreshZeroSpend,
+}
+
+/// Freeze or resume inputs, then validate the persisted winner.
+/// Creation may persist before validation; validation is not a store transaction.
+pub fn prepare<C: Serialize + DeserializeOwned>(
+    h: &mut impl SigningHost,
+    wallet: &str,
+    scope: &str,
+    mode: PrepareMode,
+    build: impl FnOnce() -> Result<(PreparedAction, C), SigningError>,
+    validate: impl FnOnce(&Attempt<C>) -> Result<(), SigningError>,
+) -> Result<Attempt<C>, SignHalt> {
+    let attempt = match Attempt::load(h, scope)? {
+        None if mode == PrepareMode::ExistingOnly => {
+            return Err(invalid("no existing signing attempt").into());
+        }
+        None => Attempt::open(h, scope, build)?,
+        Some(attempt) => {
+            if matches!(
+                mode,
+                PrepareMode::RenewTerminal | PrepareMode::RefreshZeroSpend
+            ) {
+                let state = attempt.state(h, wallet)?;
+                if matches!(state, AttemptState::Expired | AttemptState::Cancelled)
+                    || (mode == PrepareMode::RefreshZeroSpend
+                        && matches!(state, AttemptState::Signed | AttemptState::PackageChanged)
+                        && attempt.action().spend == Spend::None)
+                {
+                    attempt.renew(h, wallet, |_| build())?
+                } else {
+                    attempt
+                }
+            } else {
+                attempt
+            }
+        }
+    };
+    validate(&attempt)?;
+    Ok(attempt)
+}
+
+/// Validate preparation before making exactly one signing/resume call.
+pub fn prepare_and_sign<C: Serialize + DeserializeOwned>(
+    h: &mut impl SigningHost,
+    wallet: &str,
+    scope: &str,
+    mode: PrepareMode,
+    build: impl FnOnce() -> Result<(PreparedAction, C), SigningError>,
+    validate: impl FnOnce(&Attempt<C>) -> Result<(), SigningError>,
+) -> Result<(Attempt<C>, Vec<u8>), SignHalt> {
+    let attempt = prepare(h, wallet, scope, mode, build, validate)?;
+    let signature = sign_or_resume(h, wallet, &attempt)?;
+    Ok((attempt, signature))
+}
+
+/// Named-argument expression for contiguous preparation and signing.
+#[macro_export]
+macro_rules! prepared_sign {
+    (host: $host:expr, wallet: $wallet:expr, scope: $scope:expr,
+     mode: $mode:expr, build: $build:expr, validate: $validate:expr $(,)?) => {
+        $crate::signing::prepare_and_sign($host, $wallet, $scope, $mode, $build, $validate)
+    };
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
