@@ -37,7 +37,8 @@ The scaffold pins the SDK to that tag in `route/Cargo.toml`, with
 `host-error-detail` on, and the tag is the Petal's only SDK version:
 
 - `scripts/petal.sh` runs the CLI of the SDK commit `route/Cargo.lock` pins,
-  installing it and its `wasm-tools` on first use;
+  installing it and its `wasm-tools` on first use, and refuses a commit the
+  tag does not name;
 - `scripts/build.sh`, CI and the release workflow go through it;
 - `petal build` refuses an SDK of another version than its own.
 

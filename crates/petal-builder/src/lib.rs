@@ -2435,8 +2435,11 @@ fn lock_source_matches(expected: &SdkSource, source: &str, version: Option<&str>
             };
             let commit_matches = match (rev, tag) {
                 (Some(expected), None) => commit.eq_ignore_ascii_case(expected),
-                // The lockfile is what makes a tag exact: it records the
-                // commit the tag named when the lockfile was written.
+                // The lockfile makes a tag exact by recording a commit.
+                // Whether that is the tag's commit needs the network, and a
+                // CLI built from another commit would not ask, so the release
+                // workflow and the scaffold's `scripts/petal.sh` check it
+                // before they choose the CLI.
                 (None, Some(_)) => is_full_commit(commit),
                 _ => false,
             };

@@ -20,6 +20,12 @@ registry provides.
 - A Petal pins the SDK to a release tag. The builder accepts the tag as an
   exact pin because the lockfile records the commit it named, and refuses a
   lockfile that does not.
+- GitHub serves a commit from any fork of the repository at its URL, so a
+  lockfile can name a tag beside a commit the tag never named. The builder
+  works offline and cannot tell. The scaffold's `scripts/petal.sh` and the
+  reusable release workflow, which choose the CLI, refuse a tag pin whose
+  commit is not the tag's, and the release workflow refuses any other tooling
+  commit that is not on `master` or a release tag.
 - The CLI follows the Petal's SDK, not a separate pin. The builder refuses a
   lockfile that resolves the SDK at another version than its own. The
   scaffold's `scripts/petal.sh` and the reusable release workflow install the

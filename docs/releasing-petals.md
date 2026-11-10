@@ -42,6 +42,14 @@ two differ, and the builder refuses an SDK of another version than its CLI.
 Without it, a lockfile that does not take the SDK from one
 `bloom-directory/petal` commit is refused.
 
+GitHub serves a commit from any fork of `bloom-directory/petal` at that
+repository's URL, so before building the CLI the workflow fetches the
+repository's `master` and release tags and refuses:
+
+- a lockfile that pins a release tag at a commit the tag does not name;
+- a lockfile `rev`, or a `petal-tooling-ref`, that is not on `master` or a
+  release tag.
+
 The tooling commit must include `scripts/install-tools.sh` and the
 `[workspace.metadata.tools]` configuration in `Cargo.toml`. The workflow runs
 that checkout's installer before building the CLI, so the CLI source and

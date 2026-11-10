@@ -40,8 +40,8 @@ and that tag is the only version it names:
 
 - `scripts/petal.sh` runs the `petal` CLI of the SDK commit in
   `route/Cargo.lock`, installing it and the `wasm-tools` it builds with under
-  `~/.cache/bloom-petal` on first use. The build script, CI and release
-  workflow use it.
+  `~/.cache/bloom-petal` on first use, once the tag names that commit. The
+  build script, CI and release workflow use it.
 - `petal build`, `check` and `package` refuse a Petal whose lockfile resolves
   the SDK at another version than the CLI's, and print the command that
   installs the right one.
@@ -164,6 +164,10 @@ The route SDK must be an exact pin:
   ```toml
   petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", tag = "v0.2.0" }
   ```
+  GitHub serves a commit from any fork of this repository at its URL, so the
+  lockfile alone does not prove the commit is the tag's. The scaffold's
+  `scripts/petal.sh` and the release workflow check it before they install a
+  CLI from that commit;
 - a git `rev` that is a full 40-character commit;
 - a version requirement such as `=0.2.0`, once the SDK is on a registry;
 - or a local `path`.

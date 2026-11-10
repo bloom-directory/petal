@@ -2,10 +2,10 @@
 # Run the petal CLI of the SDK release this Petal pins.
 #
 # route/Cargo.toml names the SDK tag, and route/Cargo.lock records its commit.
-# On first use this installs the petal CLI from that commit, with the
-# wasm-tools release it builds with, under ~/.cache/bloom-petal. So the SDK
-# tag is the only version to change. PETAL_BIN names another binary, as the
-# release workflow does.
+# On first use this checks that the tag still names that commit, then installs
+# the petal CLI from it, with the wasm-tools release it builds with, under
+# ~/.cache/bloom-petal. So the SDK tag is the only version to change.
+# PETAL_BIN names another binary, as the release workflow does.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -25,9 +25,12 @@ source=$(awk '
   $0 == "name = \"bloom-petal-sdk\"" { sdk = 1 }
   sdk && /^source = / { sub(/^source = "/, ""); sub(/"$/, ""); print; exit }
 ' "$lock")
+repo=https://github.com/bloom-directory/petal
 case "$source" in
-  git+https://github.com/bloom-directory/petal\?*\#*)
-    commit=${source##*#}
+  "git+$repo?tag="*"#"* | "git+$repo.git?tag="*"#"*)
+    pin=${source#*\?tag=}
+    tag=${pin%%#*}
+    commit=${pin##*#}
     ;;
   "")
     # A Cargo config [patch] puts the SDK at a local checkout: use the petal
@@ -35,15 +38,46 @@ case "$source" in
     exec petal "$@"
     ;;
   *)
-    echo "petal.sh: $lock takes bloom-petal-sdk from $source; pin a release tag of https://github.com/bloom-directory/petal" >&2
+    echo "petal.sh: $lock takes bloom-petal-sdk from $source; pin a release tag of $repo, or set PETAL_BIN to a petal CLI you built" >&2
     exit 1
     ;;
 esac
+# The tag and commit go into a Git ref and a path below, so take only a
+# release tag and a full commit.
+case "$tag" in
+  v[0-9]*) ;;
+  *) commit= ;;
+esac
+case "$tag" in
+  *[!0-9A-Za-z.+-]*) commit= ;;
+esac
+case "$commit" in
+  *[!0-9a-f]*) commit= ;;
+esac
+if [ "${#commit}" -ne 40 ]; then
+  echo "petal.sh: $lock does not pin bloom-petal-sdk to a release tag and a full commit: $source" >&2
+  exit 1
+fi
 
 tools=${PETAL_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/bloom-petal}/$commit
 if [ ! -x "$tools/bin/petal" ]; then
+  # GitHub serves a commit from any fork of the repository at its URL, so
+  # install only the commit the tag names.
+  if ! refs=$(git ls-remote "$repo" "refs/tags/$tag" "refs/tags/$tag^{}"); then
+    echo "petal.sh: could not read $tag from $repo" >&2
+    exit 1
+  fi
+  named=$(printf '%s\n' "$refs" | awk -v ref="refs/tags/$tag" '
+    $2 == ref { plain = $1 }
+    $2 == ref "^{}" { peeled = $1 }
+    END { print (peeled != "" ? peeled : plain) }
+  ')
+  if [ "$named" != "$commit" ]; then
+    echo "petal.sh: $lock pins $tag at $commit, but $repo names ${named:-no commit} for $tag" >&2
+    exit 1
+  fi
   echo "petal.sh: installing the petal CLI at $commit into $tools" >&2
-  cargo install --locked --quiet --git https://github.com/bloom-directory/petal --rev "$commit" --root "$tools" bloom-petal-cli
+  cargo install --locked --quiet --git "$repo" --rev "$commit" --root "$tools" bloom-petal-cli
 fi
 
 # Build with the wasm-tools release this CLI is tested with.

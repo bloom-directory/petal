@@ -6,11 +6,16 @@
   0.2.0, so every untagged 0.1.0 commit stays distinguishable. A Petal names
   one SDK version, the tag, and everything else follows its lockfile:
   - the builder accepts `tag = "vX.Y.Z"` SDK pins, and `[sdk].tag`, when the
-    lockfile records the tag's commit; branches and other tags are refused;
+    lockfile records a commit for the tag; branches and other tags are refused;
   - `petal build`, `check` and `package` refuse a lockfile that resolves the
     SDK at another version than the CLI's, and print the install command;
   - the reusable release workflow takes the CLI from the lockfile's SDK
     commit when `petal-tooling-ref` is omitted;
+  - because GitHub serves any fork's commit at the repository's URL, the
+    release workflow and the scaffold's `scripts/petal.sh` refuse a tag pin
+    whose locked commit is not the tag's, and the release workflow refuses a
+    locked `rev` or `petal-tooling-ref` that is not on `master` or a release
+    tag;
   - the release workflow refuses a tag that is not the workspace version.
 - `petal new` scaffolds a Petal that builds as it is: the SDK pinned to the
   CLI's tag with `host-error-detail`, an account route using
