@@ -260,3 +260,97 @@ checksums under `dist/`. Assembling them needs git 2.40 or later, for
 `git archive --mtime`. A pushed version tag publishes those artifacts through
 GitHub Releases. crates.io publication is performed in dependency order:
 contract, SDK, builder, CLI.
+
+### Economic effects for reusable signing
+
+`petal::effects::Effects` builds the existing effects-v1 signing claim from the
+exact ordered payloads, trusted route context and typed raw-token debits,
+destinations and fees. For example:
+
+```rust,ignore
+let effects = petal::effects::Effects::new(
+    "evm-137",
+    petal::effects::PermissionEffect::None,
+).with_debits(vec![petal::effects::Debit {
+    asset: petal::effects::Asset {
+        chain: "evm-137".into(),
+        asset: collateral_contract.into(),
+    },
+    amount: gross_signed_debit.to_string(),
+}]);
+let claim = effects.batch_claim(ctx, operation_class, crypto_suite, &payloads)?;
+```
+
+The protocol adapter derives these facts from the prepared signing bytes. The
+builder provides canonical serialization and stable payload/route bindings; it
+is not a verifier or an authorization. Machine binds the real spending account,
+and Broker independently checks the supported protocol and reviewed allowance.
+Unverified formats and continuing permissions retain their existing approval
+requirements. Use `RequiresSeparateApproval` for credential creation, token
+allowances, delegation or other changes that authorize later actions.
+
+Keep approval state, deduplication, ambiguous-signature recovery and accounting
+in Machine/Broker/Signer. Petal-side hints remain advisory and must never replace
+those authorities. The route WIT and signing request ABI are unchanged.
+
+### Prepared signing contract
+
+`bloom:prepared-sign/signing@0.1.0` is a separately versioned import; the
+existing `bloom:sign/signing@0.2.0` remains available. A component using the
+new import requires a host implementing it and the `bloom:sign` capability;
+there is no fallback to legacy signing. The separate `bloom:prepared-sign/status@0.1.0` import requires
+`bloom:sign.status` and does not confer signing capability. `sign` and read-only `status` take
+UTF-8 JSON and return JSON. Their authoritative DTOs, validation, and
+cryptographic suite identifiers live in `bloom_petal_contract::prepared`.
+Status uses the authenticated executing route namespace.
+
+Version 1 bounds the encoded request and response to 1 MiB, signing preimages
+and review artifacts to 64 KiB each, operation class and review format to
+128 bytes, operation keys to 256 bytes, and bounded declarations to 32
+entries. ERC asset identities use lowercase 20-byte hex addresses, networks
+use canonical `evm-<decimal chain id>`, and quantities and token IDs are
+canonical decimal uint256 strings. `Unspecified` is the default and differs
+from an explicit `None`. Declarations are not proof of economic effects.
+The host must validate the DTO, independently recompute the suite-specific hash,
+and derive identity and policy from authenticated context. For Ed25519 the
+hash binds the message with SHA-256; the signature is over the message itself.
+
+### Prepared signing helpers
+
+Enable the SDK's `evm` feature for `signing::eip712_action` and
+`signing::erc20_spend`. The former derives the payload and review from the
+same typed data; the latter declares raw token units. Petals still construct
+protocol messages, calculate their complete debit (including fees), and
+validate returned signatures for their protocol.
+
+`Attempt::open(&mut CtxHost(ctx), scope, build)` freezes a prepared action and
+its Petal-owned context together. `sign_or_resume` retries the same Machine
+operation and returns its signature. `approval_read` supplies a read-only
+`approval.json` projection. Routes using attempts need `bloom:store` as well
+as their signing/status capability; `.caps(...)` replaces the default list.
+
+Use a stable scope unique to the package, wallet and logical operation. Each
+scope belongs to exactly one signing route: Machine binds operations to the
+route ID, so sharing a scope between signing routes does not deduplicate them.
+A separate status route may read the scope. Always submit using the returned
+attempt's context. Concurrent builders use
+the first stored action, not their own losing proposal. Machine remains the
+only outcome authority. Petals retain venue submission/reconciliation state.
+
+`renew` requires a terminal expired/cancelled operation, or a zero-spend
+refresh after signing. It never renews pending, ambiguous or unstarted
+attempts. Records are create-only, with at most 32 generations per scope.
+Package upgrades refuse in-flight spending continuation; reconcile before
+creating a new logical action. Lost Petal records are not a supported recovery
+path, and replayed signatures do not prevent venue-level duplicate submission.
+A typed `NotFound` status means unstarted; backend/decode errors never do.
+
+### Certified zero-spend classes
+
+A package may opt specific signing classes into zero-spend consent with
+`[sign].zero_spend_classes = ["app.login"]`. Every class must also appear in
+`allowed_intents`, with `economic_effects_schema = 1`. The builder and package
+checks reject missing consent prerequisites and duplicate or unknown classes.
+Machine binds this declaration into installed route provenance. An individual
+action must still explicitly declare `Spend::None`; omitting spend does not
+make it zero spend. Coverage depends on an active grant and its rate cap.
