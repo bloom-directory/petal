@@ -2557,20 +2557,37 @@ fn check_tooling_version(root: &Path, config: &BuildConfig, tooling: &str) -> Re
         .and_then(|source| source.rsplit_once('#'))
         .map(|(_, commit)| commit)
         .filter(|commit| is_full_commit(commit));
-    let reference = match commit {
-        Some(commit) if !source.is_some_and(|source| source.contains("?tag=")) => {
-            format!("--rev {commit}")
-        }
-        _ => format!("--tag v{version}"),
-    };
     let shown = lock_path
         .strip_prefix(root)
         .unwrap_or(&lock_path)
         .display()
         .to_string();
+    let install = |reference: &str| {
+        format!("cargo install --locked --git {PETAL_REPOSITORY} {reference} bloom-petal-cli")
+    };
+    let rev_pin = !source.is_some_and(|source| source.contains("?tag="));
+    let advice = match commit {
+        // No release before 0.2.0 has a tag, so only the commit names its
+        // CLI. GitHub serves any fork's commit at the repository's URL, so
+        // the commit alone does not show the CLI is this repository's code.
+        Some(commit) if rev_pin && predates_release_tags(version) => format!(
+            "Build with the CLI of the Petal's SDK commit, once you have checked that {commit} is on the master branch of {PETAL_REPOSITORY}, which also serves its forks' commits:\n  {}",
+            install(&format!("--rev {commit}"))
+        ),
+        _ => format!(
+            "Build with the CLI of the Petal's SDK version:\n  {}",
+            install(&format!("--tag v{version}"))
+        ),
+    };
     Err(format!(
-        "{shown} resolves {package} {version}, but this petal CLI is {tooling}. Build with the CLI of the Petal's SDK version:\n  cargo install --locked --git {PETAL_REPOSITORY} {reference} bloom-petal-cli"
+        "{shown} resolves {package} {version}, but this petal CLI is {tooling}. {advice}"
     ))
+}
+
+/// Whether an SDK version predates the first tagged release, 0.2.0.
+fn predates_release_tags(version: &str) -> bool {
+    let mut parts = version.split(['.', '-', '+']).map(str::parse::<u64>);
+    matches!((parts.next(), parts.next()), (Some(Ok(0)), Some(Ok(minor))) if minor < 2)
 }
 
 /// The rust-toolchain files rustup reads from `cwd` and its ancestors that
@@ -3766,7 +3783,8 @@ mod tests {
             "{error}"
         );
 
-        // A commit pin names its commit, which may not be a release.
+        // Before 0.2.0 no release was tagged, so a commit pin names its
+        // commit, and says to check it is on master first.
         let manifest = format!(
             "[dependencies]\n{}",
             git_dep("petal", "bloom-petal-sdk", REV_A)
@@ -3775,6 +3793,20 @@ mod tests {
             pin_fixture(SdkDependency::default(), &manifest, Some(&git_lock(REV_A)));
         let error = check_tooling_version(tmp.path(), &config, "0.2.0").unwrap_err();
         assert!(error.contains(&format!("--rev {REV_A}")), "{error}");
+        assert!(
+            error.contains(&format!("checked that {REV_A} is on the master branch")),
+            "{error}"
+        );
+
+        // A commit pin at a released version installs that release by tag,
+        // not a commit that may come from a fork.
+        let lock = git_lock(REV_A).replacen("version = \"0.1.0\"", "version = \"0.3.0\"", 1);
+        let (tmp, config) = pin_fixture(SdkDependency::default(), &manifest, Some(&lock));
+        let error = check_tooling_version(tmp.path(), &config, "0.2.0").unwrap_err();
+        assert!(error.contains("--tag v0.3.0 bloom-petal-cli"), "{error}");
+        assert!(!error.contains("--rev"), "{error}");
+        assert!(predates_release_tags("0.1.0") && predates_release_tags("0.1.9-dev"));
+        assert!(!predates_release_tags("0.2.0") && !predates_release_tags("1.0.0"));
 
         // No lockfile yet: the build reports that itself.
         let (tmp, config) = pin_fixture(SdkDependency::default(), &tag_manifest("v0.3.0"), None);

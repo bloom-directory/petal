@@ -8,14 +8,20 @@
   - the builder accepts `tag = "vX.Y.Z"` SDK pins, and `[sdk].tag`, when the
     lockfile records a commit for the tag; branches and other tags are refused;
   - `petal build`, `check` and `package` refuse a lockfile that resolves the
-    SDK at another version than the CLI's, and print the install command;
+    SDK at another version than the CLI's, and print the command that
+    installs the CLI of its release tag; for an SDK before 0.2.0, which has
+    no tag, the commit, to check on `master` first;
   - the reusable release workflow takes the CLI from the lockfile's SDK
-    commit when `petal-tooling-ref` is omitted;
+    commit when `petal-tooling-ref` is omitted, which a Petal can do once its
+    SDK is 0.2.0 or later: earlier CLIs lack `petal package --no-build`;
   - because GitHub serves any fork's commit at the repository's URL, the
     release workflow and the scaffold's `scripts/petal.sh` refuse a tag pin
     whose locked commit is not the tag's, and the release workflow refuses a
     locked `rev` or `petal-tooling-ref` that is not on `master` or a release
-    tag;
+    tag. It checks every crate the lockfile takes from the repository,
+    however the URL is spelled, and with the builder refuses a lockfile that
+    records the repository at more than one commit. `scripts/petal.sh`
+    checks each tag before it first runs a cached CLI for it;
   - the release workflow refuses a tag that is not the workspace version.
 - `petal new` scaffolds a Petal that builds as it is: the SDK pinned to the
   CLI's tag with `host-error-detail`, an account route using
