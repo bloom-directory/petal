@@ -15,7 +15,46 @@ payload-bearing `bloom:sign/signing@0.2.0`, including atomic ordered batches.
 - `bloom-petal-builder` discovers route files and builds deterministic WebAssembly
   components.
 - `bloom-petal-cli` provides `petal build`, `petal check`, `petal package`,
-  `petal inspect`, and `petal new`.
+  `petal inspect`, `petal new` and `petal skill`.
+
+## Start a Petal
+
+The SDK, builder and CLI are released together as `vX.Y.Z` tags of this
+repository; they are not on crates.io yet. Install the CLI of a release, with
+Rust's WebAssembly target, and scaffold:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install --locked --git https://github.com/bloom-directory/petal --tag v<version> bloom-petal-cli
+petal new my-petal ./my-petal
+cd my-petal
+cargo test --manifest-path route/Cargo.toml
+scripts/build.sh
+```
+
+The scaffold is a working Petal: a health route and an account route that
+reads each Bloom account's own address, with a test, the route architecture
+check, CI, a release workflow and the development skill for your coding
+agent. Its `route/Cargo.toml` pins the SDK to the tag of the CLI that made it,
+and that tag is the only version it names:
+
+- `scripts/petal.sh` runs the `petal` CLI of the SDK commit in
+  `route/Cargo.lock`, installing it and the `wasm-tools` it builds with under
+  `~/.cache/bloom-petal` on first use, once the tag names that commit. The
+  build script, CI and release workflow use it.
+- `petal build`, `check` and `package` refuse a Petal whose lockfile resolves
+  the SDK at another version than the CLI's, and print the command that
+  installs the right one.
+
+To upgrade, change the tag and refresh the lockfile and the skill:
+
+```sh
+cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+scripts/petal.sh skill --root .
+```
+
+A packaged Bloom builds, installs and runs any Petal, but signs and derives
+keys only for the Petals its installer catalogs.
 
 ## Development
 
@@ -67,13 +106,17 @@ such as `denied: APPROVAL_NOT_FOUND: approval does not exist`, which are
 `Denied`. The reason belongs to that call, not to the error value: every host
 call replaces it, and a success or an error the SDK builds itself clears it.
 Read it right after the failing call. No WIT change is required.
+`petal::sdk::describe_error(&err)` gives the error's message followed by that
+reason, such as `invalid: <reason>` rather than `invalid`, and is `message()`
+without the feature.
 
 Detail is limited to 512 Unicode characters; control, bidi-control and
 zero-width characters become spaces and a truncated explanation ends with `…`.
 Hosts must supply caller-safe messages; length limits cannot redact unknown
-credentials. Machine's HTTP URL redaction is tracked in
-[Bloom #364](https://github.com/bloom-directory/bloom/pull/364). Adopt that host
-fix before enabling richer errors in consumers that perform HTTP requests.
+credentials. Machine keeps secrets in request URLs out of HTTP errors from
+[Bloom #364](https://github.com/bloom-directory/bloom/pull/364), released in
+Bloom v0.4.2. A Petal that makes HTTP requests should enable the feature only
+against that release or later.
 
 For the transport regression, run
 `sh scripts/check-component-errors.sh "$MACHINE_CHECKOUT"` against a committed
@@ -88,6 +131,32 @@ and conformance fixture use -2 for denials; VM-level evidence does not prove
 IPC propagation. Machine's owner must confirm which exact-signing explanations
 are safe to expose before a consumer routes them through another error code.
 
+## Message review
+
+A payload whose first byte is `0x19`, signed with
+`secp256k1-keccak256-recoverable`, is an EIP-712 typed-data or EIP-191
+personal message. From Bloom's v0.5.0 release set (Bloom #224, Broker #103),
+Machine signs one only with a `bloom.message.review.v1` envelope as the sign
+request's `action`, on the exact single-payload path. Broker rebuilds the
+preimage from the envelope, refuses it unless its SHA-256 and Keccak hashes
+match the payload, and shows the owner every typed field. Machine refuses a
+message in a batch, except under Polymarket's own operation classes, and Safe
+confirmations carry Safe's own envelope instead.
+
+`petal::MessageReview::eip712(typed_data)` and
+`petal::MessageReview::personal(text)` build the envelope and check it
+against Broker's limits: its size, its nesting, recursive or oversized types,
+the number of values it shows the owner, and message fields the type does not
+declare. `sdk::sign_payload` refuses a message without one before calling
+Bloom, with an error that names `MessageReview`, instead of Machine's bare
+`invalid`. The SDK has no EIP-712 encoder or Keccak, so it checks neither
+that each value fits its type nor that the typed data hashes to the payload:
+test that with the Petal's EIP-712 library.
+
+`personal(text)` takes the exact signed text. The envelope carries text, so
+Bloom signs only a UTF-8 personal message; when a dapp passes `personal_sign`
+a `0x`-prefixed hex string, decode it and pass the text.
+
 ## Pinning the SDK
 
 A Petal pins the SDK in the route crate's Cargo dependencies, including renamed
@@ -95,8 +164,22 @@ or workspace-inherited dependencies. Generated components use that same source
 and feature selection. `[sdk]` in `petal-build.toml` is optional transitional
 validation: remove it, or keep it equal to the route dependency.
 
-The route SDK must be an exact pin: a git `rev` that is a full 40-character
-commit, a version requirement such as `=0.1.0`, or a local `path`. Then
+The route SDK must be an exact pin:
+
+- a release `tag` such as `"v0.2.0"`, which the lockfile pins to the commit
+  it named, as `petal new` writes:
+  ```toml
+  petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", tag = "v0.2.0" }
+  ```
+  GitHub serves a commit from any fork of this repository at its URL, so the
+  lockfile alone does not prove the commit is the tag's. The scaffold's
+  `scripts/petal.sh` and the release workflow check it before they install a
+  CLI from that commit;
+- a git `rev` that is a full 40-character commit;
+- a version requirement such as `=0.2.0`, once the SDK is on a registry;
+- or a local `path`.
+
+A branch, or a tag that is not `v` and a semantic version, is refused. Then
 `petal build`, `petal check` and `petal package` refuse a Petal when:
 
 - any SDK dependency of the route crate, in any dependency table or inherited
@@ -105,7 +188,9 @@ commit, a version requirement such as `=0.1.0`, or a local `path`. Then
 - for a git pin, another crate from the SDK's repository, such as
   `bloom-petal-contract`, is pinned at a different revision, in the route crate
   or in `[dependencies]` of `petal-build.toml`;
-- the lockfile resolves any of them from another source or revision;
+- the lockfile resolves any of them from another source or revision, or
+  records more than one commit for the SDK's repository, whose crates Cargo
+  builds from a single commit;
 - the route crate makes the SDK optional, directly or on an entry that
   inherits it, since generated components always enable it;
 - the route crate or its workspace overrides any crate with `[patch]` or
@@ -148,16 +233,29 @@ from the directories the route workspace declares, and the packages the
 lockfile takes from git or a registry, read from the folder Cargo keeps for
 that source in Cargo home. Cargo home itself is trusted, but a `paths`
 override, or a source replacement such as a vendored directory, is refused
-there. The release workflow builds its tooling outside the Petal's
-checkout, so the Petal's own files cannot change the CLI that checks it.
-This covers Cargo's configuration, not the build command: the release
-workflow runs the Petal's own build command, which must run `petal build`
-without changing Cargo's environment, and `petal package --no-build` cannot
-tell how the components it packages were built.
+there. The release workflow runs no code from the Petal where it builds or
+runs the CLI that packages it: it runs the Petal's build command in a job
+of its own, and packages in a fresh job that builds the CLI before checking
+out the Petal. The build command must run `petal build` without changing
+Cargo's environment, since `petal package --no-build` cannot tell how the
+components it packages were built.
 
-Pins outside Cargo are not checked:
-scripts that install the `petal` CLI, and the release workflow's `uses:`
-reference and `petal-tooling-ref`. Keep them at the same commit.
+The CLI must be the SDK's version: `petal build`, `check` and `package`
+refuse a lockfile that resolves the SDK at another version, and say how to
+install the matching CLI. The scaffold's scripts and the reusable release
+workflow take the CLI from the SDK commit in the lockfile, so a Petal that
+uses them pins nothing else. A Petal's own install scripts and an explicit
+`petal-tooling-ref` are not checked against the commit; keep them equal or
+remove them.
+
+## Releasing the SDK
+
+The workspace version is the release: bump it in `Cargo.toml`, merge, then
+tag that commit `v<version>`. The release workflow refuses a tag that does not
+match the version, because `petal new` writes `v<CLI version>`. A released tag
+is immutable: Petal lockfiles record the commit it named, and Petals' release
+workflows may reference it. Protect `v*` tags against updates and deletion
+with a repository ruleset.
 
 ## Packaging a Petal
 
@@ -249,14 +347,15 @@ owns its release assets; Bloom only downloads and verifies them during setup.
 
 ## Distribution
 
-Rust packages are published to crates.io at coordinated exact versions. GitHub
-Releases carry the WIT archive, contract provenance, the Petal development
-skill, checksums and the source archive. Git tags identify source provenance
-but are not the terminal Cargo dependency channel.
+The Rust packages are not on crates.io yet: Petals take the SDK from a
+release tag of this repository. crates.io is the intended terminal channel
+(ADR 0001), at coordinated exact versions. GitHub Releases carry the WIT
+archive, contract provenance, the Petal development skill, checksums and the
+source archive.
 
 `scripts/release-check.sh` runs the release gates and assembles the canonical
 WIT archive, contract provenance, the Petal development skill, and SHA-256
 checksums under `dist/`. Assembling them needs git 2.40 or later, for
 `git archive --mtime`. A pushed version tag publishes those artifacts through
-GitHub Releases. crates.io publication is performed in dependency order:
-contract, SDK, builder, CLI.
+GitHub Releases. Once the packages go to crates.io, they publish in
+dependency order: contract, SDK, builder, CLI.

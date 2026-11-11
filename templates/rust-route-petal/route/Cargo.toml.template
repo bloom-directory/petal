@@ -5,5 +5,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
-petal = { package = "bloom-petal-sdk", version = "=0.1.0" }
+# The SDK release this Petal follows, and the only version it pins: the
+# scripts and workflows run the petal CLI of the same release. To upgrade,
+# change the tag, then run
+#   cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", tag = "v{{sdk-version}}", features = ["host-error-detail"] }
 serde_json = "1"

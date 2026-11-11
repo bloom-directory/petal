@@ -25,6 +25,9 @@ pub use claim::{
     CryptoSuite, PetalClaim, petal_use_claim,
 };
 
+mod review;
+pub use review::{MESSAGE_REVIEW_SCHEMA, MessageReview};
+
 pub use bindings::bloom::route::types::EntryKind;
 pub use bindings::{Ctx as RawCtx, Entry, Guest as RawGuest, RouteError, RouteMeta};
 
@@ -440,9 +443,19 @@ pub mod sdk {
             .map_err(|error| SdkError::Message(format!("decode Petal key outcome: {error}")))
     }
 
+    /// Errors with [`SdkError::Message`] before calling Bloom when the payload
+    /// is an EIP-712 or EIP-191 message without a [`super::MessageReview`]
+    /// in `action`, which Bloom refuses.
     pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
         clear_host_reason();
         super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
+        super::review::require_message_review(
+            &req.signature_algorithm,
+            &req.operation_class,
+            &req.preimage,
+            req.action.as_deref(),
+        )
+        .map_err(SdkError::Message)?;
         let request = sign::PayloadSignRequest {
             wallet: req.wallet.clone(),
             preimage: req.preimage.clone(),
@@ -722,6 +735,21 @@ pub mod sdk {
         LAST_HOST_REASON.with(|slot| slot.borrow().clone())
     }
 
+    /// The error's [`SdkError::message`], followed by the host's reason when
+    /// the latest host call recorded one for this error's status:
+    /// `invalid: <reason>` rather than `invalid`. Call it straight after the
+    /// failing call, before any other host call replaces the reason. Without
+    /// the `host-error-detail` feature no reason is recorded, so this is
+    /// `message()`.
+    pub fn describe_error(err: &SdkError) -> String {
+        match (err, last_host_reason()) {
+            (SdkError::Host(status), Some((recorded, reason))) if *status == recorded => {
+                format!("{}: {reason}", err.message())
+            }
+            _ => err.message(),
+        }
+    }
+
     pub(crate) fn clear_host_reason() {
         LAST_HOST_REASON.with(|slot| *slot.borrow_mut() = None);
     }
@@ -990,6 +1018,56 @@ pub mod sdk {
 
             host_err(format!("invalid: {}", "x".repeat(512)));
             assert_eq!(last_host_reason().unwrap().1, "x".repeat(512));
+        }
+
+        #[test]
+        fn describe_error_adds_only_the_reason_recorded_for_that_status() {
+            let error = host_err(
+                "invalid: This signing operation requires a message review envelope".into(),
+            );
+            assert_eq!(error, SdkError::Host(HostStatus::Invalid));
+            let expected = if cfg!(feature = "host-error-detail") {
+                "invalid: This signing operation requires a message review envelope"
+            } else {
+                "invalid"
+            };
+            assert_eq!(super::describe_error(&error), expected);
+            assert_eq!(
+                super::describe_error(&SdkError::Host(HostStatus::Denied)),
+                "denied"
+            );
+            assert_eq!(
+                super::describe_error(&SdkError::Message("local".into())),
+                "local"
+            );
+            super::clear_host_reason();
+            assert_eq!(super::describe_error(&error), "invalid");
+        }
+
+        #[test]
+        fn an_unreviewed_message_is_refused_before_bloom_sees_it() {
+            use crate::{PayloadSignRequest, SignSelector};
+            host_err("denied: SELECTOR_MISMATCH: wrong account".into());
+            let error = super::sign_payload(&PayloadSignRequest {
+                wallet: "alice".into(),
+                preimage: vec![0x19, 0x01, 0xaa],
+                claimed_hash: [0; 32],
+                signature_algorithm: "secp256k1-keccak256-recoverable".into(),
+                operation_class: "cowswap.order.v1".into(),
+                petal_use_claim_jcs: vec![],
+                claim_assurance_evidence: None,
+                approval_hint: None,
+                action: Some(br#"{"schema":"bloom.cowswap.prepared_order.v1"}"#.to_vec()),
+                advisory: None,
+                selector: SignSelector::Exact,
+                key_ref_jcs: None,
+            })
+            .unwrap_err();
+            assert!(
+                matches!(&error, SdkError::Message(message) if message.contains("petal::MessageReview")),
+                "{error:?}"
+            );
+            assert_eq!(last_host_reason(), None);
         }
     }
 }
@@ -2310,10 +2388,7 @@ pub fn read_store(key: &str, max_bytes: usize) -> DispatchResponse {
     match sdk::store_get(key, max_bytes) {
         Ok(bytes) => DispatchResponse::Read(bytes),
         Err(err) => {
-            let message = match sdk::last_host_reason() {
-                Some((_, reason)) => format!("{}: {reason}", err.message()),
-                None => err.message(),
-            };
+            let message = sdk::describe_error(&err);
             let code = if err == SdkError::Host(HostStatus::NotFound) {
                 -1
             } else {
