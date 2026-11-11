@@ -25,14 +25,19 @@
   - the release workflow refuses a tag that is not the workspace version.
 - The reusable release workflow runs no code from the Petal where it builds
   or runs the CLI that packages the release, so the `tooling_commit` in
-  `petal-release.json` names the CLI that made the archive. It chooses the
+  `petal-release.json` names the CLI that made the archive, unless the
+  caller's own workflow replaces the published files. It chooses the
   tooling commit outside the Petal's checkout, with the Rust toolchain named
   and Python isolated, runs the build command in a job of its own with read
   access only, and packages in a fresh job that builds the CLI before it
-  checks out the Petal. Before, the build command ran in the packaging job
-  and could replace the CLI or set the environment of the steps after it.
-  The archive takes `petal/<name>/` from the build and every other file from
-  the tagged commit.
+  checks out the Petal. That job extracts the build's output with
+  `download-artifact` v8, which keeps every entry inside its directory,
+  refuses links on the way to `petal/<name>/` and in it, and writes the
+  release files outside the checkout. Before, the build command ran in the
+  packaging job and could replace the CLI or set the environment of the
+  steps after it. The archive takes `petal/<name>/` from the build and every
+  other file from the tagged commit, and `package-root` must be a relative
+  path inside the checkout.
 - `petal new` scaffolds a Petal that builds as it is: the SDK pinned to the
   CLI's tag with `host-error-detail`, an account route using
   `wallet_account` and `address_evm`, a test with `petal::testing`,

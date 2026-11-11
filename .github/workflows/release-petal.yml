@@ -48,7 +48,14 @@ concurrency:
 # the Petal's build command, which controls the rest of its job: it can
 # replace any file there and set the environment and PATH of later steps. So
 # `package` builds the CLI again, from the commit `resolve` chose, before the
-# Petal's source is on its machine, and takes only petal/<name>/ from `build`.
+# Petal's source is on its machine, and takes only petal/<name>/ from `build`,
+# as data: it extracts the upload with a download action that keeps every
+# entry inside its directory, refuses links on the way to petal/<name>/, and
+# writes the release files outside the checkout.
+#
+# This covers what the Petal's source and build can do. The caller's own
+# workflow can still add a job that replaces the published files, so review
+# it with the tag.
 jobs:
   resolve:
     name: Resolve ${{ inputs['petal-name'] }} source and tooling
@@ -61,6 +68,7 @@ jobs:
     steps:
       - name: Validate immutable release inputs
         env:
+          PACKAGE_ROOT: ${{ inputs['package-root'] }}
           PETAL_NAME: ${{ inputs['petal-name'] }}
           PETAL_TOOLING_REF: ${{ inputs['petal-tooling-ref'] }}
           RELEASE_TAG: ${{ github.ref_name }}
@@ -81,6 +89,12 @@ jobs:
           fi
           if [[ ! "$PETAL_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
             echo "::error::petal-name contains unsupported characters: $PETAL_NAME"
+            exit 1
+          fi
+          # The package job removes and replaces files under package-root.
+          if [[ ! "$PACKAGE_ROOT" =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*(/[A-Za-z0-9._][A-Za-z0-9._-]*)*$ \
+            || "/$PACKAGE_ROOT/" == */../* ]]; then
+            echo "::error::package-root must be a relative path inside the checkout, without '..', got: $PACKAGE_ROOT"
             exit 1
           fi
 
@@ -286,8 +300,26 @@ jobs:
           PETAL_REQUIRE_LOCKED_SOURCES: "1"
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
+      # The artifact stores a link as the file it points to. Refuse links, as
+      # packaging in place does, so a release packages what a local build
+      # would.
+      - name: Refuse links in the route components
+        env:
+          PACKAGE_ROOT: ${{ inputs['package-root'] }}
+          PETAL_NAME: ${{ inputs['petal-name'] }}
+        run: |
+          set -euo pipefail
+          LINKS="$(find "$PACKAGE_ROOT/petal/$PETAL_NAME" ! -type d ! -type f -print)"
+          if [[ -n "$LINKS" ]]; then
+            echo "::error::route components must be regular files, found: $LINKS"
+            exit 1
+          fi
+
+      # Paired with the download in `package`: v7 labels the zip
+      # application/zip, and download-artifact v8 extracts a download by that
+      # label.
       - name: Upload route components
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: petal-${{ inputs['petal-name'] }}-route-components
           path: ${{ inputs['package-root'] }}/petal/${{ inputs['petal-name'] }}
@@ -318,6 +350,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # `petal package --no-build` reports the wasm-tools version.
+      - name: Install pinned WASM component tools
+        working-directory: ${{ runner.temp }}/petal-tooling
+        run: scripts/install-tools.sh --wasm-tools-only
+
       - name: Build pinned Petal CLI
         working-directory: ${{ runner.temp }}/petal-tooling
         run: |
@@ -331,14 +368,23 @@ jobs:
           ref: ${{ needs.resolve.outputs.source_commit }}
           persist-credentials: false
 
+      # The build job chooses every entry name in the zip this extracts.
+      # Releases before v7 keep a `..` that does not lead the name, so an
+      # entry `x/../../petal` would write over the CLI built above. v7 and
+      # later turn every `..` into `.`. Keep this pinned to a reviewed commit.
       - name: Download route components
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: petal-${{ inputs['petal-name'] }}-route-components
           path: ${{ runner.temp }}/route-components
 
       # The build job's output replaces petal/<name>/ as it is. The CLI
       # checks it below; nothing in it runs.
+      #
+      # rm and mv follow links in the leading parts of a path, so a link the
+      # Petal commits on the way to petal/<name>/ would have them remove or
+      # replace files outside the checkout, such as the code of an action
+      # whose post step runs at the end of this job. Refuse any link there.
       - name: Put the route components in place
         env:
           PACKAGE_ROOT: ${{ inputs['package-root'] }}
@@ -346,6 +392,15 @@ jobs:
         run: |
           set -euo pipefail
           OUTPUT="$PACKAGE_ROOT/petal/$PETAL_NAME"
+          path=
+          IFS=/ read -r -a parts <<<"$OUTPUT"
+          for part in "${parts[@]}"; do
+            path="${path:+$path/}$part"
+            if [[ -L "$path" ]]; then
+              echo "::error::$path is a link; commit petal/$PETAL_NAME/ and the directories above it as directories, or not at all"
+              exit 1
+            fi
+          done
           rm -rf -- "$OUTPUT"
           mkdir -p -- "$PACKAGE_ROOT/petal"
           mv -- "$RUNNER_TEMP/route-components" "$OUTPUT"
@@ -361,7 +416,9 @@ jobs:
         run: |
           set -euo pipefail
           ARCHIVE="$PETAL_NAME-$RELEASE_TAG.petal.tar.gz"
-          mkdir -p dist
+          # Release files stay outside the checkout, where no file the Petal
+          # commits can redirect them.
+          mkdir "$RUNNER_TEMP/release"
           # Package exactly the components the build command produced. A
           # rebuild here would not see PETAL_COMPILE_TIME_SECRET or the values
           # the build command derives from it, and would ship components
@@ -369,14 +426,13 @@ jobs:
           "$RUNNER_TEMP/petal" package \
             --no-build \
             --root "$PACKAGE_ROOT" \
-            --out "$RUNNER_TEMP/$ARCHIVE" \
+            --out "$RUNNER_TEMP/release/$ARCHIVE" \
             > "$RUNNER_TEMP/package-report.json"
           ROUTES="$(jq -er '.routes' "$RUNNER_TEMP/package-report.json")"
           if [[ "$EXPECTED_ROUTE_COUNT" -gt 0 && "$ROUTES" -ne "$EXPECTED_ROUTE_COUNT" ]]; then
             echo "::error::expected $EXPECTED_ROUTE_COUNT routes, packaged $ROUTES"
             exit 1
           fi
-          mv "$RUNNER_TEMP/$ARCHIVE" "dist/$ARCHIVE"
           {
             echo "archive=$ARCHIVE"
             echo "archive_sha256=$(jq -er '.sha256' "$RUNNER_TEMP/package-report.json")"
@@ -384,6 +440,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Write checksums and release provenance
+        working-directory: ${{ runner.temp }}/release
         env:
           ARCHIVE: ${{ steps.package.outputs.archive }}
           ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
@@ -395,7 +452,7 @@ jobs:
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE" > dist/SHA256SUMS
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE" > SHA256SUMS
           jq -n \
             --arg schema 'bloom.petal.release.v1' \
             --arg petal_name "$PETAL_NAME" \
@@ -418,11 +475,13 @@ jobs:
               package_hash: $package_hash,
               tooling_repository: $tooling_repository,
               tooling_commit: $tooling_commit
-            }' > dist/petal-release.json
-          (cd dist && sha256sum --check SHA256SUMS)
+            }' > petal-release.json
+          sha256sum --check SHA256SUMS
 
       - name: Refuse to replace published release assets
+        working-directory: ${{ runner.temp }}/release
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
           ARCHIVE: ${{ steps.package.outputs.archive }}
@@ -441,13 +500,15 @@ jobs:
           fi
 
       - name: Publish release assets
+        working-directory: ${{ runner.temp }}/release
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
           ARCHIVE: ${{ steps.package.outputs.archive }}
         run: |
           set -euo pipefail
           gh release upload "$RELEASE_TAG" \
-            "dist/$ARCHIVE" \
-            dist/SHA256SUMS \
-            dist/petal-release.json
+            "$ARCHIVE" \
+            SHA256SUMS \
+            petal-release.json

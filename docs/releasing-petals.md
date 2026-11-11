@@ -41,17 +41,21 @@ run:
   checkout, with the Rust toolchain named and Python isolated, so a
   `rust-toolchain` file or a module in the Petal cannot run first.
 - `build` runs `build-command` with a CLI built from that commit, as
-  `PETAL_BIN`, and uploads `petal/<name>/`. The build command can change
-  anything else in its job, so the job can only read the repository.
+  `PETAL_BIN`, and uploads `<package-root>/petal/<name>/`, refusing links in
+  it as packaging in place does. The build command can change anything else
+  in its job, so the job can only read the repository.
 - `package` builds the CLI again before it checks out the Petal, puts the
   uploaded `petal/<name>/` in place of the checkout's, runs
-  `petal package --no-build`, and publishes the release. It refuses to
-  replace existing assets.
+  `petal package --no-build`, and publishes the release. It extracts the
+  upload with a download action that keeps every entry inside its
+  directory, refuses a link on the way to `petal/<name>/`, and writes the
+  release files outside the checkout. It refuses to replace existing assets.
 
 So the archive takes `petal/<name>/` from the build command and every other
 file from the tagged commit: commit `petal.toml`, `README.md`, `AGENTS.md`,
 and any `components/`, `modules/` or `wit/` rather than generating them.
-`petal-name` must be the name in `petal.toml`.
+`petal-name` must be the name in `petal.toml`, and `package-root` a relative
+path inside the checkout, without `..`.
 
 `petal-tooling-ref` is an exact 40-character commit that replaces the
 lockfile's SDK commit as the tooling source. The workflow warns when the two
@@ -75,12 +79,23 @@ repository's `master` and release tags (`v` and a number) and refuses:
   release tag.
 
 The tooling commit must include `scripts/install-tools.sh` and the
-`[workspace.metadata.tools]` configuration in `Cargo.toml`. The `build` job
-runs that checkout's installer before building the CLI, so the CLI source
-and `wasm-tools` version come from the same pinned tooling revision.
+`[workspace.metadata.tools]` configuration in `Cargo.toml`. The `build` and
+`package` jobs run that checkout's installer before building the CLI, so the
+CLI source and `wasm-tools` version come from the same pinned tooling
+revision.
 
 `expected-route-count` is optional. A positive value protects against a release
 that silently omits routes; zero disables the assertion.
+
+The built `petal/<name>/` passes between the jobs as a workflow artifact:
+
+- It is kept for one day, and anyone who can read the repository can
+  download it. Values the build compiles in from `compile-time-secret` are
+  readable there even when the release fails.
+- After a day, re-run the whole workflow; re-running only the failed jobs
+  finds no artifact.
+- The upload refuses file names containing `"`, `:`, `<`, `>`, `|`, `*`, `?`,
+  a carriage return or a line feed.
 
 ## Published assets
 
@@ -95,6 +110,12 @@ The provenance schema is `bloom.petal.release.v1` and binds the Petal name,
 caller repository, exact source commit, release tag, archive filename and
 SHA-256, Bloom package hash, and exact Petal tooling commit. Bloom can pin and
 verify all of these values without cloning or building the source repository.
+
+`petal-release.json` is an ordinary release asset. Its tooling commit names
+the CLI that made the archive as far as the Petal's source and build are
+concerned, but the caller's own workflow can add a job that replaces any
+published file. Review the caller workflow with the tag, and pin the archive
+and package hashes, as Bloom's catalog does.
 
 The caller grants `contents: write`, which only the `package` job uses;
 `resolve` and `build` read the repository, and all other permissions remain
