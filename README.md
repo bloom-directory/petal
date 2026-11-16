@@ -40,8 +40,9 @@ and that tag is the only version it names:
 
 - `scripts/petal.sh` runs the `petal` CLI of the SDK commit in
   `route/Cargo.lock`, installing it and the `wasm-tools` it builds with under
-  `~/.cache/bloom-petal` on first use, once the tag names that commit. The
-  build script, CI and release workflow use it.
+  `~/.cache/bloom-petal` on first use, once the tag names that commit. For a
+  commit pin, the commit must be on this repository's `master` or a release
+  tag. The build script, CI and release workflow use it.
 - `petal build`, `check` and `package` refuse a Petal whose lockfile resolves
   the SDK at another version than the CLI's, and print the command that
   installs the right one.
@@ -52,6 +53,25 @@ To upgrade, change the tag and refresh the lockfile and the skill:
 cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
 scripts/petal.sh skill --root .
 ```
+
+### Until 0.2.0 is tagged
+
+Version 0.2.0 is on `master` and has no tag yet, so the commands above cannot
+find `v0.2.0`. Until the tag exists, use a `master` commit in its place:
+
+1. Find the commit, and install the CLI from it:
+
+   ```sh
+   git ls-remote https://github.com/bloom-directory/petal refs/heads/master
+   cargo install --locked --git https://github.com/bloom-directory/petal --rev <commit> bloom-petal-cli
+   ```
+
+2. After `petal new`, replace `tag = "v0.2.0"` in `route/Cargo.toml` with
+   `rev = "<commit>"`, all 40 characters, and `@v0.2.0` in
+   `.github/workflows/release.yml` with `@<commit>`.
+
+The rest works as described above. To move to a later commit, change both and
+run the upgrade commands. When the tag exists, change both back to it.
 
 A packaged Bloom builds, installs and runs any Petal, but signs and derives
 keys only for the Petals its installer catalogs.
@@ -175,7 +195,9 @@ The route SDK must be an exact pin:
   lockfile alone does not prove the commit is the tag's. The scaffold's
   `scripts/petal.sh` and the release workflow check it before they install a
   CLI from that commit;
-- a git `rev` that is a full 40-character commit;
+- a git `rev` that is a full 40-character commit. The scaffold's
+  `scripts/petal.sh` and the release workflow take it only if it is on this
+  repository's `master` or a release tag;
 - a version requirement such as `=0.2.0`, once the SDK is on a registry;
 - or a local `path`.
 
@@ -256,6 +278,11 @@ match the version, because `petal new` writes `v<CLI version>`. A released tag
 is immutable: Petal lockfiles record the commit it named, and Petals' release
 workflows may reference it. Protect `v*` tags against updates and deletion
 with a repository ruleset.
+
+Version 0.2.0 is on `master` without a tag while Petals move to it by commit.
+Until it is tagged, every `master` commit at 0.2.0 passes the CLI's version
+check as the same SDK. Tag a commit at 0.2.0, then move `master` to the next
+version in the next commit.
 
 ## Packaging a Petal
 

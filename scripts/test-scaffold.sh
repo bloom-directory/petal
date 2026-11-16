@@ -5,7 +5,9 @@
 # The scaffold pins this version's release tag, and its scripts install the
 # petal CLI from the commit that tag names. Neither is published while this
 # version is a candidate, so a throwaway Git repository holds this checkout
-# under that tag, and Git config sends the SDK repository's URL there.
+# on master and under that tag, and Git config sends the SDK repository's URL
+# there. The same repository tests a commit pin, which a Petal uses until the
+# release is tagged.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -25,6 +27,7 @@ mkdir "$tmp/sdk"
     tar -c --null -T - -f - | tar -x -f - -C "$tmp/sdk"
 )
 git -C "$tmp/sdk" init --quiet
+git -C "$tmp/sdk" symbolic-ref HEAD refs/heads/master
 git -C "$tmp/sdk" add -A
 git -C "$tmp/sdk" -c user.name=test -c user.email=test@example.invalid \
   commit --quiet --no-verify -m "v$version candidate"
@@ -85,11 +88,38 @@ refuses "names $real for v$version" "git+$sdk_url?tag=v$version#$other"
 refuses "names $real for v$version" "git+$sdk_url.git?tag=v$version#$other"
 refuses "names $real for v9.9.8" "git+$sdk_url?tag=v9.9.8#$other"
 refuses "names no commit for v9.9.9" "git+$sdk_url?tag=v9.9.9#$real"
-refuses "pin a release tag" "git+$sdk_url?rev=$real#$real"
 refuses "a full commit" "git+$sdk_url?tag=v$version#../../../../tmp/x"
 refuses "a full commit" "git+$sdk_url?tag=main#$real"
+# A commit pin is taken only from master or a release tag: not a commit the
+# repository does not have, as a fork's is, one on another branch, a short
+# commit, or a branch.
+git -C "$tmp/sdk" -c user.name=test -c user.email=test@example.invalid \
+  commit --quiet --allow-empty -m "unmerged work"
+unmerged=$(git -C "$tmp/sdk" rev-parse HEAD)
+git -C "$tmp/sdk" branch --quiet unmerged
+git -C "$tmp/sdk" reset --quiet --hard "$real"
+refuses "not on master or a release tag" "git+$sdk_url?rev=$other#$other"
+refuses "not on master or a release tag" "git+$sdk_url?rev=$unmerged#$unmerged"
+refuses "a full commit" "git+$sdk_url?rev=${real%????????}#${real%????????}"
+refuses "pin a release tag or a commit" "git+$sdk_url?branch=master#$real"
+refuses "pin a release tag or a commit" "git+https://github.com/someone/petal?rev=$real#$real"
 cp "$tmp/Cargo.lock" route/Cargo.lock
-test ! -e "$tmp/unverified"
+# No refusal installed a CLI.
+if find "$tmp/unverified" -type d -name bin 2>/dev/null | grep -q .; then
+  echo "test-scaffold: a refused pin installed a CLI under $tmp/unverified" >&2
+  exit 1
+fi
+
+# A commit pin on master runs the CLI of that commit. The CLI installed above
+# was checked for the tag only, so the commit is checked before it runs. Once
+# checked, it is not checked again, so the CLI runs offline.
+sed "s|?tag=v$version#$real\"$|?rev=$real#$real\"|" "$tmp/Cargo.lock" >route/Cargo.lock
+grep -q "source = \"git+$sdk_url?rev=$real#$real\"" route/Cargo.lock
+test ! -e "$PETAL_TOOLS_DIR/$real/checked-commit"
+test "$(scripts/petal.sh --version)" = "petal $version"
+test -f "$PETAL_TOOLS_DIR/$real/checked-commit"
+test "$(GIT_CONFIG_GLOBAL=/dev/null GIT_ALLOW_PROTOCOL=none scripts/petal.sh --version)" = "petal $version"
+cp "$tmp/Cargo.lock" route/Cargo.lock
 
 # The CLI installed above was checked for v$version only. Another tag that
 # names a different commit is refused before that CLI runs, and so is a CLI

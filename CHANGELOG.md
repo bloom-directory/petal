@@ -16,13 +16,18 @@
     SDK is 0.2.0 or later: earlier CLIs lack `petal package --no-build`;
   - because GitHub serves any fork's commit at the repository's URL, the
     release workflow and the scaffold's `scripts/petal.sh` refuse a tag pin
-    whose locked commit is not the tag's, and the release workflow refuses a
-    locked `rev` or `petal-tooling-ref` that is not on `master` or a release
-    tag. It checks every crate the lockfile takes from the repository,
-    however the URL is spelled, and with the builder refuses a lockfile that
-    records the repository at more than one commit. `scripts/petal.sh`
-    checks each tag before it first runs a cached CLI for it;
-  - the release workflow refuses a tag that is not the workspace version.
+    whose locked commit is not the tag's, and a locked `rev` that is not on
+    `master` or a release tag. The release workflow refuses such a
+    `petal-tooling-ref` too. It checks every crate the lockfile takes from
+    the repository, however the URL is spelled, and with the builder refuses
+    a lockfile that records the repository at more than one commit.
+    `scripts/petal.sh` checks each tag and commit pin before it first runs a
+    cached CLI for it;
+  - the release workflow refuses a tag that is not the workspace version;
+  - 0.2.0 is merged before it is tagged. Until the tag exists a Petal pins a
+    `master` commit, which `scripts/petal.sh` and the release workflow
+    accept, and `petal new` output needs its `tag = "v0.2.0"` pin changed to
+    that commit by hand.
 - The reusable release workflow runs no code from the Petal where it builds
   or runs the CLI that packages the release, so the `tooling_commit` in
   `petal-release.json` names the CLI that made the archive, unless the

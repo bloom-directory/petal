@@ -25,9 +25,9 @@ registry provides.
   works offline and cannot tell; it only refuses a lockfile that records two
   commits for the repository. The scaffold's `scripts/petal.sh` and the
   reusable release workflow, which choose the CLI, refuse a tag pin whose
-  commit is not the tag's, and the release workflow refuses any other commit
-  it would build from, CLI or crate, that is not on `master` or a release
-  tag.
+  commit is not the tag's and a commit pin that is not on `master` or a
+  release tag. The release workflow also refuses any other commit it would
+  build from, CLI or crate, that is not on `master` or a release tag.
 - The CLI follows the Petal's SDK, not a separate pin. The builder refuses a
   lockfile that resolves the SDK at another version than its own. The
   scaffold's `scripts/petal.sh` and the reusable release workflow install the
@@ -41,5 +41,8 @@ registry provides.
   bloom-petal-sdk`.
 - A release must bump the workspace version before tagging, and the release
   workflow checks that the tag matches.
+- 0.2.0 is merged before it is tagged, so that Petals can move to it first.
+  Until the tag exists a Petal pins a `master` commit, and `petal new` output,
+  which names the tag, needs its pin changed to that commit by hand.
 - crates.io remains the terminal channel (ADR 0001). Publishing there turns
   the tag pin into `version = "=X.Y.Z"`, with the same version check.
