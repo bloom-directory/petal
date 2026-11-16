@@ -9,6 +9,40 @@ scratch=$(CDPATH= cd -- "$scratch" && pwd)
 cd "$root"
 cargo build --locked --quiet -p bloom-petal-cli
 petal=$(cargo metadata --locked --format-version 1 --no-deps | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')/debug/petal
+# Cargo runs RUSTC_WRAPPER in place of rustc, with rustc and its arguments as
+# the wrapper's own. Side b builds through this one, which records each
+# compiler command, to show which flags reached which crate. Cargo documents
+# that variable; where it keeps its build cache is its own business, and
+# Cargo 1.100 moved it. The wrapper is a compiled program because macOS
+# removes the library path rustc's linker needs from a system shell's
+# environment.
+recorder=$scratch/record-rustc
+cat > "$recorder.rs" <<'EOF'
+use std::io::Write;
+use std::os::unix::process::CommandExt;
+
+fn main() {
+    let mut args = std::env::args_os().skip(1);
+    let rustc = args.next().expect("the compiler to run");
+    let args: Vec<_> = args.collect();
+    let mut line = args
+        .iter()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    line.push('\n');
+    let log = std::env::var_os("PETAL_REPRO_RUSTC_LOG").expect("PETAL_REPRO_RUSTC_LOG");
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+        .and_then(|mut file| file.write_all(line.as_bytes()))
+        .expect("record the compiler command");
+    let error = std::process::Command::new(rustc).args(args).exec();
+    panic!("run the compiler: {error}");
+}
+EOF
+rustc --edition 2021 -o "$recorder" "$recorder.rs"
 for side in a b; do
   copy=$scratch/$side
   mkdir "$copy"
@@ -33,6 +67,7 @@ EOF
     # Its release profile, one set through CARGO_PROFILE_RELEASE_*, and
     # build.incremental must not change the components: the builder sets its
     # profile on the command line and CARGO_INCREMENTAL=0, which override them.
+    # Nor must a rustc wrapper, as a compiler cache is.
     mkdir "$copy/.cargo"
     printf 'include = ["team.toml"]\n' > "$copy/.cargo/config.toml"
     printf '[build]\nrustflags = "--cfg petal_reproducibility_probe"\nincremental = true\n[profile.release]\nopt-level = 1\n' > "$copy/.cargo/team.toml"
@@ -42,11 +77,20 @@ EOF
   mkdir -p "$copy/petal/conformance"
   printf 'stale component\n' > "$copy/petal/conformance/obsolete.wasm"
   # Cargo reads config from the directory it runs in.
-  # shellcheck disable=SC2086 # side_env is one assignment or empty.
-  (cd "$copy" && env $side_env "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz") > "$scratch/$side-package.json"
+  (
+    cd "$copy"
+    if [ "$side" = b ]; then
+      export RUSTC_WRAPPER="$recorder" PETAL_REPRO_RUSTC_LOG="$scratch/b-rustc.log"
+    fi
+    # shellcheck disable=SC2086 # side_env is one assignment or empty.
+    env $side_env "$petal" package --root . --config fixtures/repro-petal-build.toml --out "$scratch/$side.petal.tar.gz"
+  ) > "$scratch/$side-package.json"
   test ! -e "$copy/petal/conformance/obsolete.wasm"
 done
-if ! grep -rqF petal_reproducibility_probe "$scratch/b/target/petal-routes/target/wasm32-unknown-unknown/release/.fingerprint"/petal-route-*; then
+# Each recorded line is one compiler command. A route crate's must carry the
+# flag from side b's Cargo config.
+if ! grep -F -- '--crate-name petal_route_' "$scratch/b-rustc.log" |
+  grep -qF -- '--cfg petal_reproducibility_probe'; then
   echo "side b's configured build.rustflags did not reach the route crates" >&2
   exit 1
 fi
