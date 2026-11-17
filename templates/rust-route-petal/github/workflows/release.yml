@@ -1,0 +1,19 @@
+name: Release Petal
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    # The workflow builds and packages with the petal CLI of the SDK commit
+    # that route/Cargo.lock pins. This reference selects only the workflow
+    # itself; for a release others install, pin it to the full commit the tag
+    # names (`git ls-remote https://github.com/bloom-directory/petal v{{sdk-version}}`).
+    uses: bloom-directory/petal/.github/workflows/release-petal.yml@v{{sdk-version}}
+    with:
+      petal-name: {{petal-name}}

@@ -124,14 +124,22 @@ jobs:
       - name: Build Petal CLI from this checkout
         run: cargo build --manifest-path petal/Cargo.toml --locked -p bloom-petal-cli
       - name: Use this checkout's SDK
+        working-directory: well-known-petal
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p well-known-petal/.cargo
-          cat > well-known-petal/.cargo/config.toml <<EOF
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<EOF
           [patch."https://github.com/bloom-directory/petal"]
           bloom-petal-sdk = { path = "$GITHUB_WORKSPACE/petal/crates/petal-sdk" }
           EOF
+          # The pinned Petal locks an earlier SDK version, and Cargo leaves a
+          # patch unused when its version differs from the locked one. Move the
+          # lockfile to this checkout's SDK, and stop here if the patch is unused.
+          cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+          cargo metadata --manifest-path route/Cargo.toml --format-version 1 \
+            | jq -e --arg sdk "$GITHUB_WORKSPACE/petal/crates/petal-sdk/Cargo.toml" \
+              'any(.packages[]; .name == "bloom-petal-sdk" and .manifest_path == $sdk)'
       - name: Test route crate against this checkout
         working-directory: well-known-petal
         run: cargo test --manifest-path route/Cargo.toml
