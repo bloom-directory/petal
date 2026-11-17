@@ -90,35 +90,107 @@ refuses "names $real for v9.9.8" "git+$sdk_url?tag=v9.9.8#$other"
 refuses "names no commit for v9.9.9" "git+$sdk_url?tag=v9.9.9#$real"
 refuses "a full commit" "git+$sdk_url?tag=v$version#../../../../tmp/x"
 refuses "a full commit" "git+$sdk_url?tag=main#$real"
-# A commit pin is taken only from master or a release tag: not a commit the
-# repository does not have, as a fork's is, one on another branch, a short
-# commit, or a branch.
-git -C "$tmp/sdk" -c user.name=test -c user.email=test@example.invalid \
-  commit --quiet --allow-empty -m "unmerged work"
-unmerged=$(git -C "$tmp/sdk" rev-parse HEAD)
-git -C "$tmp/sdk" branch --quiet unmerged
-git -C "$tmp/sdk" reset --quiet --hard "$real"
+# A commit pin is taken only when the commit is on master or under a release
+# tag. Stand-in commits for each case, all children of the released one:
+sdk_git() {
+  git -C "$tmp/sdk" -c user.name=test -c user.email=test@example.invalid "$@"
+}
+tree=$(sdk_git rev-parse "$real^{tree}")
+# on master, under no tag: what a Petal pins until the release is tagged;
+sdk_git commit --quiet --allow-empty -m "merged after the tag"
+untagged=$(sdk_git rev-parse HEAD)
+# under a release tag, not on master;
+tagonly=$(sdk_git commit-tree -p "$real" -m "release branch" "$tree")
+sdk_git tag v9.9.6 "$tagonly"
+# on another branch, which the check never fetches, as with a fork's commit;
+unmerged=$(sdk_git commit-tree -p "$real" -m "unmerged work" "$tree")
+sdk_git branch --quiet unmerged "$unmerged"
+# under a tag that is not a release, which the check does fetch;
+prerelease=$(sdk_git commit-tree -p "$real" -m "not a release" "$tree")
+sdk_git tag vnext "$prerelease"
+# and an annotated tag's own id, which Git would read as the commit it names.
+tagobject=$(sdk_git rev-parse "refs/tags/v$version")
+test "$tagobject" != "$real"
+
 refuses "not on master or a release tag" "git+$sdk_url?rev=$other#$other"
 refuses "not on master or a release tag" "git+$sdk_url?rev=$unmerged#$unmerged"
+refuses "not on master or a release tag" "git+$sdk_url?rev=$prerelease#$prerelease"
+refuses "not on master or a release tag" "git+$sdk_url?rev=$tagobject#$tagobject"
 refuses "a full commit" "git+$sdk_url?rev=${real%????????}#${real%????????}"
+refuses "a full commit" "git+$sdk_url?tag=#$real"
 refuses "pin a release tag or a commit" "git+$sdk_url?branch=master#$real"
 refuses "pin a release tag or a commit" "git+https://github.com/someone/petal?rev=$real#$real"
-cp "$tmp/Cargo.lock" route/Cargo.lock
-# No refusal installed a CLI.
-if find "$tmp/unverified" -type d -name bin 2>/dev/null | grep -q .; then
-  echo "test-scaffold: a refused pin installed a CLI under $tmp/unverified" >&2
+# No refusal installed a CLI, recorded a check, or left its working repository.
+left=$(find "$tmp/unverified" \( -name bin -o -name checked-commit -o -name 'sdk-history.*' \) 2>/dev/null)
+if [ -n "$left" ]; then
+  echo "test-scaffold: refused pins left these under $tmp/unverified:" >&2
+  echo "$left" >&2
   exit 1
 fi
 
-# A commit pin on master runs the CLI of that commit. The CLI installed above
-# was checked for the tag only, so the commit is checked before it runs. Once
-# checked, it is not checked again, so the CLI runs offline.
-sed "s|?tag=v$version#$real\"$|?rev=$real#$real\"|" "$tmp/Cargo.lock" >route/Cargo.lock
-grep -q "source = \"git+$sdk_url?rev=$real#$real\"" route/Cargo.lock
+# A CLI already in the cache does not excuse the check. Give each commit the
+# CLI built above, as an earlier unchecked install would have.
+seed() {
+  mkdir -p "$1/$2"
+  cp -R "$PETAL_TOOLS_DIR/$real/bin" "$1/$2/bin"
+}
+pin_commit() {
+  sed "s|?tag=v$version#$real\"$|?rev=$1#$1\"|" "$tmp/Cargo.lock" >route/Cargo.lock
+  grep -q "source = \"git+$sdk_url?rev=$1#$1\"" route/Cargo.lock
+}
+for commit in "$unmerged" "$prerelease"; do
+  seed "$tmp/seeded" "$commit"
+  pin_commit "$commit"
+  if PETAL_TOOLS_DIR="$tmp/seeded" scripts/petal.sh --version >/dev/null 2>"$tmp/refusal"; then
+    echo "test-scaffold: petal.sh ran a cached CLI for unchecked commit $commit" >&2
+    exit 1
+  fi
+  grep -qF "not on master or a release tag" "$tmp/refusal"
+  test ! -e "$tmp/seeded/$commit/checked-commit"
+done
+
+# Each accepted case is checked before its cached CLI runs, on its own
+# ground: master alone, then a release tag alone. Once checked, a commit is
+# not checked again, so the CLI runs offline.
+for commit in "$untagged" "$tagonly" "$real"; do
+  seed "$tmp/seeded" "$commit"
+  pin_commit "$commit"
+  test "$(PETAL_TOOLS_DIR="$tmp/seeded" scripts/petal.sh --version)" = "petal $version"
+  test -f "$tmp/seeded/$commit/checked-commit"
+  test "$(PETAL_TOOLS_DIR="$tmp/seeded" GIT_CONFIG_GLOBAL=/dev/null GIT_ALLOW_PROTOCOL=none \
+    scripts/petal.sh --version)" = "petal $version"
+done
+# The CLI installed for the tag pin was checked for that tag only, so the same
+# commit as a commit pin is checked too.
+pin_commit "$real"
 test ! -e "$PETAL_TOOLS_DIR/$real/checked-commit"
 test "$(scripts/petal.sh --version)" = "petal $version"
 test -f "$PETAL_TOOLS_DIR/$real/checked-commit"
-test "$(GIT_CONFIG_GLOBAL=/dev/null GIT_ALLOW_PROTOCOL=none scripts/petal.sh --version)" = "petal $version"
+
+# Git gives a hook GIT_DIR. A check run from one must not fetch into that
+# repository, where it would move the Petal's own master and tags.
+git init --quiet "$tmp/hooked-repo"
+git -C "$tmp/hooked-repo" symbolic-ref HEAD refs/heads/work
+git -C "$tmp/hooked-repo" -c user.name=test -c user.email=test@example.invalid \
+  commit --quiet --allow-empty -m "a Petal's own history"
+git -C "$tmp/hooked-repo" branch --quiet master
+git -C "$tmp/hooked-repo" tag "v$version"
+hooked_refs=$(git -C "$tmp/hooked-repo" show-ref)
+seed "$tmp/hooked" "$untagged"
+pin_commit "$untagged"
+test "$(GIT_DIR="$tmp/hooked-repo/.git" PETAL_TOOLS_DIR="$tmp/hooked" \
+  scripts/petal.sh --version)" = "petal $version"
+test -f "$tmp/hooked/$untagged/checked-commit"
+if [ "$(git -C "$tmp/hooked-repo" show-ref)" != "$hooked_refs" ]; then
+  echo "test-scaffold: a commit check run with GIT_DIR set changed that repository's refs:" >&2
+  git -C "$tmp/hooked-repo" show-ref >&2
+  exit 1
+fi
+# No check left its working repository behind.
+if find "$tmp/seeded" "$tmp/hooked" "$PETAL_TOOLS_DIR" -maxdepth 1 -name 'sdk-history.*' | grep -q .; then
+  echo "test-scaffold: a commit check left its working repository in the cache" >&2
+  exit 1
+fi
 cp "$tmp/Cargo.lock" route/Cargo.lock
 
 # The CLI installed above was checked for v$version only. Another tag that

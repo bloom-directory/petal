@@ -31,11 +31,13 @@ repo=https://github.com/bloom-directory/petal
 tag=
 case "$source" in
   "git+$repo?tag="*"#"* | "git+$repo.git?tag="*"#"*)
+    kind=tag
     pin=${source#*\?tag=}
     tag=${pin%%#*}
     commit=${pin##*#}
     ;;
   "git+$repo?rev="*"#"* | "git+$repo.git?rev="*"#"*)
+    kind=commit
     commit=${source##*#}
     ;;
   "")
@@ -50,7 +52,7 @@ case "$source" in
 esac
 # The tag and commit go into a Git ref and a path below, so take only a
 # release tag and a full commit.
-if [ -n "$tag" ]; then
+if [ "$kind" = tag ]; then
   case "$tag" in
     v[0-9]*) ;;
     *) commit= ;;
@@ -75,13 +77,13 @@ tools=$cache/$commit
 # that it passed. Without one, check, even with a CLI already here: an earlier
 # petal.sh installed without checking, and the CLI may have been installed
 # for another pin.
-if [ -n "$tag" ]; then
+if [ "$kind" = tag ]; then
   checked=$tools/checked-tags/$tag
 else
   checked=$tools/checked-commit
 fi
 if [ ! -f "$checked" ]; then
-  if [ -n "$tag" ]; then
+  if [ "$kind" = tag ]; then
     if ! refs=$(git ls-remote "$repo" "refs/tags/$tag" "refs/tags/$tag^{}"); then
       echo "petal.sh: could not read $tag from $repo" >&2
       exit 1
@@ -96,20 +98,48 @@ if [ ! -f "$checked" ]; then
       exit 1
     fi
   else
-    # The release workflow applies the same rule. A full fetch, not a partial
+    # The release workflow applies the same rule, in a repository it makes
+    # for the check. So does this: one kept in the cache would still hold a
+    # release tag the SDK repository has since deleted, and two Petals
+    # checking at once would contend for it. A full fetch, not a partial
     # clone, which would fetch a missing commit on demand.
-    history=$cache/sdk-history.git
-    git init --quiet --bare "$history"
-    if ! git -C "$history" fetch --quiet --no-tags "$repo" \
-      '+refs/heads/master:refs/heads/master' '+refs/tags/v*:refs/tags/v*'; then
-      echo "petal.sh: could not read master and the release tags from $repo" >&2
-      exit 1
+    #
+    # Git gives a hook GIT_DIR, which outranks -C, so a check run from a hook
+    # would fetch into the Petal's own repository and move its master and
+    # tags. Name the repository outright, without Git's own environment.
+    mkdir -p "$cache"
+    history=$(mktemp -d "$cache/sdk-history.XXXXXX")
+    history_git() {
+      (
+        unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+          GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE
+        git --git-dir="$history" "$@"
+      )
+    }
+    verdict=refused
+    if ! history_git init --quiet --bare ||
+      ! history_git fetch --quiet --no-tags "$repo" \
+        '+refs/heads/master:refs/heads/master' '+refs/tags/v*:refs/tags/v*'; then
+      verdict=unread
+    # The pin must be the commit itself: Git would read a tag's own id as the
+    # commit it names.
+    elif [ "$(history_git rev-parse --verify --quiet "$commit^{commit}" 2>/dev/null)" = "$commit" ] && {
+      history_git merge-base --is-ancestor "$commit" refs/heads/master 2>/dev/null ||
+        [ -n "$(history_git for-each-ref --contains "$commit" 'refs/tags/v[0-9]*' 2>/dev/null)" ]
+    }; then
+      verdict=accepted
     fi
-    if ! git -C "$history" merge-base --is-ancestor "$commit" refs/heads/master 2>/dev/null &&
-      [ -z "$(git -C "$history" for-each-ref --contains "$commit" 'refs/tags/v[0-9]*' 2>/dev/null)" ]; then
-      echo "petal.sh: $lock pins commit $commit, which is not on master or a release tag of $repo; pin one that is, or set PETAL_BIN to a petal CLI you built" >&2
-      exit 1
-    fi
+    rm -rf "$history"
+    case "$verdict" in
+      unread)
+        echo "petal.sh: could not read master and the release tags from $repo" >&2
+        exit 1
+        ;;
+      refused)
+        echo "petal.sh: $lock pins commit $commit, which is not on master or a release tag of $repo; pin one that is, or set PETAL_BIN to a petal CLI you built" >&2
+        exit 1
+        ;;
+    esac
   fi
   if [ ! -x "$tools/bin/petal" ]; then
     echo "petal.sh: installing the petal CLI at $commit into $tools" >&2

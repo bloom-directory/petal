@@ -666,11 +666,13 @@ helpers such as `petal::read_store` return `-4`, which reaches the caller as
   that keeps the claim but changes its `action` or `advisory` is refused
   (`exact signing retry differs from its persisted operation identity`). A
   retry while the owner's ceremony is still open reports the same pending
-  request again. Once the ceremony ends without approval, expired after five
-  minutes or cancelled, every retry of that request is refused
-  (`approval is not active`): Bloom replays the request and opens no second
-  ceremony. To ask again, change the payload, for example with a fresh quote,
-  and tell the caller to start over rather than retry.
+  request again. With the exact selector, once the ceremony ends without
+  approval, expired after five minutes or cancelled, every retry of that
+  request is refused (`approval is not active`): Bloom replays the request and
+  opens no second ceremony. To ask again, change the payload, for example with
+  a fresh quote, and tell the caller to start over rather than retry. A
+  reusable request is keyed by route, wallet and operation class, not by its
+  payload, so this does not describe it.
   Do not pass the pending action id back as `approval_hint`; a hint other than
   the derived request id is refused.
 - **One live ceremony per wallet.** While an owner ceremony is pending, a
