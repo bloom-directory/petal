@@ -9,7 +9,7 @@ description = "Deterministic route component builder for Bloom Petals"
 
 [dependencies]
 blake3.workspace = true
-bloom-petal-contract = { path = "../..", version = "=0.1.0" }
+bloom-petal-contract = { path = "../..", version = "=0.2.0" }
 flate2.workspace = true
 hex.workspace = true
 serde.workspace = true

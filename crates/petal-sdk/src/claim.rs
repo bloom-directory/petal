@@ -58,7 +58,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
     Ctx, DispatchResponse, PayloadBatchSignRequest, PayloadSignItem, PayloadSignRequest,
-    SignSelector, error, payload_batch_digest, route_param, validate_payload_batch,
+    SignSelector, WalletAccount, error, payload_batch_digest, route_param, validate_payload_batch,
 };
 
 /// Domain separator for the SDK's default claim nonce. Bloom does not check
@@ -629,11 +629,16 @@ impl PetalClaim {
     /// and `approval_hint` on it as the route needs; keep them byte-identical
     /// across retries (see [`ClaimNonce`]).
     ///
+    /// Pass the [`WalletAccount`] Bloom resolved for this dispatch,
+    /// `claim.sign_request(&account, …)`, so the request cannot name another
+    /// wallet by a mistyped string. A wallet id is still accepted for now;
+    /// see [`ClaimWallet`].
+    ///
     /// Errors: `-3` if the claim covers more than one payload; use
     /// [`PetalClaim::batch_request`].
     pub fn sign_request(
         &self,
-        wallet: &str,
+        wallet: impl ClaimWallet,
         selector: SignSelector,
     ) -> Result<PayloadSignRequest, DispatchResponse> {
         let [item] = self.payloads.as_slice() else {
@@ -643,7 +648,7 @@ impl PetalClaim {
             ));
         };
         Ok(PayloadSignRequest {
-            wallet: wallet.to_owned(),
+            wallet: wallet.wallet_id().to_owned(),
             preimage: item.preimage.clone(),
             claimed_hash: item.claimed_hash,
             signature_algorithm: self.suite.as_str().to_owned(),
@@ -661,9 +666,13 @@ impl PetalClaim {
     /// The batch sign request for this claim, over the same payloads in the
     /// same order. The same retry rules apply as for
     /// [`PetalClaim::sign_request`].
-    pub fn batch_request(&self, wallet: &str, selector: SignSelector) -> PayloadBatchSignRequest {
+    pub fn batch_request(
+        &self,
+        wallet: impl ClaimWallet,
+        selector: SignSelector,
+    ) -> PayloadBatchSignRequest {
         PayloadBatchSignRequest {
-            wallet: wallet.to_owned(),
+            wallet: wallet.wallet_id().to_owned(),
             payloads: self.payloads.clone(),
             signature_algorithm: self.suite.as_str().to_owned(),
             operation_class: self.operation_class.clone(),
@@ -675,6 +684,38 @@ impl PetalClaim {
             selector,
             key_ref_jcs: None,
         }
+    }
+}
+
+/// The wallet a sign request is for.
+///
+/// Pass `&account`, the [`WalletAccount`] from [`crate::wallet_account`]: it
+/// is the wallet Bloom resolved for the dispatch, and Bloom signs for no
+/// other. A wallet id, as `&str` or `&String`, is accepted too, so that
+/// Petals written against earlier SDKs keep compiling. A later release takes
+/// the account only.
+///
+/// The trait is sealed: only the SDK implements it.
+pub trait ClaimWallet: sealed::Sealed {
+    #[doc(hidden)]
+    fn wallet_id(&self) -> &str;
+}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for &super::WalletAccount {}
+    impl<T: AsRef<str> + ?Sized> Sealed for &T {}
+}
+
+impl ClaimWallet for &WalletAccount {
+    fn wallet_id(&self) -> &str {
+        self.wallet()
+    }
+}
+
+impl<T: AsRef<str> + ?Sized> ClaimWallet for &T {
+    fn wallet_id(&self) -> &str {
+        (**self).as_ref()
     }
 }
 
@@ -1506,7 +1547,9 @@ mod tests {
             ClaimNonce::Derived,
         )
         .unwrap();
-        let request = claim.sign_request("alice", SignSelector::Exact).unwrap();
+        let alice = crate::testing::wallet_account("alice", 0);
+        let request = claim.sign_request(&alice, SignSelector::Exact).unwrap();
+        assert_eq!(request.wallet, "alice");
         assert_eq!(request.operation_class, "transfer.send");
         assert_eq!(
             request.signature_algorithm,
@@ -1527,14 +1570,34 @@ mod tests {
         .unwrap();
         // One payload request cannot stand for a batch claim.
         assert_eq!(
-            code(
-                &batch
-                    .sign_request("alice", SignSelector::Exact)
-                    .unwrap_err()
-            ),
+            code(&batch.sign_request(&alice, SignSelector::Exact).unwrap_err()),
             -3
         );
-        let request = batch.batch_request("alice", SignSelector::Reusable);
+        let request = batch.batch_request(&alice, SignSelector::Reusable);
+        assert_eq!(request.wallet, "alice");
+
+        // A wallet id is still accepted, in the forms earlier SDKs took.
+        let id = String::from("alice");
+        for request in [
+            claim.sign_request("alice", SignSelector::Exact).unwrap(),
+            claim
+                .sign_request(alice.wallet(), SignSelector::Exact)
+                .unwrap(),
+            claim.sign_request(&id, SignSelector::Exact).unwrap(),
+            claim
+                .sign_request(id.as_str(), SignSelector::Exact)
+                .unwrap(),
+        ] {
+            assert_eq!(
+                request,
+                claim.sign_request(&alice, SignSelector::Exact).unwrap()
+            );
+        }
+        assert_eq!(
+            batch.batch_request("alice", SignSelector::Reusable),
+            batch.batch_request(&id, SignSelector::Reusable)
+        );
+        assert_eq!(batch.batch_request(&id, SignSelector::Reusable), request);
         assert_eq!(request.payloads, vec![payload(1), payload(2)]);
         assert_eq!(request.operation_class, "transfer.send");
         assert_eq!(request.signature_algorithm, "ed25519-message");

@@ -4,6 +4,20 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[workspace]
+
+[workspace.dependencies]
+# The SDK release this Petal follows, and the only version it pins: the
+# scripts and workflows run the petal CLI of the same release. To upgrade,
+# change the tag, then run
+#   cargo update --manifest-path route/Cargo.toml -p bloom-petal-sdk
+petal = { package = "bloom-petal-sdk", git = "https://github.com/bloom-directory/petal", tag = "v{{sdk-version}}", features = ["host-error-detail"] }
+
 [dependencies]
-petal = { package = "bloom-petal-sdk", version = "=0.1.0" }
+petal = { workspace = true }
 serde_json = "1"
+
+[dev-dependencies]
+# `petal::testing::FakeHost` is for tests only. Enabled under [dependencies]
+# it would compile into every component, and the SDK refuses to build that.
+petal = { workspace = true, features = ["testing"] }

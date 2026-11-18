@@ -10,6 +10,11 @@ cargo test --workspace
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo build --locked -p bloom-petal-sdk --features host-error-detail --target wasm32-unknown-unknown
+# `petal::testing` is for host-side tests and must not compile into a component.
+if cargo build --locked -p bloom-petal-sdk --features testing --target wasm32-unknown-unknown 2>/dev/null; then
+  echo "check: the SDK built for wasm32 with its testing feature" >&2
+  exit 1
+fi
 wasm-tools component wit wit/route >/dev/null
 for package in wit/route/deps/*; do
   wasm-tools component wit "$package" >/dev/null
@@ -22,4 +27,5 @@ cargo run --quiet -p bloom-petal-cli -- check --config fixtures/petal-build.toml
 test "$(wasm-tools component wit fixtures/components/static.txt.wasm | grep -c 'import bloom:sign/signing@0.2.0' || true)" = 0
 test "$(wasm-tools component wit fixtures/components/sign.wasm | grep -c 'import bloom:sign/signing@0.2.0' || true)" = 1
 scripts/test-release-artifacts.sh
+sh scripts/test-scaffold.sh
 sh scripts/test-component-reproducibility.sh "$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/petal-repro.XXXXXX")"

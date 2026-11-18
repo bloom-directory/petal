@@ -2,6 +2,124 @@
 
 ## Unreleased
 
+- Release the SDK, builder and CLI together as `vX.Y.Z` tags, starting at
+  0.2.0, so every untagged 0.1.0 commit stays distinguishable. A Petal names
+  one SDK version, the tag, and everything else follows its lockfile:
+  - the builder accepts `tag = "vX.Y.Z"` SDK pins, and `[sdk].tag`, when the
+    lockfile records a commit for the tag; branches and other tags are refused;
+  - `petal build`, `check` and `package` refuse a lockfile that resolves the
+    SDK at another version than the CLI's, and print the command that
+    installs the CLI of its release tag; for an SDK before 0.2.0, which has
+    no tag, the commit, to check on `master` first;
+  - the reusable release workflow takes the CLI from the lockfile's SDK
+    commit when `petal-tooling-ref` is omitted, which a Petal can do once its
+    SDK is 0.2.0 or later: earlier CLIs lack `petal package --no-build`;
+  - because GitHub serves any fork's commit at the repository's URL, the
+    release workflow and the scaffold's `scripts/petal.sh` refuse a tag pin
+    whose locked commit is not the tag's, and a locked `rev` that is not on
+    `master` or a release tag. The release workflow refuses such a
+    `petal-tooling-ref` too. It checks every crate the lockfile takes from
+    the repository, however the URL is spelled, and with the builder refuses
+    a lockfile that records the repository at more than one commit.
+    `scripts/petal.sh` checks each tag and commit pin before it first runs a
+    cached CLI for it;
+  - the release workflow refuses a tag that is not the workspace version;
+  - 0.2.0 is merged before it is tagged. Until the tag exists a Petal pins a
+    `master` commit, which `scripts/petal.sh` and the release workflow
+    accept, and `petal new` output needs its `tag = "v0.2.0"` pin changed to
+    that commit by hand.
+- The reusable release workflow runs no code from the Petal where it builds
+  or runs the CLI that packages the release, so the `tooling_commit` in
+  `petal-release.json` names the CLI that made the archive, unless the
+  caller's own workflow replaces the published files. It chooses the
+  tooling commit outside the Petal's checkout, with the Rust toolchain named
+  and Python isolated, runs the build command in a job of its own with read
+  access only, and packages in a fresh job that builds the CLI before it
+  checks out the Petal. That job extracts the build's output with
+  `download-artifact` v8, which keeps every entry inside its directory,
+  refuses links on the way to `petal/<name>/` and in it, and writes the
+  release files outside the checkout. Before, the build command ran in the
+  packaging job and could replace the CLI or set the environment of the
+  steps after it. The archive takes `petal/<name>/` from the build and every
+  other file from the tagged commit, and `package-root` must be a relative
+  path inside the checkout.
+- `petal new` scaffolds a Petal that builds as it is: the SDK pinned to the
+  CLI's tag with `host-error-detail`, an account route using
+  `wallet_account` and `address_evm`, a test with `petal::testing`,
+  `scripts/petal.sh` and `scripts/build.sh`, which run the CLI of the
+  lockfile's SDK commit and install it on first use, CI and release
+  workflows, and a `.gitignore`. `scripts/test-scaffold.sh` builds one in CI.
+- `petal --version`; `petal inspect` also prints the version, the SDK pin
+  and the `wasm-tools` release; `petal skill [--root]` prints or refreshes a
+  Petal's development skill, and `build` and `check` warn while it is stale.
+
+- Helpers each Petal used to copy from another, now in the SDK (#56). No
+  WIT change.
+  - `petal::not_found`, `denied`, `invalid` and `backend` build the route
+    errors `-1` to `-4`, and `petal::host_error(&err)` turns a failed host
+    call into one: the code follows Bloom's status and the message is
+    `sdk::describe_error`.
+  - `sdk::store_get_opt` returns `None` for a missing key, and
+    `sdk::store_get_secret` reads the secret namespace, which `store_get`
+    reads only under `creds/`. `petal::store::get_json`, `put_json`,
+    `put_json_new` and `list_names(prefix, suffix)` read, write and list JSON
+    records and return route errors.
+  - `petal::host::Host` has one method per `petal::sdk` host call, and
+    `petal::host::BloomHost` calls Bloom. They are in a module, not at the
+    root, so a Petal that re-exports `petal::*` beside a `Host` of its own
+    still builds. `petal::testing::FakeHost` is an in-memory host for tests:
+    a store, a secret store and a VFS, scripted HTTP, chain, signing, key and
+    outbox replies, and a log of every call. It classifies a scripted failure
+    as the SDK classifies Bloom's, and runs the checks the SDK runs before a
+    signing or outbox call. `petal::testing::bloom_error` builds the same
+    errors for a Petal's own test host.
+  - `SdkError` converts to `String` as `sdk::describe_error`'s text, so `?`
+    passes a failed host call out of a function that returns
+    `Result<_, String>`.
+  - `sdk::eth_call(chain, to, data)` sends the `eth_call` shape Bloom accepts
+    and decodes the result.
+  - `petal::units::parse_units` and `format_units` convert token amounts to
+    and from base units as decimal strings, for any `uint256`.
+  - `petal::validate_record_id` checks an id before it names a store key or
+    a path.
+  - The scaffold's domain code takes a `petal::host::Host`, and its tests
+    run against `FakeHost`.
+  - `PetalClaim::sign_request` and `batch_request` take the `&WalletAccount`
+    Bloom resolved, `claim.sign_request(&account, …)`. A wallet id string is
+    still accepted.
+  - None of this breaks a Petal that moves to this SDK. `FakeHost` is behind
+    a new `testing` feature, enabled under `[dev-dependencies]`, and the SDK
+    refuses to build for `wasm32` with it on. The fixtures `petal::testing`
+    already had compile without it, as before.
+  - To do in a later, breaking release: move the rest of `petal::testing`
+    behind the feature, and take only the account in `sign_request` and
+    `batch_request`.
+  - For a type that adopts `petal::host::Host`: every `Host` is a `VfsRead`,
+    so remove the type's own `VfsRead` implementation if it has one.
+
+- `petal::MessageReview` builds the `bloom.message.review.v1` envelope that
+  Bloom's v0.5.0 release set requires in `action` before it signs an EIP-712
+  or EIP-191 message, and checks it against Broker's limits: size, nesting,
+  recursive or oversized types, the values shown to the owner, and message
+  fields the type does not declare.
+  `sdk::sign_payload` now refuses such a message without that envelope before
+  calling Bloom, with an error naming `MessageReview`; from v0.5.0, Machine
+  refuses it as a bare `invalid`. Safe confirmations, other suites and
+  payloads that do not start with `0x19` are unaffected. Released Bloom
+  v0.4.2 accepts the envelope and ignores it.
+- Breaking for Petals that move to this SDK:
+  - a route that signs an EIP-712 or EIP-191 message without `MessageReview`,
+    or with its own record in `action` as CowSwap's does, is refused even on
+    Bloom v0.4.2, which signs it today. Adopt `MessageReview` when upgrading;
+  - the 0.2.0 CLI refuses a Petal whose lockfile resolves an earlier SDK.
+    Build it with the CLI of its own pin, as the error says, until it
+    upgrades.
+- `sdk::describe_error(&err)` gives the error's message followed by the reason
+  `host-error-detail` recorded for it, and is `message()` without the feature.
+- Document installing the CLI from a release tag, pinning the SDK to one,
+  signing messages, reading Bloom's refusal reasons, and enrolling a signing
+  Petal's provenance on a new developer triad.
+
 - Opt-in `host-error-detail`: `sdk::last_host_reason()` returns the host's
   explanation when the latest SDK host call failed. Every host call replaces
   it; a success clears it. Errors keep the bare `SdkError::Host(status)` variant,
