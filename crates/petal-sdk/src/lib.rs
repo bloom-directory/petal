@@ -22,11 +22,29 @@ getrandom::register_custom_getrandom!(component_getrandom);
 mod claim;
 pub use claim::{
     ClaimAsset, ClaimDebit, ClaimDestination, ClaimEffects, ClaimFee, ClaimNonce, ClaimOrigin,
-    CryptoSuite, PetalClaim, petal_use_claim,
+    ClaimWallet, CryptoSuite, PetalClaim, petal_use_claim,
 };
 
 mod review;
 pub use review::{MESSAGE_REVIEW_SCHEMA, MessageReview};
+
+// `Host` and `BloomHost` stay in their module rather than at the root: a
+// Petal that re-exports `petal::*` beside its own `Host` would otherwise get
+// two of each.
+pub mod host;
+
+pub mod store;
+pub mod units;
+
+pub mod testing;
+
+// The `testing` feature adds an in-memory host to `petal::testing`. A
+// component that carried it would ship test scaffolding to every user, so
+// the feature belongs in a Petal's `[dev-dependencies]` only.
+#[cfg(all(feature = "testing", target_arch = "wasm32", not(test)))]
+compile_error!(
+    "bloom-petal-sdk's `testing` feature is for host-side tests: enable it under [dev-dependencies], not [dependencies]"
+);
 
 pub use bindings::bloom::route::types::EntryKind;
 pub use bindings::{Ctx as RawCtx, Entry, Guest as RawGuest, RouteError, RouteMeta};
@@ -308,6 +326,16 @@ impl core::fmt::Display for SdkError {
 
 impl core::error::Error for SdkError {}
 
+/// Lets `?` pass a failed host call out of a function that returns
+/// `Result<_, String>`. The text is [`sdk::describe_error`], read when the
+/// conversion runs, so it keeps Bloom's reason as long as `?` follows the
+/// failing call directly.
+impl From<SdkError> for String {
+    fn from(err: SdkError) -> Self {
+        sdk::describe_error(&err)
+    }
+}
+
 /// Validate the identifier used to address a Bloom wallet.
 ///
 /// Wallet identifiers are Broker protocol tokens, not on-chain addresses.
@@ -426,36 +454,41 @@ pub mod sdk {
     }
 
     pub fn request_key(request_jcs: &[u8]) -> Result<Vec<u8>, SdkError> {
-        clear_host_reason();
-        let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
-            .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
-        super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
+        check_key_request(request_jcs)?;
         key::request(request_jcs).host()
     }
 
     pub fn derive_key(request: &PetalKeyRequest) -> Result<PetalKeyOutcome, SdkError> {
+        let outcome = request_key(&key_request_jcs(request)?)?;
+        key_outcome(&outcome)
+    }
+
+    /// What [`request_key`] checks before it calls Bloom.
+    pub(crate) fn check_key_request(request_jcs: &[u8]) -> Result<(), SdkError> {
         clear_host_reason();
-        super::validate_wallet_id(&request.wallet_id).map_err(SdkError::Message)?;
-        let request_jcs = serde_jcs::to_vec(request)
-            .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))?;
-        let outcome = request_key(&request_jcs)?;
-        serde_json::from_slice(&outcome)
-            .map_err(|error| SdkError::Message(format!("decode Petal key outcome: {error}")))
+        let request: PetalKeyRequest = serde_json::from_slice(request_jcs)
+            .map_err(|error| SdkError::Message(format!("decode Petal key request: {error}")))?;
+        check_wallet(&request.wallet_id)
+    }
+
+    pub(crate) fn key_request_jcs(request: &PetalKeyRequest) -> Result<Vec<u8>, SdkError> {
+        check_wallet(&request.wallet_id)?;
+        serde_jcs::to_vec(request)
+            .map_err(|error| SdkError::Message(format!("encode Petal key request: {error}")))
+    }
+
+    pub(crate) fn key_outcome(outcome_json: &[u8]) -> Result<PetalKeyOutcome, SdkError> {
+        serde_json::from_slice(outcome_json).map_err(|error| {
+            clear_host_reason();
+            SdkError::Message(format!("decode Petal key outcome: {error}"))
+        })
     }
 
     /// Errors with [`SdkError::Message`] before calling Bloom when the payload
     /// is an EIP-712 or EIP-191 message without a [`super::MessageReview`]
     /// in `action`, which Bloom refuses.
     pub fn sign_payload(req: &PayloadSignRequest) -> Result<SignOutcome, SdkError> {
-        clear_host_reason();
-        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
-        super::review::require_message_review(
-            &req.signature_algorithm,
-            &req.operation_class,
-            &req.preimage,
-            req.action.as_deref(),
-        )
-        .map_err(SdkError::Message)?;
+        check_sign_payload(req)?;
         let request = sign::PayloadSignRequest {
             wallet: req.wallet.clone(),
             preimage: req.preimage.clone(),
@@ -480,9 +513,7 @@ pub mod sdk {
     }
 
     pub fn sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<SignBatchOutcome, SdkError> {
-        clear_host_reason();
-        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
-        super::validate_payload_batch(&req.payloads)?;
+        check_sign_payload_batch(req)?;
         let request = sign::PayloadBatchSignRequest {
             wallet: req.wallet.clone(),
             payloads: req
@@ -521,6 +552,35 @@ pub mod sdk {
         }
     }
 
+    /// What [`sign_payload`] checks before it calls Bloom. A test host runs
+    /// the same checks, so a request Bloom would never see fails there too.
+    pub(crate) fn check_sign_payload(req: &PayloadSignRequest) -> Result<(), SdkError> {
+        clear_host_reason();
+        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
+        super::review::require_message_review(
+            &req.signature_algorithm,
+            &req.operation_class,
+            &req.preimage,
+            req.action.as_deref(),
+        )
+        .map_err(SdkError::Message)
+    }
+
+    /// What [`sign_payload_batch`] checks before it calls Bloom.
+    pub(crate) fn check_sign_payload_batch(req: &PayloadBatchSignRequest) -> Result<(), SdkError> {
+        clear_host_reason();
+        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
+        super::validate_payload_batch(&req.payloads)
+    }
+
+    /// What the outbox calls check before they call Bloom.
+    pub(crate) fn check_wallet(wallet: &str) -> Result<(), SdkError> {
+        clear_host_reason();
+        super::validate_wallet_id(wallet)
+            .map(|_| ())
+            .map_err(SdkError::Message)
+    }
+
     fn selector(selector: &SignSelector) -> sign::Selector {
         match selector {
             SignSelector::Exact => sign::Selector::Exact,
@@ -529,8 +589,7 @@ pub mod sdk {
     }
 
     pub fn tx_stage(req: &EvmTransaction) -> Result<StagedTransaction, SdkError> {
-        clear_host_reason();
-        super::validate_wallet_id(&req.wallet).map_err(SdkError::Message)?;
+        check_wallet(&req.wallet)?;
         tx::stage(&tx::EvmTransaction {
             wallet: req.wallet.clone(),
             chain: req.chain.clone(),
@@ -551,8 +610,7 @@ pub mod sdk {
         outbox_id: &str,
         acknowledge_warnings: bool,
     ) -> Result<StagedTransaction, SdkError> {
-        clear_host_reason();
-        super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
+        check_wallet(wallet)?;
         tx::confirm(wallet, chain_name, outbox_id, acknowledge_warnings)
             .map(staged_transaction)
             .host()
@@ -563,8 +621,7 @@ pub mod sdk {
         chain_name: &str,
         outbox_id: &str,
     ) -> Result<OutboxInspection, SdkError> {
-        clear_host_reason();
-        super::validate_wallet_id(wallet).map_err(SdkError::Message)?;
+        check_wallet(wallet)?;
         tx::inspect(wallet, chain_name, outbox_id)
             .map(|inspection| OutboxInspection {
                 outbox_id: inspection.outbox_id,
@@ -589,17 +646,99 @@ pub mod sdk {
         .host()
     }
 
-    pub fn store_get(key: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
-        let namespace = namespace_for_key(key, false);
-        let Some(bytes) = store::get(namespace, key).host()? else {
-            return Err(SdkError::Host(HostStatus::NotFound));
-        };
-        if bytes.len() > max_bytes {
-            return Err(SdkError::Host(HostStatus::BufferTooSmall {
-                needed: bytes.len(),
-            }));
+    /// Call a contract at the latest block and return what it returned.
+    ///
+    /// `to` is a `0x` address and `data` the encoded call. This sends the one
+    /// `eth_call` shape Bloom's chain host accepts, a call object with `to`
+    /// and `data` and then `"latest"`, and decodes the hex string it answers
+    /// with. A revert is Bloom's error, not an `Ok` with revert data. The
+    /// route needs the `bloom:chain.read` capability.
+    pub fn eth_call(chain_name: &str, to: &str, data: &[u8]) -> Result<Vec<u8>, SdkError> {
+        let result = chain_read(chain_name, "eth_call", &eth_call_params(to, data)?)?;
+        eth_call_result(&result)
+    }
+
+    pub(crate) fn eth_call_params(to: &str, data: &[u8]) -> Result<String, SdkError> {
+        if super::parse_evm_address(to.as_bytes()).ok().as_deref() != Some(to) {
+            clear_host_reason();
+            return Err(SdkError::Message(format!(
+                "eth_call: {to:?} is not an EVM address"
+            )));
         }
-        Ok(bytes)
+        let mut hex = String::with_capacity(2 + data.len() * 2);
+        hex.push_str("0x");
+        for byte in data {
+            hex.push(char::from(HEX_DIGITS[usize::from(byte >> 4)]));
+            hex.push(char::from(HEX_DIGITS[usize::from(byte & 0x0f)]));
+        }
+        Ok(serde_json::json!([{ "to": to, "data": hex }, "latest"]).to_string())
+    }
+
+    pub(crate) fn eth_call_result(result_json: &str) -> Result<Vec<u8>, SdkError> {
+        let decoded = serde_json::from_str::<String>(result_json)
+            .ok()
+            .and_then(|text| {
+                let digits = text.strip_prefix("0x")?.as_bytes();
+                if digits.len() % 2 != 0 {
+                    return None;
+                }
+                digits
+                    .chunks(2)
+                    .map(|pair| Some(hex_value(pair[0])? << 4 | hex_value(pair[1])?))
+                    .collect::<Option<Vec<u8>>>()
+            });
+        decoded.ok_or_else(|| {
+            clear_host_reason();
+            SdkError::Message("eth_call result is not a 0x hex string".into())
+        })
+    }
+
+    const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
+    fn hex_value(digit: u8) -> Option<u8> {
+        match digit {
+            b'0'..=b'9' => Some(digit - b'0'),
+            b'a'..=b'f' => Some(digit - b'a' + 10),
+            b'A'..=b'F' => Some(digit - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    /// Read a state key. A missing key is `HostStatus::NotFound`; use
+    /// [`store_get_opt`] where "no record yet" is an ordinary answer.
+    ///
+    /// This reads the secret namespace only for keys under `creds/`. Read
+    /// anything else written with `store_put(key, value, true)` through
+    /// [`store_get_secret`].
+    pub fn store_get(key: &str, max_bytes: usize) -> Result<Vec<u8>, SdkError> {
+        store_get_opt(key, max_bytes)?.ok_or(SdkError::Host(HostStatus::NotFound))
+    }
+
+    /// [`store_get`], with a missing key as `Ok(None)`.
+    pub fn store_get_opt(key: &str, max_bytes: usize) -> Result<Option<Vec<u8>>, SdkError> {
+        within(
+            store::get(namespace_for_key(key, false), key).host()?,
+            max_bytes,
+        )
+    }
+
+    /// Read a value from the secret namespace, where
+    /// `store_put(key, value, true)` writes whatever the key. A missing key is
+    /// `Ok(None)`. The bytes are confidential: keep them out of errors, logs
+    /// and read responses.
+    pub fn store_get_secret(key: &str, max_bytes: usize) -> Result<Option<Vec<u8>>, SdkError> {
+        within(store::get(SECRET_NS, key).host()?, max_bytes)
+    }
+
+    fn within(value: Option<Vec<u8>>, max_bytes: usize) -> Result<Option<Vec<u8>>, SdkError> {
+        match value {
+            Some(bytes) if bytes.len() > max_bytes => {
+                Err(SdkError::Host(HostStatus::BufferTooSmall {
+                    needed: bytes.len(),
+                }))
+            }
+            value => Ok(value),
+        }
     }
 
     pub fn store_put(key: &str, value: &[u8], secret: bool) -> Result<(), SdkError> {
@@ -685,6 +824,13 @@ pub mod sdk {
                 expires_ms: approval.expires_ms,
             }),
         }
+    }
+
+    /// Whether a write or an unqualified read of `key` uses the secret
+    /// namespace.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn is_secret_key(key: &str, secret: bool) -> bool {
+        namespace_for_key(key, secret) == SECRET_NS
     }
 
     fn namespace_for_key(key: &str, secret: bool) -> &'static str {
@@ -1759,6 +1905,77 @@ pub fn error(code: i32, message: impl Into<String>) -> DispatchResponse {
     }
 }
 
+/// `-1`: what the caller asked for does not exist.
+pub fn not_found(message: impl Into<String>) -> DispatchResponse {
+    error(-1, message)
+}
+
+/// `-2`: the caller may not do this. Machine drops the message of a `-2`
+/// response, so the caller sees a bare "permission denied".
+pub fn denied(message: impl Into<String>) -> DispatchResponse {
+    error(-2, message)
+}
+
+/// `-3`: the request is malformed. The same response as [`route_invalid`].
+pub fn invalid(message: impl Into<String>) -> DispatchResponse {
+    error(-3, message)
+}
+
+/// `-4`: the request was acceptable and something behind the route failed.
+pub fn backend(message: impl Into<String>) -> DispatchResponse {
+    error(-4, message)
+}
+
+/// The route error for a failed host call: the code follows Bloom's status
+/// and the message is [`sdk::describe_error`], so it keeps Bloom's reason
+/// under the `host-error-detail` feature.
+///
+/// `NotFound` is `-1`, `Denied` `-2` and `Invalid` `-3`. Everything else is
+/// `-4`: a backend failure, a value over the read limit, and an error the
+/// SDK built before calling Bloom. Call it straight after the failing call,
+/// before another host call replaces the reason. Where a status means
+/// something more specific to the route, such as "no draft with that id",
+/// match the `SdkError` and say so instead.
+///
+/// The status is the SDK's classification of Bloom's message, which reads
+/// the whole text (petal#25). A backend failure whose text happens to say
+/// `not found` or `invalid`, such as an RPC node's `header not found`, is
+/// therefore `-1` or `-3` here. Where that would mislead, as on a chain
+/// read, map the error yourself.
+///
+/// It takes the error or a reference to it, so both
+/// `petal::host_error(&err)` and `.map_err(petal::host_error)` work.
+pub fn host_error(err: impl core::borrow::Borrow<SdkError>) -> DispatchResponse {
+    let err = err.borrow();
+    let code = match err {
+        SdkError::Host(HostStatus::NotFound) => -1,
+        SdkError::Host(HostStatus::Denied) => -2,
+        SdkError::Host(HostStatus::Invalid) => -3,
+        SdkError::Host(HostStatus::Backend | HostStatus::BufferTooSmall { .. })
+        | SdkError::Message(_) => -4,
+    };
+    error(code, sdk::describe_error(err))
+}
+
+/// Validate an id that names a stored record, such as a draft, before it
+/// becomes part of a store key or a VFS path.
+///
+/// An id is 1 to 128 ASCII letters, digits, `-`, `_` or `.`, and not `.` or
+/// `..`. So it is always one path segment and cannot reach another record's
+/// key. Nothing is trimmed: a padded id is refused, not repaired.
+pub fn validate_record_id(value: &str) -> Result<&str, String> {
+    let valid = (1..=128).contains(&value.len())
+        && is_safe_segment(value)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
+    if valid {
+        Ok(value)
+    } else {
+        Err("id must be 1-128 letters, digits, '-', '_' or '.', and not '.' or '..'".into())
+    }
+}
+
 pub fn dir(name: impl Into<String>) -> RouteChild {
     RouteChild {
         name: name.into(),
@@ -2399,143 +2616,125 @@ pub fn read_store(key: &str, max_bytes: usize) -> DispatchResponse {
     }
 }
 
-/// Fixtures for testing route and domain code off `wasm32`.
-///
-/// Every Petal that tests a `Ctx`-taking function has hand-rolled these. The
-/// local `impl RouteIdentity` stays with the test, since it documents the route
-/// under test, but the `RawCtx` assembly and a fake VFS do not need repeating.
-///
-/// Production code must not reach for this module: [`wallet_account`] is the
-/// only way a route should obtain a [`WalletAccount`].
-pub mod testing {
-    use super::{Ctx, RawCtx, RouteIdentity, SdkError, VfsRead, WalletAccount};
-    use std::collections::BTreeMap;
+#[cfg(test)]
+mod route_error_tests {
+    use super::*;
 
-    /// A well-formed package hash for tests: 64 lowercase hex digits, as Bloom
-    /// supplies.
-    pub const PACKAGE_HASH: &str =
-        "aa00000000000000000000000000000000000000000000000000000000000001";
-    /// The trusted route id [`RouteCtx`] supplies unless told otherwise.
-    pub const ROUTE_ID: &str = "r000001";
-
-    /// Assemble a [`Ctx`] for a route under test. It starts with a valid
-    /// [`PACKAGE_HASH`] and the trusted `bloom.route_id` [`ROUTE_ID`], so a
-    /// signing route can build its claim; change them with
-    /// [`RouteCtx::package_hash`], [`RouteCtx::route_id`] and
-    /// [`RouteCtx::without_route_id`].
-    pub struct RouteCtx {
-        path: String,
-        params: Vec<(String, String)>,
-        petal_root: String,
-        package_hash: String,
-        actor: Option<String>,
+    #[test]
+    fn each_named_error_carries_its_code() {
+        assert_eq!(not_found("a"), error(-1, "a"));
+        assert_eq!(denied("b"), error(-2, "b"));
+        assert_eq!(invalid("c"), error(-3, "c"));
+        assert_eq!(invalid("c"), route_invalid("c"));
+        assert_eq!(backend(String::from("d")), error(-4, "d"));
+        // The codes are the ones the route boundary maps.
+        assert!(matches!(
+            route_error(-1, "a".into()),
+            RouteError::NotFound(_)
+        ));
+        assert!(matches!(route_error(-2, "b".into()), RouteError::Denied(_)));
+        assert!(matches!(
+            route_error(-3, "c".into()),
+            RouteError::Invalid(_)
+        ));
+        assert!(matches!(
+            route_error(-4, "d".into()),
+            RouteError::Backend(_)
+        ));
     }
 
-    impl RouteCtx {
-        /// `path` is the concrete request path, e.g. `swaps/alice/1/new`.
-        pub fn new(path: &str) -> Self {
-            Self {
-                path: path.to_owned(),
-                params: Vec::new(),
-                petal_root: "test".to_owned(),
-                package_hash: PACKAGE_HASH.to_owned(),
-                actor: None,
-            }
-            .route_id(ROUTE_ID)
-        }
-
-        /// Set the trusted `bloom.route_id`, replacing any earlier one.
-        pub fn route_id(self, route_id: &str) -> Self {
-            let mut ctx = self.without_route_id();
-            ctx.params
-                .push(("bloom.route_id".to_owned(), route_id.to_owned()));
-            ctx
-        }
-
-        /// Drop the trusted `bloom.route_id`, as on a context Bloom did not
-        /// dispatch.
-        pub fn without_route_id(mut self) -> Self {
-            self.params.retain(|(name, _)| name != "bloom.route_id");
-            self
-        }
-
-        /// Inject the trusted `bloom.wallet` and `bloom.account` pair Bloom
-        /// supplies on an account-mounted route.
-        pub fn account(mut self, wallet: &str, number: u32) -> Self {
-            self.params
-                .push(("bloom.wallet".to_owned(), wallet.to_owned()));
-            self.params
-                .push(("bloom.account".to_owned(), number.to_string()));
-            self
-        }
-
-        /// Add one raw parameter, trusted or caller-supplied.
-        pub fn param(mut self, name: &str, value: &str) -> Self {
-            self.params.push((name.to_owned(), value.to_owned()));
-            self
-        }
-
-        pub fn package_hash(mut self, package_hash: &str) -> Self {
-            self.package_hash = package_hash.to_owned();
-            self
-        }
-
-        pub fn actor(mut self, actor: &str) -> Self {
-            self.actor = Some(actor.to_owned());
-            self
-        }
-
-        pub fn raw(self) -> RawCtx {
-            RawCtx {
-                petal_root: self.petal_root,
-                package_hash: self.package_hash,
-                path: self.path,
-                params: self.params,
-                actor: self.actor,
-            }
-        }
-
-        pub fn bind<I: RouteIdentity>(self) -> Ctx {
-            Ctx::bind::<I>(self.raw())
+    #[test]
+    fn host_error_takes_the_code_from_bloom_s_status() {
+        sdk::clear_host_reason();
+        for (err, code, message) in [
+            (SdkError::Host(HostStatus::NotFound), -1, "not found"),
+            (SdkError::Host(HostStatus::Denied), -2, "denied"),
+            (SdkError::Host(HostStatus::Invalid), -3, "invalid"),
+            (SdkError::Host(HostStatus::Backend), -4, "backend error"),
+            (
+                SdkError::Host(HostStatus::BufferTooSmall { needed: 9 }),
+                -4,
+                "buffer too small: needs 9 bytes",
+            ),
+            (SdkError::Message("local".into()), -4, "local"),
+        ] {
+            assert_eq!(host_error(&err), error(code, message), "{err:?}");
+            assert_eq!(host_error(err), error(code, message));
         }
     }
 
-    /// An in-memory [`VfsRead`] so address resolution can be tested where the
-    /// real host imports are `unreachable!()`.
-    #[derive(Default)]
-    pub struct MapVfs {
-        files: BTreeMap<String, Result<Vec<u8>, SdkError>>,
+    #[test]
+    fn host_error_keeps_the_reason_bloom_gave_for_that_call() {
+        let err = sdk::host_err("denied: SELECTOR_MISMATCH: wrong account".into());
+        let expected = if cfg!(feature = "host-error-detail") {
+            "denied: SELECTOR_MISMATCH: wrong account"
+        } else {
+            "denied"
+        };
+        assert_eq!(host_error(&err), denied(expected));
+        // A reason recorded for another status is not attached.
+        assert_eq!(
+            host_error(SdkError::Host(HostStatus::NotFound)),
+            not_found("not found")
+        );
+        // An unlabelled backend failure is already the whole message.
+        // By value, as `.map_err(petal::host_error)` passes it.
+        let stored: Result<(), SdkError> =
+            Err(sdk::host_err("backend: store put: disk full".into()));
+        assert_eq!(
+            stored.map_err(host_error),
+            Err(backend("backend: store put: disk full"))
+        );
     }
 
-    impl MapVfs {
-        pub fn new() -> Self {
-            Self::default()
+    #[test]
+    fn a_failed_host_call_passes_through_a_string_error_with_its_reason() {
+        fn put(host: &mut impl host::Host) -> Result<(), String> {
+            host.store_put("a", b"1", false)?;
+            Ok(())
         }
-
-        pub fn file(mut self, path: &str, bytes: &[u8]) -> Self {
-            self.files.insert(path.to_owned(), Ok(bytes.to_vec()));
-            self
-        }
-
-        /// Make a path fail with a specific host status.
-        pub fn failing(mut self, path: &str, error: SdkError) -> Self {
-            self.files.insert(path.to_owned(), Err(error));
-            self
-        }
+        let mut host = testing::FakeHost::new();
+        host.fail_next("store_put", "denied: STORE_LOCKED: try again");
+        let expected = if cfg!(feature = "host-error-detail") {
+            "denied: STORE_LOCKED: try again"
+        } else {
+            "denied"
+        };
+        assert_eq!(put(&mut host), Err(expected.to_owned()));
+        assert_eq!(put(&mut host), Ok(()));
     }
 
-    impl VfsRead for MapVfs {
-        fn read(&mut self, path: &str, _max_bytes: usize) -> Result<Vec<u8>, SdkError> {
-            match self.files.get(path) {
-                Some(Ok(bytes)) => Ok(bytes.clone()),
-                Some(Err(error)) => Err(error.clone()),
-                None => Err(SdkError::Host(super::HostStatus::NotFound)),
-            }
+    #[test]
+    fn a_record_id_is_one_safe_path_segment() {
+        for id in [
+            "7",
+            "a",
+            "order-12_v2.json",
+            "A.b",
+            ".hidden",
+            "...",
+            &"x".repeat(128),
+        ] {
+            assert_eq!(validate_record_id(id), Ok(id), "{id:?}");
         }
-    }
-
-    /// A [`WalletAccount`] for domain code under test, bypassing [`Ctx`].
-    pub fn wallet_account(wallet: &str, number: u32) -> WalletAccount {
-        WalletAccount::for_test(wallet, number)
+        for id in [
+            "",
+            ".",
+            "..",
+            "a/b",
+            "../a",
+            "a\\b",
+            "a b",
+            " a",
+            "a\n",
+            "a\0",
+            "ä",
+            "a:b",
+            "a%2f",
+            &"x".repeat(129),
+        ] {
+            let error = validate_record_id(id).unwrap_err();
+            assert!(error.contains("1-128 letters"), "{id:?}: {error}");
+        }
     }
 }

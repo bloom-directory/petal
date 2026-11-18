@@ -21,6 +21,11 @@ scripts/build.sh
 scripts/petal.sh check
 ```
 
+The tests in `route/src/lib.rs` run against `petal::testing::FakeHost`, an
+in-memory Bloom. Code there that calls Bloom takes a
+`&mut impl petal::host::Host`, so the same function runs in a test and in a
+route.
+
 `scripts/petal.sh` runs the `petal` CLI of the SDK release that
 `route/Cargo.toml` pins. The first time it sees a tag, it checks that the
 tag names the commit in `route/Cargo.lock`. For a commit pin, it checks that

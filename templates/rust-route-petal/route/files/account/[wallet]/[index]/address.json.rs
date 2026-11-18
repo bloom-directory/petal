@@ -7,12 +7,8 @@ petal::route_file!(
             Ok(account) => account,
             Err(response) => return response,
         };
-        match account.address_evm() {
-            Ok(address) => petal::read_json_value(&serde_json::json!({
-                "wallet": account.wallet(),
-                "account": account.number(),
-                "address": address,
-            })),
+        match crate::account_address(&mut petal::host::BloomHost, &account) {
+            Ok(summary) => petal::read_json_value(&summary),
             Err(response) => response,
         }
     }

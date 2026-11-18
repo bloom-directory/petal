@@ -49,7 +49,7 @@ const DOMAIN_FIELDS: &[&str] = &["name", "version", "chainId", "verifyingContrac
 /// `action`:
 ///
 /// ```ignore
-/// let mut request = claim.sign_request(account.wallet(), petal::SignSelector::Exact)?;
+/// let mut request = claim.sign_request(&account, petal::SignSelector::Exact)?;
 /// let review = petal::MessageReview::eip712(typed_data).map_err(|e| petal::error(-4, e))?;
 /// request.action = Some(review.into_bytes());
 /// ```

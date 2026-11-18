@@ -53,6 +53,50 @@
   and the `wasm-tools` release; `petal skill [--root]` prints or refreshes a
   Petal's development skill, and `build` and `check` warn while it is stale.
 
+- Helpers each Petal used to copy from another, now in the SDK (#56). No
+  WIT change.
+  - `petal::not_found`, `denied`, `invalid` and `backend` build the route
+    errors `-1` to `-4`, and `petal::host_error(&err)` turns a failed host
+    call into one: the code follows Bloom's status and the message is
+    `sdk::describe_error`.
+  - `sdk::store_get_opt` returns `None` for a missing key, and
+    `sdk::store_get_secret` reads the secret namespace, which `store_get`
+    reads only under `creds/`. `petal::store::get_json`, `put_json`,
+    `put_json_new` and `list_names(prefix, suffix)` read, write and list JSON
+    records and return route errors.
+  - `petal::host::Host` has one method per `petal::sdk` host call, and
+    `petal::host::BloomHost` calls Bloom. They are in a module, not at the
+    root, so a Petal that re-exports `petal::*` beside a `Host` of its own
+    still builds. `petal::testing::FakeHost` is an in-memory host for tests:
+    a store, a secret store and a VFS, scripted HTTP, chain, signing, key and
+    outbox replies, and a log of every call. It classifies a scripted failure
+    as the SDK classifies Bloom's, and runs the checks the SDK runs before a
+    signing or outbox call. `petal::testing::bloom_error` builds the same
+    errors for a Petal's own test host.
+  - `SdkError` converts to `String` as `sdk::describe_error`'s text, so `?`
+    passes a failed host call out of a function that returns
+    `Result<_, String>`.
+  - `sdk::eth_call(chain, to, data)` sends the `eth_call` shape Bloom accepts
+    and decodes the result.
+  - `petal::units::parse_units` and `format_units` convert token amounts to
+    and from base units as decimal strings, for any `uint256`.
+  - `petal::validate_record_id` checks an id before it names a store key or
+    a path.
+  - The scaffold's domain code takes a `petal::host::Host`, and its tests
+    run against `FakeHost`.
+  - `PetalClaim::sign_request` and `batch_request` take the `&WalletAccount`
+    Bloom resolved, `claim.sign_request(&account, …)`. A wallet id string is
+    still accepted.
+  - None of this breaks a Petal that moves to this SDK. `FakeHost` is behind
+    a new `testing` feature, enabled under `[dev-dependencies]`, and the SDK
+    refuses to build for `wasm32` with it on. The fixtures `petal::testing`
+    already had compile without it, as before.
+  - To do in a later, breaking release: move the rest of `petal::testing`
+    behind the feature, and take only the account in `sign_request` and
+    `batch_request`.
+  - For a type that adopts `petal::host::Host`: every `Host` is a `VfsRead`,
+    so remove the type's own `VfsRead` implementation if it has one.
+
 - `petal::MessageReview` builds the `bloom.message.review.v1` envelope that
   Bloom's v0.5.0 release set requires in `action` before it signs an EIP-712
   or EIP-191 message, and checks it against Broker's limits: size, nesting,

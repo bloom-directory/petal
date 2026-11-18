@@ -260,6 +260,34 @@ route path or filename and asking shared code to infer the operation. A small
 amount of repetition in route files is preferable to hidden coupling through
 dynamic dispatch.
 
+Take contract-level infrastructure from the SDK; do not write it again or
+copy it from another Petal:
+
+- Route errors: `petal::not_found`, `denied`, `invalid` and `backend`. For a
+  failed host call, `petal::host_error(&err)` picks the code from Bloom's
+  status and keeps its reason. Call it straight after the failing call. A
+  backend failure whose text says `not found` or `invalid` is classified as
+  that status, so map chain-read errors yourself.
+- Store: `sdk::store_get_opt` for a key that may be missing,
+  `sdk::store_get_secret` for a value written with `secret = true`, and
+  `petal::store::{get_json, put_json, put_json_new, list_names}` for JSON
+  records.
+- Chain: `sdk::eth_call(chain, to, data)`.
+- Amounts: `petal::units::{parse_units, format_units}`, on decimal strings.
+- Ids: `petal::validate_record_id` before an id reaches a store key or path.
+- The account: `petal::wallet_account(ctx)`, `account.address_evm()`, and
+  `claim.sign_request(&account, …)`. List a `[wallet]` directory with
+  `petal::account_listing!()`; Bloom lists wallets itself.
+
+Code in the route crate that calls Bloom takes a
+`&mut impl petal::host::Host` instead of calling `petal::sdk`, which cannot
+run off `wasm32`. A route file passes `petal::host::BloomHost`. A test passes
+`petal::testing::FakeHost`: seed its store and files, script the HTTP, chain,
+signing and outbox replies, including Bloom's refusal messages, then assert
+on `host.calls()`. Do not define a host trait or a fake of your own.
+`FakeHost` needs the SDK's `testing` feature; enable it under
+`[dev-dependencies]` only.
+
 ## Declare least capabilities
 
 Keep three scopes distinct:
@@ -396,7 +424,7 @@ through `sdk::sign_payload` with the exact selector, and only with a
 `bloom.message.review.v1` envelope as the request's `action`:
 
 ```rust
-let mut request = claim.sign_request(account.wallet(), petal::SignSelector::Exact)?;
+let mut request = claim.sign_request(&account, petal::SignSelector::Exact)?;
 let review = petal::MessageReview::eip712(typed_data).map_err(|e| petal::error(-4, e))?;
 request.action = Some(review.into_bytes());
 ```
@@ -439,8 +467,8 @@ should omit the host signing capability and the signing function must live
 behind a typed helper that cannot return key bytes to its caller. Treat the
 boundary between the secret namespace and the readable VFS as a hard wall and
 add tests that confirm public routes and packaged artifacts contain no secret
-value. Use the pinned SDK or host binding for secret reads; do not assume
-`petal::sdk::store_get` reads the secret namespace.
+value. Read a secret with `petal::sdk::store_get_secret`; `store_get` reads
+the secret namespace only for keys under `creds/`.
 
 ## Validate in layers
 
@@ -630,7 +658,9 @@ scaffold before you point the hook at it.
 
 With the SDK's `host-error-detail` feature, `petal::sdk::describe_error(&err)`
 reads `invalid: <reason>` where `err.message()` reads only `invalid`. Call it
-straight after the failing call: the next host call replaces the reason. On
+straight after the failing call: the next host call replaces the reason.
+`petal::host_error(&err)` is the route error with that message and the code
+of Bloom's status. On
 the mount a route error is a bare EIO or EINVAL. Bloom keeps a failed write's
 message, with its `path` and `at_ms`, at `petals/<name>/last_error.json` until
 that path's next write succeeds; for a read, reproduce with `bloom vfs cat`.
