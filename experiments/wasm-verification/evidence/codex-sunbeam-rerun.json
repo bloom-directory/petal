@@ -1,0 +1,126 @@
+{
+  "purpose": "Codex independent rerun; trusted-verifier functional verdicts, not kernel certificates or complete total-correctness proofs",
+  "emv_jar_sha256": "78b0e100bb9c4b5f1ddfa9408a3844a26749436b7a42794f795c7b0c4cec1f87",
+  "runs": [
+    {
+      "variant": "correct",
+      "rule": "rule_split_1_conservation",
+      "solver": "z3",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.008,
+      "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    },
+    {
+      "variant": "correct",
+      "rule": "rule_split_1_conservation",
+      "solver": "cvc5",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.477,
+      "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    },
+    {
+      "variant": "correct",
+      "rule": "rule_split_2_ordered",
+      "solver": "z3",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 4.74,
+      "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    },
+    {
+      "variant": "correct",
+      "rule": "rule_split_2_ordered",
+      "solver": "cvc5",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.644,
+      "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    },
+    {
+      "variant": "correct",
+      "rule": "rule_split_3_gap",
+      "solver": "z3",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.288,
+      "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    },
+    {
+      "variant": "correct",
+      "rule": "rule_split_3_gap",
+      "solver": "cvc5",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.673,
+      "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    },
+    {
+      "variant": "faulty",
+      "rule": "rule_split_1_conservation",
+      "solver": "z3",
+      "trapAsAssert": true,
+      "exit": 100,
+      "verdict": "FAIL",
+      "seconds": 5.938,
+      "harness_sha256": "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    },
+    {
+      "variant": "faulty",
+      "rule": "rule_split_1_conservation",
+      "solver": "cvc5",
+      "trapAsAssert": true,
+      "exit": 100,
+      "verdict": "FAIL",
+      "seconds": 5.713,
+      "harness_sha256": "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    },
+    {
+      "variant": "faulty",
+      "rule": "rule_split_2_ordered",
+      "solver": "z3",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.023,
+      "harness_sha256": "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    },
+    {
+      "variant": "faulty",
+      "rule": "rule_split_2_ordered",
+      "solver": "cvc5",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.047,
+      "harness_sha256": "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    },
+    {
+      "variant": "faulty",
+      "rule": "rule_split_3_gap",
+      "solver": "z3",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.359,
+      "harness_sha256": "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    },
+    {
+      "variant": "faulty",
+      "rule": "rule_split_3_gap",
+      "solver": "cvc5",
+      "trapAsAssert": true,
+      "exit": 0,
+      "verdict": "SUCCESS",
+      "seconds": 5.175,
+      "harness_sha256": "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    }
+  ]
+}

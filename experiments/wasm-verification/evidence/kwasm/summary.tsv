@@ -1,0 +1,13 @@
+variant	claim	verdict	exit	seconds
+correct	returns	VERIFIED_IN_TRUSTED_MODEL	0	24
+correct	props	NOT_ESTABLISHED	1	28
+correct	props-lemma	CONDITIONAL_UNPROVED_LEMMA	0	28
+correct	frame-below	VERIFIED_IN_TRUSTED_MODEL	0	23
+correct	frame-above	VERIFIED_IN_TRUSTED_MODEL	0	24
+correct	exact-lemma	CONDITIONAL_UNPROVED_LEMMA	0	22
+faulty	returns	VERIFIED_IN_TRUSTED_MODEL	0	22
+faulty	props	NOT_ESTABLISHED	1	27
+faulty	props-lemma	NOT_ESTABLISHED	1	28
+faulty	frame-below	VERIFIED_IN_TRUSTED_MODEL	0	23
+faulty	frame-above	VERIFIED_IN_TRUSTED_MODEL	0	22
+faulty	exact-lemma	NOT_ESTABLISHED	1	24

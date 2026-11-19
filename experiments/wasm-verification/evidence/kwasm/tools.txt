@@ -1,0 +1,6 @@
+image: runtimeverificationinc/kframework-k:ubuntu-jammy-7.1.329@sha256:4864e4dcef177614d9b4fc3c787932ba1d5ca579366af609f0707e6e5d547b4b (sha256:a5df9d0225b0c3de045728a2e41bc3f4402410d8c6263339d68ed618206405c9)
+kwasm: v0.1.157 212271bd434bd402e27c42f6416854342733386d
+K version:    v7.1.329
+Z3 version 4.12.1 - 64 bit
+kframework==7.1.329
+pykwasm @ file:///opt/kwasm/pykwasm

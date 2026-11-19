@@ -1,0 +1,244 @@
+  #Not ( {
+      TOTAL
+    #Equals
+      #getRange ( #setRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P , TOTAL >>Int 1 , 8 ) , P , 8 ) +Int #getRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P +Int 8 , 8 )
+    }
+  #And
+    {
+      true
+    #Equals
+      #getRange ( #setRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P , TOTAL >>Int 1 , 8 ) , P , 8 ) <=Int #getRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P +Int 8 , 8 )
+    }
+  #And
+    {
+      true
+    #Equals
+      #getRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P +Int 8 , 8 ) -Int #getRange ( #setRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P , TOTAL >>Int 1 , 8 ) , P , 8 ) <=Int 1
+    } )
+#And
+  <wasm>
+    <instrs>
+      _DotVar2
+    </instrs>
+    <valstack>
+      VS
+    </valstack>
+    <curFrame>
+      <locals>
+        LOCALS
+      </locals>
+      <curModIdx>
+        CUR:Int
+      </curModIdx>
+    </curFrame>
+    <moduleRegistry>
+      _Gen56
+    </moduleRegistry>
+    <moduleIds>
+      _Gen57
+    </moduleIds>
+    <moduleInstances>
+      <moduleInst>
+        <modIdx>
+          CUR
+        </modIdx>
+        <exports>
+          _Gen37
+        </exports>
+        <types>
+          _Gen38
+        </types>
+        <nextTypeIdx>
+          _Gen39
+        </nextTypeIdx>
+        <funcAddrs>
+          _Gen40
+        </funcAddrs>
+        <nextFuncIdx>
+          _Gen41
+        </nextFuncIdx>
+        <tabIds>
+          _Gen42
+        </tabIds>
+        <tabAddrs>
+          _Gen43
+        </tabAddrs>
+        <nextTabIdx>
+          _Gen44
+        </nextTabIdx>
+        <memIds>
+          _Gen45
+        </memIds>
+        <memAddrs>
+          0 |-> MEMADDR:Int
+        </memAddrs>
+        <elemIds>
+          _Gen46
+        </elemIds>
+        <elemAddrs>
+          _Gen47
+        </elemAddrs>
+        <nextElemIdx>
+          _Gen48
+        </nextElemIdx>
+        <globIds>
+          _Gen49
+        </globIds>
+        <globalAddrs>
+          _Gen50
+        </globalAddrs>
+        <nextGlobIdx>
+          _Gen51
+        </nextGlobIdx>
+        <moduleMetadata>
+          <moduleFileName>
+            _Gen52
+          </moduleFileName>
+          <moduleId>
+            _Gen53
+          </moduleId>
+          <funcIds>
+            _Gen54
+          </funcIds>
+          <typeIds>
+            _Gen55
+          </typeIds>
+        </moduleMetadata>
+      </moduleInst> _DotVar9
+    </moduleInstances>
+    <nextModuleIdx>
+      _Gen58
+    </nextModuleIdx>
+    <mainStore>
+      <funcs>
+        <funcDef>
+          <fAddr>
+            FADDR
+          </fAddr>
+          <fCode>
+            #instrWithPos (... inner: #local.get ( 0 ) , offset: 1 , length: 2 )  #instrWithPos (... inner: #local.get ( 1 ) , offset: 3 , length: 2 )  #instrWithPos (... inner: i64 . const 1 , offset: 5 , length: 2 )  #instrWithPos (... inner: i64 . shr_u , offset: 7 , length: 1 )  #instrWithPos (... inner: #local.tee ( 1 ) , offset: 8 , length: 2 )  #instrWithPos (... inner: #store ( i64 , store , 8 ) , offset: 10 , length: 3 )  #instrWithPos (... inner: #local.get ( 0 ) , offset: 13 , length: 2 )  #instrWithPos (... inner: #local.get ( 1 ) , offset: 15 , length: 2 )  #instrWithPos (... inner: #store ( i64 , store , 0 ) , offset: 17 , length: 3 )  .EmptyStmts
+          </fCode>
+          <fType>
+            [ i32  i64  .ValTypes ] -> [ .ValTypes ]
+          </fType>
+          <fLocal>
+            [ .ValTypes ]
+          </fLocal>
+          <fModInst>
+            CUR
+          </fModInst>
+          <funcMetadata>
+            <funcId>
+              _DotVar11
+            </funcId>
+            <localIds>
+              _DotVar12
+            </localIds>
+          </funcMetadata>
+        </funcDef> _DotVar6
+      </funcs>
+      <nextFuncAddr>
+        _Gen29
+      </nextFuncAddr>
+      <tabs>
+        _Gen30
+      </tabs>
+      <nextTabAddr>
+        _Gen31
+      </nextTabAddr>
+      <mems>
+        <memInst>
+          <mAddr>
+            MEMADDR
+          </mAddr>
+          <mmax>
+            _DotVar10
+          </mmax>
+          <msize>
+            SIZE
+          </msize>
+          <mdata>
+            #setRange ( #setRange ( BM , P +Int 8 , TOTAL >>Int 1 , 8 ) , P , TOTAL >>Int 1 , 8 )
+          </mdata>
+        </memInst> _DotVar4
+      </mems>
+      <nextMemAddr>
+        _Gen32
+      </nextMemAddr>
+      <globals>
+        _Gen33
+      </globals>
+      <nextGlobAddr>
+        _Gen34
+      </nextGlobAddr>
+      <elems>
+        _Gen35
+      </elems>
+      <nextElemAddr>
+        _Gen36
+      </nextElemAddr>
+    </mainStore>
+    <deterministicMemoryGrowth>
+      _Gen59
+    </deterministicMemoryGrowth>
+  </wasm>
+#And
+  {
+    false
+  #Equals
+    <fAddr>
+      FADDR
+    </fAddr> in_keys ( _DotVar6 )
+  }
+#And
+  {
+    false
+  #Equals
+    <mAddr>
+      MEMADDR
+    </mAddr> in_keys ( _DotVar4 )
+  }
+#And
+  {
+    false
+  #Equals
+    <modIdx>
+      CUR
+    </modIdx> in_keys ( _DotVar9 )
+  }
+#And
+  {
+    true
+  #Equals
+    0 <=Int P
+  }
+#And
+  {
+    true
+  #Equals
+    0 <=Int TOTAL
+  }
+#And
+  {
+    true
+  #Equals
+    P +Int 8 <=Int SIZE *Int 65536
+  }
+#And
+  {
+    true
+  #Equals
+    P +Int 16 <=Int SIZE *Int 65536
+  }
+#And
+  {
+    true
+  #Equals
+    P <Int 4294967296
+  }
+#And
+  {
+    true
+  #Equals
+    TOTAL <Int 18446744073709551616
+  }

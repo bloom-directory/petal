@@ -1,0 +1,54 @@
+INFO 2026-11-19 02:23:22,172 pyk.kdist._cache [113] - Loading target cache
+INFO 2026-11-19 02:23:22,176 pyk.kdist._cache [113] - Loading plugin: wasm-semantics
+INFO 2026-11-19 02:23:22,176 pyk.kdist._cache [113] - Importing module: pykwasm.kdist.plugin
+INFO 2026-11-19 02:23:22,184 pyk.kdist._cache [113] - Target cache loaded in 0.010s
+INFO 2026-11-19 02:23:22,185 pyk.kdist._kdist [113] - Building targets: wasm-semantics.kwasm-lemmas, wasm-semantics.source
+INFO 2026-11-19 02:23:22,405 pyk.kdist._cache [115] - Loading target cache
+INFO 2026-11-19 02:23:22,409 pyk.kdist._cache [115] - Loading plugin: wasm-semantics
+INFO 2026-11-19 02:23:22,409 pyk.kdist._cache [115] - Importing module: pykwasm.kdist.plugin
+INFO 2026-11-19 02:23:22,419 pyk.kdist._cache [115] - Target cache loaded in 0.011s
+/root/.cache/kdist-dad4111/wasm-semantics/source
+INFO 2026-11-19 02:23:22,441 pyk.utils [115] - [PID=118][exec] kompile --version
+INFO 2026-11-19 02:23:23,138 pyk.utils [115] - [PID=118][stdo] K version:    v7.1.329
+INFO 2026-11-19 02:23:23,139 pyk.utils [115] - [PID=118][stdo] Build date:   Sat May 30 00:24:58 CDT 2026
+INFO 2026-11-19 02:23:23,140 pyk.utils [115] - [PID=118][done] status=0 time=0.699s
+INFO 2026-11-19 02:23:23,143 pyk.ktool.kompile [115] - [PID=170][exec] kompile /root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/kwasm-lemmas.md --main-module KWASM-LEMMAS --syntax-module WASM-TEXT-SYNTAX --md-selector k --emit-json --backend haskell --output-definition /root/.cache/kdist-dad4111/wasm-semantics/kwasm-lemmas --warnings-to-errors --verbose
+INFO 2026-11-19 02:23:24,947 pyk.ktool.kompile [115] - [PID=170][stdo] Parse command line options                                   =  0.045s
+INFO 2026-11-19 02:23:25,290 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(Auto imported prelude)
+INFO 2026-11-19 02:23:25,467 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/usr/include/kframework/builtin/prelude.md)
+INFO 2026-11-19 02:23:25,590 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/usr/include/kframework/builtin/kast.md)
+INFO 2026-11-19 02:23:26,217 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/usr/include/kframework/builtin/domains.md)
+INFO 2026-11-19 02:23:26,987 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/kwasm-lemmas.md)
+INFO 2026-11-19 02:23:27,109 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-text.md)
+INFO 2026-11-19 02:23:27,247 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm.md)
+INFO 2026-11-19 02:23:27,300 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-data.md)
+INFO 2026-11-19 02:23:27,300 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-data/sparse-bytes.k)
+INFO 2026-11-19 02:23:27,302 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-data/list-int.k)
+INFO 2026-11-19 02:23:27,302 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-data/int-type.k)
+INFO 2026-11-19 02:23:27,303 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-data/list-ref.k)
+INFO 2026-11-19 02:23:27,305 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/wasm-data/tools.k)
+INFO 2026-11-19 02:23:27,378 pyk.ktool.kompile [115] - [PID=170][stdo] Importing: Source(/root/.cache/kdist-dad4111/wasm-semantics/source/wasm-semantics/numeric.md)
+INFO 2026-11-19 02:23:27,899 pyk.ktool.kompile [115] - [PID=170][stdo] Outer parsing [96 modules]                                   =  2.951s
+INFO 2026-11-19 02:23:29,551 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: STDOUT-STREAM-CONFIG-CELLS                    =  0.881s
+INFO 2026-11-19 02:23:29,573 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: STDIN-STREAM-CONFIG-CELLS                     =  0.912s
+INFO 2026-11-19 02:23:30,008 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: WASM-CONFIG-CELLS                             =  1.313s
+INFO 2026-11-19 02:23:31,784 pyk.ktool.kompile [115] - [PID=170][stdo] Parse configurations [3/3 declarations]                      =  3.885s
+INFO 2026-11-19 02:23:33,998 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: KWASM-LEMMAS-RULE-CELLS                       =  2.026s
+INFO 2026-11-19 02:23:35,264 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: K-IO-RULE-CELLS                               =  0.704s
+INFO 2026-11-19 02:23:42,358 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: STDIN-STREAM-RULE-CELLS                       =  0.813s
+INFO 2026-11-19 02:23:43,837 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: STDOUT-STREAM-RULE-CELLS                      =  0.969s
+INFO 2026-11-19 02:23:47,902 pyk.ktool.kompile [115] - [PID=170][stdo]   New scanner: KWASM-LEMMAS-RULE-CELLS                       =  2.789s
+INFO 2026-11-19 02:23:51,148 pyk.ktool.kompile [115] - [PID=170][stdo] Parse rules [956/956 rules]                                  = 19.365s
+INFO 2026-11-19 02:23:52,592 pyk.ktool.kompile [115] - [PID=170][stdo] Validate parsed definition                                   =  1.442s
+INFO 2026-11-19 02:23:57,121 pyk.ktool.kompile [115] - [PID=170][stdo] Apply compile pipeline and validate definition               =  4.530s
+INFO 2026-11-19 02:23:57,536 pyk.ktool.kompile [115] - [PID=170][stdo]   Emit parsed & compiled JSON                                =  0.405s
+INFO 2026-11-19 02:23:57,562 pyk.ktool.kompile [115] - [PID=170][stdo] Kompile to kore                                              =  0.442s
+INFO 2026-11-19 02:23:57,948 pyk.ktool.kompile [115] - [PID=170][stdo] Save to disk                                                 =  0.385s
+INFO 2026-11-19 02:24:00,156 pyk.ktool.kompile [115] - [PID=170][stdo]   Print definition.kore                                      =  2.202s
+INFO 2026-11-19 02:24:03,516 pyk.ktool.kompile [115] - [PID=170][stdo]   Validate def                                               =  3.365s
+INFO 2026-11-19 02:24:03,516 pyk.ktool.kompile [115] - [PID=170][stdo] Backend                                                      =  5.569s
+INFO 2026-11-19 02:24:03,521 pyk.ktool.kompile [115] - [PID=170][stdo] Cleanup                                                      =  0.005s
+INFO 2026-11-19 02:24:03,522 pyk.ktool.kompile [115] - [PID=170][stdo] Total                                                        = 38.619s
+INFO 2026-11-19 02:24:03,637 pyk.ktool.kompile [115] - [PID=170][done] status=0 time=40.493s
+/root/.cache/kdist-dad4111/wasm-semantics/kwasm-lemmas
+EXIT 0

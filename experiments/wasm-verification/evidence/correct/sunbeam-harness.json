@@ -1,0 +1,66 @@
+{
+  "added_imports": [
+    "env.CVT_nondet_u64",
+    "env.CVT_nondet_u32",
+    "env.CVT_assume",
+    "env.CVT_assert",
+    "env.CVT_satisfy"
+  ],
+  "extractor": {
+    "decoder": "wasmparser 0.249.0",
+    "encoder": "wasm-encoder 0.249.0",
+    "tool": "petal-wasm-evidence"
+  },
+  "first_rule_function_index": 162,
+  "harness_bytes": 77518,
+  "harness_sha256": "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f",
+  "original_bodies_copied_verbatim": 28,
+  "original_bodies_reencoded_for_index_shift": 128,
+  "original_defined_functions": 156,
+  "result_address_assumption": "p <= 4294967280 (unsigned)",
+  "rules": [
+    {
+      "name": "rule_split_1_conservation",
+      "requirement": "SPLIT-1"
+    },
+    {
+      "name": "rule_split_2_ordered",
+      "requirement": "SPLIT-2"
+    },
+    {
+      "name": "rule_split_3_gap",
+      "requirement": "SPLIT-3"
+    },
+    {
+      "name": "rule_split_4_reaches_return",
+      "requirement": "SPLIT-4 (non-vacuity only)"
+    },
+    {
+      "name": "rule_split_5_frame",
+      "requirement": "SPLIT-5"
+    },
+    {
+      "name": "rule_split_r1_zero",
+      "requirement": "SPLIT-R1"
+    },
+    {
+      "name": "rule_split_r2_odd",
+      "requirement": "SPLIT-R2"
+    },
+    {
+      "name": "rule_split_r3_max",
+      "requirement": "SPLIT-R3"
+    },
+    {
+      "name": "probe_oob_result_slot_returns",
+      "requirement": "semantic probe (SPLIT-4 gap)"
+    }
+  ],
+  "schema": "bloom.petal.m1.sunbeam-harness.v1",
+  "shipped_module_sha256": "03e2854f303c7f978be5c3b358c8ae9b3d14652eada3023c6766bc2bafd5c4fb",
+  "target_body_identical": true,
+  "target_body_sha256": "c9c2e6618c6f89996bf63ba97fbd617af3e66eb91c63f10401e42ca13d4beba5",
+  "target_export": "bloom_verify_split_even",
+  "target_index_in_harness": 72,
+  "target_index_in_shipped_module": 67
+}

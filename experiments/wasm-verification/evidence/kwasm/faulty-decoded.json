@@ -1,0 +1,4 @@
+{
+ "decoded_instrs": "#instrWithPos(#local.get ( 0 ), 1, 2)\n#instrWithPos(#local.get ( 1 ), 3, 2)\n#instrWithPos(i64 . const 1, 5, 2)\n#instrWithPos(i64 . shr_u, 7, 1)\n#instrWithPos(#local.tee ( 1 ), 8, 2)\n#instrWithPos(#store ( i64 , store , 8 ), 10, 3)\n#instrWithPos(#local.get ( 0 ), 13, 2)\n#instrWithPos(#local.get ( 1 ), 15, 2)\n#instrWithPos(#store ( i64 , store , 0 ), 17, 3)\n.EmptyStmts",
+ "decoded_locals": "[ .ValTypes ]"
+}
