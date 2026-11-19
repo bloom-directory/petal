@@ -20,8 +20,10 @@ Evidence types are never merged:
   normal return and the memory frame, and explains the correspondence between
   valid concrete executions and Sunbeam's model. This part is manually
   reviewed, not mechanically proved.
-- **kernel certificate**: an independently checkable proof object (for
-  example Iris-Wasm/Rocq). None exists for this benchmark.
+- **kernel certificate**: an independently checkable proof object. The
+  [WasmCert/Rocq extension](wasmcert/README.md) proves the compiled function's
+  execution and a faulty-artifact counterexample; its assumptions and checked
+  byte-slice binding are documented separately from the Sunbeam evidence.
 - **source proof**: a proof about Rust source (Verus, Kani, …). None is
   claimed; it would not cover the shipped Wasm.
 
@@ -131,8 +133,14 @@ Normal return is derived from the instructions, not assumed.
 [ARGUMENT.md](ARGUMENT.md) gives the reasoning and trust boundaries in full.
 It relies on the exact body bytes, faithful extraction/decoding/harnessing,
 relevant verifier semantics/optimizations and solver results. These are
-explicit trust assumptions. There is no source-level proof, verified
-bytes-to-semantics theorem or independently kernel-checked certificate.
+explicit trust assumptions. That Sunbeam result has no source-level proof,
+verified bytes-to-semantics theorem or independently kernel-checked certificate.
+The later [WasmCert extension](wasmcert/README.md) supplies a separate
+kernel-checked execution theorem covering SPLIT-1 through SPLIT-5 and arithmetic
+regressions under the same output-memory bound. Its exact body slice is decoded
+inside Rocq, while module/function selection, parser correspondence to the
+standard, and invocation setup remain explicit boundaries. Its faulty-artifact
+theorem establishes an actual SPLIT-1 violation at total 1.
 
 Sunbeam's out-of-bounds probe finds a returning witness where concrete Wasm
 traps. Its memory model therefore cannot itself establish finite-memory

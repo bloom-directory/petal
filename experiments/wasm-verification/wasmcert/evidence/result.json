@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "wasmcert_commit": "58a3d3f8b7af4dc8aa9351f254a9e672643b21f8",
+  "base_image_digest": "sha256:3ed9c46fa02e9fd7748a959abebb11b36f8818d10738dcc93edc67354c313ce2",
+  "tested_image_id": "sha256:b73bed135176c9e93f90d8526ae89fbe567c16cb514446a1d879a9e11498578a",
+  "platform": "linux/amd64, emulated on macOS/arm64",
+  "proof": "Execution.packaged_correct_function",
+  "negative": "Negative.faulty_violates_SPLIT_1",
+  "checked_decoding": "WasmCert parse_code_func on byte slices of the original embedded core modules",
+  "whole_module_decoding_proved": false,
+  "compiler_checks": "coqc, all units exit 0",
+  "independent_kernel_check": "coqchk Assumptions, exit 0",
+  "axiom_audit": "exact match to allowed-axioms.txt",
+  "timings_seconds": {
+    "ArtifactBytes": 5.691,
+    "Artifact": 2.137,
+    "Arithmetic": 1.216,
+    "MemoryFacts": 1.117,
+    "Execution": 2.632,
+    "Negative": 1.897,
+    "Assumptions": 3.425,
+    "coqchk": 51.412
+  },
+  "total_check_seconds": 69.527,
+  "input_file_sha256": {
+    "setup.sh": "ec2b4175647a9ef830334126401d2729d4476297fbcb837a5b24dff95ec2ac6f",
+    "toolchain.opam.lock": "11acda3c20075cf6169b5e158efac64f1f80918011fc02266dd06d600379aa7e",
+    "Assumptions.v": "59d30446c238db0580ebb701757f424f232e896f6678be742e91fbfeac9a2304",
+    "Negative.v": "8f8bbea651e13a8b57b5c1c0e5106e1db2fef3d6be5f9a12df16bbadc9eb427d",
+    "Arithmetic.v": "8a9376af40a48ce02af1c23c6a0bf753448237526427498c4d165cdb40420eeb",
+    "test_artifact.py": "e4c21005a24740438e59af807d4c5a93447e847094abd787c2c7586edcbc2f03",
+    "generate_artifact.py": "460ac5018cf35a54875e982d544a219a6a4c92784042bac59f4ef14fdd763f8f",
+    "MemoryFacts.v": "238802a4909e7dbd9a59ae302db44e1ac9f8aa5216b6c3429d8587b68b5a090b",
+    "run.sh": "831a045ffda375e9f22dffd331c886d41a94af062512607a00a660e91afec366",
+    "check.sh": "5a91f03c7ff8f52acdc286fa259f489586014a8f8bb175c08af8fd82c948d09a",
+    "Execution.v": "58915dfd4e35ead58bf34de02c2da5e87faae5fb2140aed8642a389625cb3ff7",
+    "Artifact.v": "205a230259980090a6f1b04ee7c249b4a8cba5f6708d8260ec166bdc090918ef"
+  },
+  "other_checks": {
+    "artifact_binding_tests_python_optimized": 3,
+    "existing_verdict_tests": 2,
+    "existing_evidence_check": "PASS",
+    "shell_syntax": "PASS",
+    "git_diff_check": "PASS"
+  }
+}

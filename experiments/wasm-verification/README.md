@@ -8,7 +8,11 @@ the functional properties for every u64 input on the packaged function body;
 a reviewed bytecode argument establishes normal return, memory safety under
 the invocation precondition, and correspondence to the checked model. This is
 function-level assurance, with manually reviewed obligations and no
-independently kernel-checked certificate.
+independently kernel-checked certificate for that Sunbeam result.
+
+A separate [WasmCert proof](wasmcert/README.md) now adds a kernel-checked
+execution theorem and faulty-artifact counterexample for the same packaged
+function, with explicit extraction, decoding and invocation boundaries.
 
 - [SPEC.md](SPEC.md): stable requirements, formal properties and coverage.
 - [ARGUMENT.md](ARGUMENT.md): why the complete benchmark guarantee follows,

@@ -1,5 +1,9 @@
 # Milestone 1: Sunbeam for packaged Rust-generated Wasm
 
+This is the retained Sunbeam assessment. A later, separate
+[WasmCert experiment](wasmcert/README.md) adds a kernel-checked proof for the
+same packaged function; its evidence does not change Sunbeam's assurance model.
+
 19 November 2026. Tested on Apple M1 Max, Darwin 25.6.0, arm64.
 Production SDK, builder and CLI sources are unchanged from
 `aaf171f6ed4542ee7f5ba3f4665c9e6f4abf4288`.
