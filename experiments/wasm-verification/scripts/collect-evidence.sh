@@ -37,12 +37,7 @@ if [ -d "$out/sunbeam" ]; then
   cp "$out/sunbeam/faulty/trapAsAssert-z3/rule_split_1_conservation/run.log" "$ev/sunbeam/log_faulty_trapAsAssert-z3_conservation.txt"
   cp "$out/sunbeam/correct/trapAsAssert-z3/probe_oob_result_slot_returns/run.log" "$ev/sunbeam/log_correct_trapAsAssert-z3_probe_oob.txt"
 fi
-if [ -d "$out/kwasm" ]; then
-  rm -rf "$ev/kwasm"
-  mkdir -p "$ev/kwasm"
-  find "$out/kwasm" -maxdepth 1 -type f \( -name '*.txt' -o -name '*.tsv' -o -name '*-prove.log' -o -name '*-wasm2kast.log' -o -name 'kdist-build.log' -o -name '*-spec.k' -o -name '*-decoded.json' \) \
-    -exec cp {} "$ev/kwasm/" \;
-fi
+
 # Text traces are whitespace-normalized for review. The original reports in
 # out/ remain untouched; no model value, instruction or verdict is changed.
 python3 - "$ev/sunbeam" <<'PY'

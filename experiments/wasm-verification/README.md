@@ -1,43 +1,45 @@
 # Milestone 1: verifying shipped Wasm in a Petal
 
-An isolated spike. Nothing here is part of the SDK, builder, CLI or release
-artifacts, and no production crate depends on it.
+This isolated experiment selects Sunbeam as the provisional verification
+backend for Rust-generated Wasm in Petals. No production crate depends on it.
 
-- [SPEC.md](SPEC.md): the `split_even` benchmark, its requirements, formal
-  properties and per-requirement status.
-- [EVALUATION.md](EVALUATION.md): what Certora Sunbeam and KWasm actually did
-  with the packaged artifact, their trusted computing bases, coverage,
-  timings and the concrete no-go for the complete benchmark.
-- [evidence/](evidence/): hashes, decoded target, rule and claim sources,
-  verdict tables, models, residuals and logs from the recorded runs.
+**Milestone 1 is achieved under explicit trust assumptions:** Sunbeam checks
+the functional properties for every u64 input on the packaged function body;
+a reviewed bytecode argument establishes normal return, memory safety under
+the invocation precondition, and correspondence to the checked model. This is
+function-level assurance, with manually reviewed obligations and no
+independently kernel-checked certificate.
 
-| Path | What |
-| --- | --- |
-| `split-even-petal/` | The fixture Petal, scaffolded by `petal new`, built and packaged with the ordinary CLI |
-| `variants/faulty/split.rs` | The negative control, swapped in by the build script |
-| `tools/wasm-evidence/` | Extractor, decoder, Sunbeam harness encoder and concrete runner (its own Cargo workspace) |
-| `kwasm/` | KWasm claim generator and the one trusted lemma |
-| `scripts/` | `build-and-extract.sh`, `run-sunbeam.sh`, `run-kwasm.sh`, `collect-evidence.sh` |
-| `out/` | Generated and ignored: archives, components, modules, harnesses, full Prover reports |
+- [SPEC.md](SPEC.md): stable requirements, formal properties and coverage.
+- [ARGUMENT.md](ARGUMENT.md): why the complete benchmark guarantee follows,
+  including normal return and the trust boundaries.
+- [EVALUATION.md](EVALUATION.md): outcomes, pins, commands, effort, timings,
+  Sunbeam gaps and potential Bloom alignment work.
+- [CODEX_REVIEW.md](CODEX_REVIEW.md): independent review and checks.
+- [evidence/](evidence/): identities, decoded functions, rules, verdicts,
+  models, concrete regressions and verification timings.
+- [IRIS_REFERENCE.md](IRIS_REFERENCE.md): reference-only certificate option;
+  no Iris-Wasm integration.
 
-**Outcome:** useful functional verdicts, but no complete single-backend
-guarantee and no kernel-checked certificate. The custom KWasm rewrite remains
-an open obligation. See [CODEX_REVIEW.md](CODEX_REVIEW.md) for independent
-review and [IRIS_REFERENCE.md](IRIS_REFERENCE.md) for the Iris-Wasm prediction
-(reference only).
+The fixture uses the existing SDK and ordinary Petal build/package workflow.
+The faulty source under `variants/faulty/` is separately packaged and analyzed
+under its own artifact identity. `tools/wasm-evidence/` is a separate Cargo
+workspace for extraction, harnessing and concrete tests. `out/` is generated
+and ignored.
 
-Reproduce, with the tools pinned in [EVALUATION.md](EVALUATION.md#commands):
+Reproduce on the tested macOS/arm64 host with the prerequisites and pins in
+[EVALUATION.md](EVALUATION.md#pins-and-reproduction):
 
 ```sh
-scripts/setup-sunbeam.sh                                      # tested macOS/arm64 bootstrap
+scripts/setup-sunbeam.sh
 . /tmp/petal-m1/env.sh
 scripts/build-and-extract.sh
-CERTORA=<dir with emv.jar> scripts/run-sunbeam.sh              # java, z3, cvc5, rustfilt on PATH
-KWASM_SRC=<wasm-semantics at v0.1.157> scripts/run-kwasm.sh    # Docker
+scripts/run-sunbeam.sh
 scripts/collect-evidence.sh
 python3 -m unittest discover -s scripts -p 'test_verdicts.py'
 python3 scripts/check-evidence.py
 ```
 
-`run-kwasm.sh` leaves a container named `petal-m1-kwasm`; remove it with
-`docker rm -f petal-m1-kwasm`.
+A development fork, host-model implementation and the next route-level
+commitment gate are deferred. No runtime, sandbox, signing, registry or
+lifecycle changes are part of this experiment.

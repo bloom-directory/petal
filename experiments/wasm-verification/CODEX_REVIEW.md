@@ -1,100 +1,98 @@
 # Independent Codex review
 
-19 November 2026. First implementation pass: Claude Code 2.1.322 with API
-model `claude-opus-5-5` (Claude Opus 5.5), confirmed in its completed session
-metadata. No model substitution. Codex independently read the implementation,
-properties, verifier output and relevant backend source/documentation, then
-made the corrections below. This review is not a kernel-checked certificate.
+The review covers the implementation, specification encodings, exact emitted
+bodies, extraction/harness transformation, verifier results and relevant
+Sunbeam source. It supports the Milestone 1 function-level tooling decision
+under the trust boundaries in [ARGUMENT.md](ARGUMENT.md), with no
+independently kernel-checked certificate.
+
+## Guarantee and reviewed reasoning
+
+The complete claim combines automated universal functional checks with a
+manual argument about the emitted instructions. P-RET is derived from the
+finite, call-free sequence and the two in-bounds stores under PRE. P-FRAME
+also follows directly from those two stores. Neither property is assumed as
+a precondition. The argument includes the correspondence between valid
+concrete memory accesses and Sunbeam's unbounded byte-map abstraction.
+The function reads no initial memory and uses no globals, tables or host
+calls. This explains applicability to arbitrary valid invocation memory,
+beyond the module-initialized state used by a verification harness.
+
+The arithmetic encodings were reviewed against mathematical-integer intent:
+conservation includes `first <= total`; the ordered gap includes
+`first <= second`. These guards rule out modular subtraction loopholes.
+The claim begins at the core-function invocation. Validity of public-route
+inputs, canonical-ABI wiring and the caller's result slot are separate
+obligations outside this experiment.
 
 ## Findings addressed
 
-1. **An unproved rewrite was labeled proof success.** The first KWasm table
-   used `PROVED` for `#Top` results that imported the custom shift rewrite.
-   The runner now reports `CONDITIONAL_UNPROVED_LEMMA`, and SPEC/EVALUATION
-   state the open obligation. The exit decision is a no-go for the complete
-   guarantee with either backend alone. No unchecked rewrite is counted as
-   a discharged functional proof.
-2. **Verdict parsing needed to fail closed.** Sunbeam output is now parsed
-   as JSON and checked against the process exit status. Missing reports,
-   unknown statuses, timeouts and inconsistent exits are inconclusive.
-   KWasm requires a clean `#Top` and exit 0 for a successful model check;
-   residuals and frontend errors are `NOT_ESTABLISHED`, not automatically
-   counterexamples. Four regression tests exercise these reporting hazards.
-   `check-evidence.py` rejects incomplete/unexpected matrices and inconsistent
-   artifact identities. These scripts check this spike's records, not Wasm
-   semantics or production evidence acceptance.
-3. **Normal return needed an explicit check and argument.** Added `returns`
-   claims for both exact emitted bodies, without the custom rewrite, and
-   independently ran them. Clarified that K reachability is not a general
-   termination checker. The decoded bodies are finite and call-free; their
-   only potentially trapping operations are the two stores, which fit under
-   PRE. SPEC documents the finite-body argument, invocation/ABI conditions
-   and resource exclusions. The target's decoded instruction set is guarded
-   by the record checker; future body changes still require fresh review.
-4. **Archive records were stale after fixture documentation changed.**
-   Rebuilt and packaged the final fixture and faulty variant, recollected
-   evidence, and checked every K claim's archive/component/module/body
-   identities against extraction. Codex's independent rebuild reproduced
-   both final archives exactly. Component, module, body and Sunbeam harness
-   hashes remained unchanged by the documentation edits.
-5. **Reproduction pins and runtime behavior needed tightening.** Added a
-   checksummed native bootstrap, enforced Rust/wasm-tools versions, pinned
-   the Docker manifest digest and Python runtime dependencies, and checked
-   reused-container source/image/mount/dependency identity. Removed swallowed
-   concrete-run process errors. Java is headless, including child processes,
-   as requested. Fixed executable permissions on the collection script.
-6. **Claims exceeded demonstrated coverage in places.** Whole-module
-   decoding by Sunbeam is distinguished from semantic checking of reachable
-   rule/target instructions. The math gap property includes a nonnegative
-   difference, matching its guarded encoding. Rust caller validity is an
-   intended route obligation, not a proved public-route guarantee. Iris-Wasm
-   is a source-grounded prediction only, with no third integration. The
-   concrete runner's gap flag formerly clamped negative differences; it now
-   rejects reversed shares and has an extreme-value regression. The combined
-   pass/fail was already protected by the separate ordering check.
+- A solver success alone did not establish normal return. The manual
+  finite-body and model-correspondence argument is now a first-class part of
+  the specification and assessment. The existential return witness remains
+  explicitly distinct from a universal return proof.
+- Missing/incomplete reports and inconsistent process exits could otherwise
+  be mistaken for verdicts. The native-only parser fails closed, with two
+  regression tests covering unknown statuses, missing reports and error or
+  timeout exits. The record checker requires the expected complete matrix
+  and matching input identities.
+- The concrete runner's gap flag formerly clamped negative differences. It
+  now rejects reversed shares and has an extreme-value regression. Its
+  aggregate pass/fail was already protected by the separate ordering check.
+- Archive identities were refreshed after packaged fixture documents changed.
+  Both final archives reproduced exactly on an independent rebuild. The
+  component/module/body/harness identities match the retained verification.
+- Compiler/tool versions, source revision, checksummed native assets and
+  separate dependency locks make the commands reproducible. Process errors
+  from concrete runs are not swallowed. Java runs headlessly.
+- Whole-module decoding is distinguished from semantic checking of reachable
+  rule/target instructions. No guarantee is inferred for every function in
+  the module, or for unmodelled host behavior.
+
+The record checker binds the manual argument to the exact reviewed body
+hashes and restricted instruction set. It does not itself prove semantics;
+a future body change requires fresh review. A stale-hash check is not the
+negative control: the faulty body is actually analyzed under its own identity.
 
 ## Independent evidence and checks
 
-- Rebuilt/package-tested both variants using the reviewed build script:
-  [codex-rebuild.json](evidence/codex-rebuild.json), about 20 seconds,
-  identical archive/component/module/harness bytes before and after.
-- Read each component directly from its final tar archive and compared the
-  helper's module bytes against pinned `wasm-tools component unbundle`:
-  [codex-extraction-crosscheck.json](evidence/codex-extraction-crosscheck.json).
-  The CLI and helper share parser code; this is a cross-check, not an
-  independent parser theorem.
-- Independently reran conservation, ordering and gap on both variants with
-  Z3 and cvc5, with traps asserted: 12 matching outcomes, recorded in
-  [codex-sunbeam-rerun.json](evidence/codex-sunbeam-rerun.json). The faulty
-  artifact violates conservation under its own identity. Concrete execution
-  confirms `7 -> (3,3)` and failures for 1 and u64::MAX.
-- Independently checked direct K normal-return states without the custom
-  lemma, then ran the reviewed complete 12-claim pipeline from a fixed
-  snapshot: [codex-kwasm-returns.json](evidence/codex-kwasm-returns.json) and
-  [codex-kwasm-pipeline.json](evidence/codex-kwasm-pipeline.json). The final
-  pipeline exited 0 in about five minutes, with conditional results kept
-  conditional. One earlier live runner edit caused a trailing shell read
-  error; that attempt is not the claimed clean pipeline run.
-- Workspace all-features tests, formatting and clippy passed. Fixture host
-  regressions (four tests), route-architecture check, fixture/helper formatting
-  and clippy, ordinary packaging and pinned-tool `petal check` passed.
-  Four reporting regression tests, the concrete-gap reporting regression and
-  the retained-evidence check passed. The
-  entire release/conformance script was not rerun: no production/WIT/release
-  files changed. The native bootstrap was smoke-tested with cached assets,
-  not installed again on a clean machine.
+- [codex-rebuild.json](evidence/codex-rebuild.json): both variants rebuilt and
+  packaged in about 20 seconds, reproducing archive/component/module/harness
+  bytes exactly.
+- [codex-extraction-crosscheck.json](evidence/codex-extraction-crosscheck.json):
+  each component read directly from its archive and the extracted module
+  compared with pinned `wasm-tools component unbundle`. Shared parser code
+  limits the independence of this cross-check; it is not a parser theorem.
+- [codex-sunbeam-rerun.json](evidence/codex-sunbeam-rerun.json): conservation,
+  ordering and gap independently rerun on both variants with Z3 and cvc5,
+  with traps asserted: 12 matching outcomes. Concrete execution confirms
+  conservation failures for 1, 7 and u64::MAX on the faulty artifact.
+- The Sunbeam-only pipeline was rerun after simplification: all 72 outcomes
+  match expectations, with identical packaged-artifact identities; see
+  [sunbeam-pipeline.json](evidence/sunbeam-pipeline.json). The complete retained
+  matrix agrees across solvers and trap modes.
+  The out-of-bounds return witness documents Sunbeam's model limitation.
+- Workspace all-features tests, formatting and clippy passed during the
+  experiment. Focused checks cover the fixture's four host regressions,
+  route architecture, normal packaging, pinned-tool `petal check`, helper
+  formatting/clippy, the gap-reporting regression, native verdict parsing
+  and retained identities/outcomes. The release/conformance script was not
+  rerun for this isolated change; production/WIT/release files are unchanged.
+- The native bootstrap was smoke-tested with provisioned assets, rather than
+  installed again on a clean machine. Retained model text is normalized for
+  trailing whitespace; original reports remain in ignored `out/`.
 
-## What remains trusted or open
+## Trust and scope
 
-Extraction/decoding, Sunbeam harness transformation, manually authored rule
-and K-state encodings, each backend's semantics/translation/optimizations,
-upstream simplifications and SMT solvers remain trusted. No verified
-bytes-to-AST/state theorem, general compiler theorem, source proof, or
-independently kernel-checked certificate was produced.
+Extraction/decoding/validation, body-preserving harness construction, formal
+property encodings, the reviewed correspondence argument, Sunbeam's relevant
+semantics/translation/optimizations and SMT solvers remain trusted. No Rust
+source proof, verified compiler/extraction theorem or kernel certificate is
+claimed. The negative control checks integration rather than prover soundness.
 
-Sunbeam omits finite-memory traps. KWasm rejects an instruction elsewhere in
-the full module and needs a proved arithmetic lemma for its complete
-functional result. There is no frame-specific faulty variant. Component
-wiring, canonical ABI, JSON, host effects, initialization, Bloom fuel and
-runtime availability are not proved. No Milestone 2/3 work is implied by
-the function-level evidence. The Iris-Wasm prediction has not been tested.
+Sunbeam's finite-memory/trap gap is closed for this benchmark by the manual
+argument under PRE, not by an automatic no-trap result. There is no
+frame-specific faulty variant. Component wiring, initialization, JSON,
+public-route behavior, host effects, fuel and availability remain outside the
+claim. Future Bloom host modelling, a development fork and the next
+commitment gate are deferred. Iris-Wasm remains a reference assessment only.

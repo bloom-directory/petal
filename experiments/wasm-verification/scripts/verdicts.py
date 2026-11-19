@@ -19,22 +19,10 @@ def sunbeam(report, rule, exit_code):
     return "INCONCLUSIVE"
 
 
-def kwasm(log, claim, exit_code):
-    if exit_code == 0 and log.strip() == "#Top":
-        # These claims import a custom, unproved simplification rule.
-        if claim.endswith("-lemma"):
-            return "CONDITIONAL_UNPROVED_LEMMA"
-        return "VERIFIED_IN_TRUSTED_MODEL"
-    # Exit 1 includes residual obligations and frontend errors. It does not
-    # establish falsity or supply a counterexample.
-    return "NOT_ESTABLISHED"
-
-
 if __name__ == "__main__":
-    backend, path, name, code = sys.argv[1:]
+    path, name, code = sys.argv[1:]
     try:
         output = Path(path).read_text()
     except OSError:
         output = ""
-    classify = {"sunbeam": sunbeam, "kwasm": kwasm}[backend]
-    print(classify(output, name, int(code)))
+    print(sunbeam(output, name, int(code)))

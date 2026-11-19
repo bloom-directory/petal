@@ -1,8 +1,8 @@
-"""Regression checks for false-success and unchecked-assumption handling."""
+"""Regression checks for false-success and incomplete-result handling."""
 
 import unittest
 
-from verdicts import kwasm, sunbeam
+from verdicts import sunbeam
 
 
 class VerdictTests(unittest.TestCase):
@@ -22,23 +22,6 @@ class VerdictTests(unittest.TestCase):
         report = '{"rules":{"sum":"FAIL"}}'
         self.assertEqual(sunbeam(report, "sum", 100), "FAIL")
         self.assertEqual(sunbeam(report, "sum", 0), "INCONCLUSIVE")
-
-    def test_kwasm_unproved_rewrite_is_never_proof_success(self):
-        for claim in ["props-lemma", "exact-lemma"]:
-            self.assertEqual(
-                kwasm("#Top\n", claim, 0), "CONDITIONAL_UNPROVED_LEMMA"
-            )
-        self.assertEqual(
-            kwasm("#Top\n", "frame-below", 0), "VERIFIED_IN_TRUSTED_MODEL"
-        )
-
-    def test_kwasm_errors_timeouts_and_residuals_are_not_established(self):
-        for output, code in [
-            ("#Top\n", 1), ("#Top\n", 124), ("residual", 1),
-            ("unsupported opcode", 1), ("", 0), ("#Top\nerror", 0),
-        ]:
-            self.assertEqual(kwasm(output, "props", code), "NOT_ESTABLISHED")
-
 
 if __name__ == "__main__":
     unittest.main()

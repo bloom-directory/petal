@@ -1,1 +1,1 @@
-package_seconds: 1
+package_seconds: 5

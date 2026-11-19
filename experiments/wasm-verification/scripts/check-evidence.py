@@ -7,8 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-from verdicts import kwasm
-
 
 ROOT = Path(__file__).resolve().parents[1]
 EV = ROOT / "evidence"
@@ -83,28 +81,10 @@ def check():
         require(int(row["exit"]) == (100 if failed else 0), "inconsistent Sunbeam exit")
         require(row["harness_sha256"] == harnesses[row["variant"]]["harness_sha256"], "Sunbeam input identity")
 
-    rows = table(EV / "kwasm/summary.tsv")
-    keys = {(v, c) for v in reports for c in ["returns", "props", "props-lemma", "frame-below", "frame-above", "exact-lemma"]}
-    require(len(rows) == len(keys), "incomplete KWasm matrix")
-    seen = set()
-    for row in rows:
-        variant, claim = row["variant"], row["claim"]
-        key = (variant, claim)
-        require(key in keys and key not in seen, "unexpected/duplicate KWasm row")
-        seen.add(key)
-        path = EV / "kwasm" / f"{variant}-{claim}-prove.log"
-        classified = kwasm(path.read_text(), claim, int(row["exit"]))
-        require(row["verdict"] == classified, "KWasm verdict overstates raw outcome/unchecked lemma")
-        expected = ("VERIFIED_IN_TRUSTED_MODEL" if claim.startswith("frame-") or claim == "returns" else
-                    "CONDITIONAL_UNPROVED_LEMMA" if variant == "correct" and claim.endswith("-lemma") else
-                    "NOT_ESTABLISHED")
-        require(classified == expected, "unexpected KWasm outcome; review required")
-        spec = (EV / "kwasm" / f"{variant}-{claim}-spec.k").read_text()
-        d = reports[variant]
-        for sha in [d["archive"]["sha256"], d["component"]["sha256"],
-                    d["target_module"]["sha256"], d["target_function"]["body_sha256"]]:
-            require(sha in spec, "stale KWasm claim identity")
-    print("Recorded artifact identities and expected outcomes agree; no complete proof is claimed.")
+    print(
+        "Recorded Sunbeam identities, outcomes and reviewed-body guards agree; "
+        "normal return uses the reviewed bytecode argument."
+    )
 
 
 if __name__ == "__main__":

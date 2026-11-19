@@ -1,6 +1,6 @@
 Picked up JAVA_TOOL_OPTIONS: -Djava.awt.headless=true -Dapple.awt.UIElement=true
-Reports in /Users/gavinpacini/Development/bloom-directory/petal/experiments/wasm-verification/out/sunbeam/correct/trapAsAssert-z3/probe_oob_result_slot_returns/emv-1-certora-19-Nov--15-43/Reports
-Start Thu Nov 19 15:43:08 ICT 2026
+Reports in /Users/gavinpacini/Development/bloom-directory/petal/experiments/wasm-verification/out/sunbeam/correct/trapAsAssert-z3/probe_oob_result_slot_returns/emv-1-certora-19-Nov--18-59/Reports
+Start Thu Nov 19 18:59:56 ICT 2026
 Running initial transformations
 Completed initial transformations
 Total time for probe_oob_result_slot_returns: 0 seconds ; Split time: 0 seconds ; Number of problems: 1 ; Solver time : 0 seconds
@@ -16,5 +16,5 @@ Results for all:
 
 Done 0m
 Event reporter: all events were sent without errors
-Reports in file:///Users/gavinpacini/Development/bloom-directory/petal/experiments/wasm-verification/out/sunbeam/correct/trapAsAssert-z3/probe_oob_result_slot_returns/emv-1-certora-19-Nov--15-43/Reports
+Reports in file:///Users/gavinpacini/Development/bloom-directory/petal/experiments/wasm-verification/out/sunbeam/correct/trapAsAssert-z3/probe_oob_result_slot_returns/emv-1-certora-19-Nov--18-59/Reports
 Final report in N/A

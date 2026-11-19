@@ -54,7 +54,7 @@ for variant in correct faulty; do
         set -e
         seconds=$(( $(date +%s) - start ))
         report=$(ls -d "$dir"/emv-*/Reports 2>/dev/null | head -1)
-        verdict=$(python3 "$here/scripts/verdicts.py" sunbeam "${report:-$dir/missing}/output.json" "$rule" "$code")
+        verdict=$(python3 "$here/scripts/verdicts.py" "${report:-$dir/missing}/output.json" "$rule" "$code")
         rm "$dir/sunbeam-harness.wasm"
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$variant" "$sha" "$rule" "$mode" "$solver" \
           "$verdict" "$code" "$seconds" >> "$summary"

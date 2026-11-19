@@ -16,17 +16,17 @@ Evidence types are never merged:
   function body (byte-identical inside a harness module). The verdict is only
   as good as Sunbeam's decoder, Wasm-to-TAC translation, memory model,
   optimizer and SMT solver, none of which emits a checkable certificate.
-- **verifier (KWasm)**: a K all-path reachability proof, by the K Haskell
-  backend and z3, over the KWasm semantics, about pykwasm's decoding of the
-  shipped body in a hand-written invocation configuration. Also trusted; no
-  proof object is exported. KWasm cannot load the whole shipped module.
+- **reviewed bytecode argument**: [ARGUMENT.md](ARGUMENT.md) establishes
+  normal return and the memory frame, and explains the correspondence between
+  valid concrete executions and Sunbeam's model. This part is manually
+  reviewed, not mechanically proved.
 - **kernel certificate**: an independently checkable proof object (for
   example Iris-Wasm/Rocq). None exists for this benchmark.
 - **source proof**: a proof about Rust source (Verus, Kani, …). None is
   claimed; it would not cover the shipped Wasm.
 
 Status words: **verified** (by the named backend, under the stated
-assumptions), **tested**, **not established** (attempted; the backend cannot
+assumptions), **reviewed** (manual bytecode argument), **tested**, **not established** (attempted; the backend cannot
 or did not discharge it), **assumed** (outside every check).
 
 ## The target
@@ -112,43 +112,35 @@ propositions; unsigned comparisons and arithmetic mod 2^64):
 
 | # | Requirement | Formal property | Covered by | Status |
 | --- | --- | --- | --- | --- |
-| SPLIT-1 | The two shares sum to the original total, for every `u64` total | `P-SUM` | Sunbeam `rule_split_1_conservation`; KWasm `props` / `props-lemma`; tests | **verified in Sunbeam's trusted functional model**; KWasm **conditional only** with custom lemma, not established without it |
-| SPLIT-2 | The first share is no larger than the second | `P-ORD` | Sunbeam `rule_split_2_ordered`; KWasm functional claim; tests | **verified in Sunbeam's trusted functional model**; KWasm conditional only |
-| SPLIT-3 | The shares differ by at most one | `P-GAP` | Sunbeam `rule_split_3_gap`; KWasm functional claim; tests | **verified in Sunbeam's trusted functional model**; KWasm conditional only |
-| SPLIT-4 | Every valid invocation returns normally | `P-RET` | Direct KWasm `returns` claim without the custom rewrite, plus independent finite-body argument below; shipped tests | **checked in KWasm's trusted invocation model + manual finite-body argument**; not established by Sunbeam alone |
-| SPLIT-5 | Only the 16-byte result slot is written | `P-FRAME` | KWasm `frame-below` / `frame-above` without custom rewrite; Sunbeam frame rule; full-memory test comparison | **verified in the named trusted models**, no frame-specific negative control |
-| SPLIT-R1 | Regression: zero | `P-R0` | Sunbeam zero rule; host/shipped tests | Verified in Sunbeam's model + tested; KWasm exact result is conditional |
-| SPLIT-R2 | Regression: odd totals | `P-R1` | Sunbeam rule for 7; host tests including 1, 3, 5, 7, 1 000 001, 2^64−3; shipped tests for 1 and 7 | Verified in Sunbeam's model for 7 + tested; KWasm exact result is conditional |
-| SPLIT-R3 | Regression: `u64::MAX` | `P-RMAX` | Sunbeam max rule; host/shipped tests | Verified in Sunbeam's model + tested; KWasm exact result is conditional |
+| SPLIT-1 | The two shares sum to the original total, for every `u64` total | `P-SUM` | Sunbeam `rule_split_1_conservation`, with the model correspondence in ARGUMENT.md | Verified by trusted verifier + reviewed correspondence |
+| SPLIT-2 | The first share is no larger than the second | `P-ORD` | Sunbeam `rule_split_2_ordered`, with the same correspondence | Verified by trusted verifier + reviewed correspondence |
+| SPLIT-3 | The shares differ by at most one | `P-GAP` | Sunbeam `rule_split_3_gap`, with the same correspondence | Verified by trusted verifier + reviewed correspondence |
+| SPLIT-4 | Every valid invocation returns normally | `P-RET` | Finite-body and store-range argument about the exact emitted instructions | Reviewed bytecode argument; not automatically discharged by Sunbeam |
+| SPLIT-5 | Only the 16-byte result slot is written | `P-FRAME` | Two-store bytecode argument; Sunbeam frame rule; full-memory test comparison | Reviewed + verified in Sunbeam's model + tested; no frame-specific negative control |
+| SPLIT-R1 | Regression: zero | `P-R0` | Sunbeam zero rule; host/shipped tests | Verified by trusted verifier + tested |
+| SPLIT-R2 | Regression: odd totals | `P-R1` | Sunbeam rule for 7; host tests including 1, 3, 5, 7, 1 000 001, 2^64−3; shipped tests for 1 and 7 | Verified by trusted verifier for 7 + tested |
+| SPLIT-R3 | Regression: `u64::MAX` | `P-RMAX` | Sunbeam max rule; host/shipped tests | Verified by trusted verifier + tested |
 
-No row makes an unchecked assumption into proof success. **The exit decision
-is a no-go for the complete guarantee with either backend alone**, not a claim
-that the entire Petal is proved. Kernel certificates and source proofs: none.
+**Milestone 1 is achieved as a tooling decision and conditional
+function-level verification result.** Sunbeam is the provisional backend.
+The complete benchmark behavior follows from its universal functional
+verdicts plus the reviewed normal-return, frame and model-correspondence
+argument. The precondition and required properties have not been weakened.
+Normal return is derived from the instructions, not assumed.
 
-**Normal return argument.** The decoded bodies have no loop, branch, call,
-memory growth, division or other trapping arithmetic. Both stores access
-exactly the two halves of `[p,p+16)`, which fits under PRE, including for an
-unaligned `p`. Integer locals, constants, unsigned shift and subtraction are
-total Wasm operations. Thus the finite body reaches its end normally under
-the resource exclusions. The direct K return-state checks need no custom
-arithmetic lemma. This is a manual argument about the decoded bytecode plus
-a trusted-model check; a K reachability verdict alone is not a general
-termination proof. The extractor, decoder and constructed invocation state
-remain trusted. Any body change needs fresh review of this argument.
+[ARGUMENT.md](ARGUMENT.md) gives the reasoning and trust boundaries in full.
+It relies on the exact body bytes, faithful extraction/decoding/harnessing,
+relevant verifier semantics/optimizations and solver results. These are
+explicit trust assumptions. There is no source-level proof, verified
+bytes-to-semantics theorem or independently kernel-checked certificate.
 
-"With the lemma" means the conditional check uses the unproved rewrite in
-[kwasm/split-even-lemmas.md](kwasm/split-even-lemmas.md) (`X >>Int 1 = X /Int 2`
-for `X ≥ 0`), because K's SMT encoding treats `>>Int` as uninterpreted;
-without it the same claims are not established. A `#Top` verdict using this
-rewrite is classified `CONDITIONAL_UNPROVED_LEMMA`, never proof success. The KWasm claims are stated in the
-mathematical form of the table above (`+Int`, `<=Int` on unbounded integers).
-
-"Assuming return" is literal: a Sunbeam assertion after the call is checked
-on the executions Sunbeam's model lets return. Because that model does not
-trap on out-of-bounds stores, it lets more executions return than Wasm does,
-never fewer, for this body (it has no other trapping instruction), so SPLIT-1
-to SPLIT-3 and SPLIT-5 are not weakened by it. That argument rests on the
-decoded instruction list, not on a backend check.
+Sunbeam's out-of-bounds probe finds a returning witness where concrete Wasm
+traps. Its memory model therefore cannot itself establish finite-memory
+safety or general normal return. For this body, PRE makes both stores valid,
+there are no other trapping operations or paths, and the instruction sequence
+is finite. Valid concrete executions have matching results in the model;
+its extra executions outside PRE do not weaken the universal result on the
+allowed states. The existential witness rule is not a universal return proof.
 
 ## 2. Negative control
 
@@ -157,10 +149,10 @@ decoded instruction list, not on a backend check.
 archive, component, module and body hashes, and Sunbeam analyzes its own
 harness: SPLIT-1, SPLIT-R2 and SPLIT-R3 fail with counterexamples (the
 SPLIT-1 model is consistent with total 1), while SPLIT-2, SPLIT-3, SPLIT-5 and
-SPLIT-R1 still hold, as they should for that fault. KWasm's claims about its
-body fail for the sum and exact result (residual `TOTAL = TOTAL/2 + TOTAL/2`)
-and hold for the frame. The shipped-module runs fail for totals 1, 7 and
-`u64::MAX`. This tests the integration, not either verifier's soundness.
+SPLIT-R1 still hold, as they should for that fault. The shipped-module runs
+fail for totals 1, 7 and `u64::MAX`. The faulty body has the same finite,
+two-store shape, with the store order reversed. This tests the integration,
+not the verifier's soundness.
 
 ## 3. Out of scope for Milestone 1
 

@@ -1,6 +1,6 @@
 # Iris-Wasm: prediction from this experiment
 
-Reference assessment requested during the spike. **No third backend was
+Reference assessment requested during the spike. **Iris-Wasm was not
 installed, integrated, or run. These are predictions, not verification results.**
 
 The emitted correct body is small: local accesses, an i64 constant, unsigned
