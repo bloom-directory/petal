@@ -1,0 +1,26 @@
+Picked up JAVA_TOOL_OPTIONS: -Djava.awt.headless=true -Dapple.awt.UIElement=true
+Reports in /Users/gavinpacini/Development/bloom-directory/petal/experiments/wasm-verification/out/sunbeam/faulty/trapAsAssert-z3/rule_split_1_conservation/emv-1-certora-19-Nov--19-02/Reports
+Start Thu Nov 19 19:02:11 ICT 2026
+Running initial transformations
+Completed initial transformations
+Total time for rule_split_1_conservation: 0 seconds ; Split time: 0 seconds ; Number of problems: 1 ; Solver time : 0 seconds
+Violated: rule_split_1_conservation-Assertions
+rule_split_1_conservation-Assertions: A property is violated
+Results for all:
+*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*
+|Rule name                               |Verified     |Time (sec)|Description                                                 |Local vars                                        |
+|----------------------------------------|-------------|----------|------------------------------------------------------------|--------------------------------------------------|
+|Assertions                              |Violated     |0         |Assert message: Failed property in cvt::assert              |                                                  |
+|                                        |(sat)        |          |                                                            |                                                  |
+*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*
+
+Failures summary:
+Failed on Assertions:
+Assert message: Failed property in cvt::assert
+
+N/A
+
+Done 0m
+Event reporter: all events were sent without errors
+Reports in file:///Users/gavinpacini/Development/bloom-directory/petal/experiments/wasm-verification/out/sunbeam/faulty/trapAsAssert-z3/rule_split_1_conservation/emv-1-certora-19-Nov--19-02/Reports
+Final report in N/A

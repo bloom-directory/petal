@@ -1,0 +1,8 @@
+emv_jar_sha256: 78b0e100bb9c4b5f1ddfa9408a3844a26749436b7a42794f795c7b0c4cec1f87
+Picked up JAVA_TOOL_OPTIONS: -Djava.awt.headless=true -Dapple.awt.UIElement=true
+openjdk version "21.0.13.1" 2026-11-17 LTS
+OpenJDK Runtime Environment Temurin-21.0.13.1+2 (build 21.0.13.1+2-LTS)
+OpenJDK 64-Bit Server VM Temurin-21.0.13.1+2 (build 21.0.13.1+2-LTS, mixed mode, sharing)
+Z3 version 5.3.3 - 64 bit - build hashcode 430d19e697e2ec9bad79ff210d41b4a7a5fcfa3e
+cvc5 1.4.2 [git 282d5e0 on branch HEAD]
+rust_demangle 0.2.1

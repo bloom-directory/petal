@@ -1,0 +1,23 @@
+{
+  "method": "Python tar reader plus wasm-tools 1.249.0 component unbundle; shares wasmparser code with the fixture helper; no kernel-checked byte binding",
+  "variants": [
+    {
+      "variant": "correct",
+      "archive_sha256": "91e75727baa3b235339cf84250d8d1cb905566796bf0b8347d8a38a65af7cc30",
+      "component_sha256": "bbbf082cecd58c37f15b3ad72465007e95e75c01ee699d3ba851c51574e6ce7a",
+      "module_sha256": "03e2854f303c7f978be5c3b358c8ae9b3d14652eada3023c6766bc2bafd5c4fb",
+      "function_index": 67,
+      "body_sha256": "c9c2e6618c6f89996bf63ba97fbd617af3e66eb91c63f10401e42ca13d4beba5",
+      "matched_unbundled_module": "unbundled-module0.wasm"
+    },
+    {
+      "variant": "faulty",
+      "archive_sha256": "664885c7667fb645a52bf5729c315843851c0f844792447daa29dc1df85b9611",
+      "component_sha256": "4ebe5e06398638a5055713a7a221c0d0c43046e6b375d1d1771168847f73f336",
+      "module_sha256": "ae239dc83f0dc6e609eada8e417eac15124222d02d3dc8b8dd5d174087d39a25",
+      "function_index": 67,
+      "body_sha256": "f74678ec82cd2a52dfa2cc6b9e1144e41308db6b230a18e92c9b956adb3ecc70",
+      "matched_unbundled_module": "unbundled-module0.wasm"
+    }
+  ]
+}

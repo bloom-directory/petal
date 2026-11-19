@@ -1,0 +1,14 @@
+Calltrace Debug Information
+[StorageTitleInstance, 865811418] Global State
+[CvlrUserAssume, 1096628171] user assume: CERTORA_assume_c: requiring read value to be 1
+[WasmFunctionInstance, 1529260425] function start: $bloom_verify_split_even
+[CvlrUserAssert, 2115882812] user assert: CERTORA_satisfy_c: satisfied read value is 1
+[StorageTitleInstance, 677414780] Global State
+-------- CVL model begin ------------
+-------- CVL model end --------------
+-------- TAC model begin ------------
+  OK_0_0_0_0_0_0:bool  -->                                                              false
+  ReachabilityCertora0_0_0_0_0_0:bool  -->                                                               true
+         R0:bv256  -->                                                                0x0
+         R1:bv256  -->                                                                0x0
+-------- TAC model end --------------

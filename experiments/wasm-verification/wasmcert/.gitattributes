@@ -1,0 +1,2 @@
+# Preserve upstream package-description whitespace in the frozen opam export.
+toolchain.opam.lock whitespace=-blank-at-eol

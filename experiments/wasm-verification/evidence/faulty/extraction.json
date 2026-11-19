@@ -1,0 +1,151 @@
+{
+  "archive": {
+    "entries": {
+      ".agents/skills/bloom-petal-development/SKILL.md": "b2b9bea8f7faf52f710e57feee90465cbc6cf3d6d153f948530bd9c589a17d00",
+      "AGENTS.md": "c3803318f4652468510e9cde9114ae81e9b52e9759194534e9d240e1c82e4099",
+      "README.md": "dd259da74dc517718b080a31fd7c10618ea5a4db1e5f89ac093efbadd0bbee00",
+      "petal.toml": "043087e7d8644839d8f91d54c658dcad1d47b6b2e31f1c4d90c6e7da6222a473",
+      "petal/split-even/split/[total].json.wasm": "4ebe5e06398638a5055713a7a221c0d0c43046e6b375d1d1771168847f73f336"
+    },
+    "path": "split-even.petal.tar.gz",
+    "sha256": "664885c7667fb645a52bf5729c315843851c0f844792447daa29dc1df85b9611"
+  },
+  "component": {
+    "bytes": 83002,
+    "entry": "petal/split-even/split/[total].json.wasm",
+    "sha256": "4ebe5e06398638a5055713a7a221c0d0c43046e6b375d1d1771168847f73f336",
+    "top_level_core_modules": [
+      {
+        "bytes": 80775,
+        "exports": [
+          "__getrandom_custom",
+          "bloom_verify_split_even",
+          "cabi_post_list",
+          "cabi_post_lookup",
+          "cabi_post_metadata",
+          "cabi_post_read",
+          "cabi_post_write",
+          "cabi_realloc",
+          "cabi_realloc_wit_bindgen_0_61_1",
+          "list",
+          "lookup",
+          "memory",
+          "metadata",
+          "read",
+          "write"
+        ],
+        "file": "core-module-0.wasm",
+        "index": 0,
+        "sha256": "ae239dc83f0dc6e609eada8e417eac15124222d02d3dc8b8dd5d174087d39a25"
+      },
+      {
+        "bytes": 109,
+        "exports": [
+          "$imports",
+          "0"
+        ],
+        "file": "core-module-1.wasm",
+        "index": 1,
+        "sha256": "04c46ba3a823699b4afed492514fcbb76ef259a9199a6b230b80c9a4dd385c24"
+      },
+      {
+        "bytes": 97,
+        "exports": [],
+        "file": "core-module-2.wasm",
+        "index": 2,
+        "sha256": "36778821e0923b08b2201fcb372ba046c4cdd8d40ba2e1d9ee488d395ade9526"
+      }
+    ]
+  },
+  "extractor": {
+    "decoder": "wasmparser 0.249.0",
+    "encoder": "wasm-encoder 0.249.0",
+    "tool": "petal-wasm-evidence"
+  },
+  "schema": "bloom.petal.m1.extraction.v1",
+  "target_function": {
+    "body_bytes": 21,
+    "body_hex": "00200020014201882201370308200020013703000b",
+    "body_offset_in_module": 31136,
+    "body_sha256": "f74678ec82cd2a52dfa2cc6b9e1144e41308db6b230a18e92c9b956adb3ecc70",
+    "defined_function_index": 66,
+    "direct_callers": [
+      66
+    ],
+    "export": "bloom_verify_split_even",
+    "function_index": 67,
+    "imported_function_count": 1,
+    "locals": [],
+    "memories": [
+      {
+        "initial_pages": 17,
+        "maximum_pages": null,
+        "memory64": false,
+        "shared": false
+      }
+    ],
+    "opcode_counts": {
+      "End": 1,
+      "I64Const": 1,
+      "I64ShrU": 1,
+      "I64Store": 2,
+      "LocalGet": 4,
+      "LocalTee": 1
+    },
+    "operators": [
+      {
+        "offset": 1,
+        "op": "LocalGet { local_index: 0 }"
+      },
+      {
+        "offset": 3,
+        "op": "LocalGet { local_index: 1 }"
+      },
+      {
+        "offset": 5,
+        "op": "I64Const { value: 1 }"
+      },
+      {
+        "offset": 7,
+        "op": "I64ShrU"
+      },
+      {
+        "offset": 8,
+        "op": "LocalTee { local_index: 1 }"
+      },
+      {
+        "offset": 10,
+        "op": "I64Store { memarg: MemArg { align: 3, max_align: 3, offset: 8, memory: 0 } }"
+      },
+      {
+        "offset": 13,
+        "op": "LocalGet { local_index: 0 }"
+      },
+      {
+        "offset": 15,
+        "op": "LocalGet { local_index: 1 }"
+      },
+      {
+        "offset": 17,
+        "op": "I64Store { memarg: MemArg { align: 3, max_align: 3, offset: 0, memory: 0 } }"
+      },
+      {
+        "offset": 20,
+        "op": "End"
+      }
+    ],
+    "params": [
+      "i32",
+      "i64"
+    ],
+    "possibly_trapping_or_nonstraight_opcodes": [],
+    "references_function_indices": false,
+    "results": [],
+    "type_index": 16
+  },
+  "target_module": {
+    "bytes": 80775,
+    "index": 0,
+    "sha256": "ae239dc83f0dc6e609eada8e417eac15124222d02d3dc8b8dd5d174087d39a25"
+  }
+}

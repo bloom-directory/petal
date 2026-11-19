@@ -1,0 +1,13 @@
+date: 2026-11-19T11:57:24Z
+repo_commit: 4213f5e70f9b013e9e2736f01c02eba57a855f37
+repo_dirty_paths: 49
+rustc 1.97.0 (2d8144b78 2026-07-07)
+binary: rustc
+commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3
+commit-date: 2026-07-07
+host: aarch64-apple-darwin
+release: 1.97.0
+LLVM version: 22.1.6
+cargo 1.97.0 (c980f4866 2026-06-30)
+wasm-tools 1.249.0
+Darwin 25.6.0 arm64

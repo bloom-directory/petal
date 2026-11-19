@@ -1,0 +1,2698 @@
+opam-version: "2.0"
+compiler: [
+  "base-bigarray.base"
+  "base-threads.base"
+  "base-unix.base"
+  "ocaml.4.14.2"
+  "ocaml-config.2"
+  "ocaml-option-flambda.1"
+  "ocaml-variants.4.14.2+options"
+]
+roots: [
+  "cmdliner.2.1.1"
+  "coq-compcert.3.17"
+  "coq-core.9.0.1"
+  "coq-ext-lib.0.13.1"
+  "coq-flocq.4.2.2"
+  "coq-mathcomp-ssreflect.2.4.0"
+  "coq-menhirlib.20260209"
+  "coq-stdlib.9.0.0"
+  "coqide-server.9.0.1"
+  "dune.3.21.1"
+  "menhir.20260209"
+  "num.1.5-1"
+  "ocaml-option-flambda.1"
+  "ocaml-variants.4.14.2+options"
+  "ocamlfind.1.9.6"
+  "opam-depext.1.2.3"
+  "rocq-bignums.9.0.0+rocq9.0"
+  "rocq-core.9.0.1"
+  "rocq-mathcomp-ssreflect.2.4.0"
+  "rocq-parseque.0.3.1"
+  "rocq-runtime.9.0.1"
+  "rocq-stdlib.9.0.0"
+  "wasm.2.0.2"
+  "zarith.1.14"
+]
+installed: [
+  "atd.4.2.0"
+  "atdgen.4.2.0"
+  "atdgen-runtime.4.2.0"
+  "atdts.4.2.0"
+  "base.v0.16.5"
+  "base-bigarray.base"
+  "base-threads.base"
+  "base-unix.base"
+  "biniou.1.2.2"
+  "camlp-streams.5.0.1"
+  "cmdliner.2.1.1"
+  "conf-g++.1.0"
+  "conf-gmp.5"
+  "conf-linux-libc-dev.0"
+  "conf-pkg-config.5"
+  "coq.9.0.1"
+  "coq-compcert.3.17"
+  "coq-core.9.0.1"
+  "coq-ext-lib.0.13.1"
+  "coq-flocq.4.2.2"
+  "coq-mathcomp-ssreflect.2.4.0"
+  "coq-menhirlib.20260209"
+  "coq-stdlib.9.0.0"
+  "coqide-server.9.0.1"
+  "cppo.1.8.0"
+  "csexp.1.5.2"
+  "dune.3.21.1"
+  "dune-configurator.3.21.1"
+  "easy-format.1.3.4"
+  "elpi.3.7.2"
+  "menhir.20260209"
+  "menhirCST.20260209"
+  "menhirGLR.20260209"
+  "menhirLib.20260209"
+  "menhirSdk.20260209"
+  "num.1.5-1"
+  "ocaml.4.14.2"
+  "ocaml-compiler-libs.v0.12.4"
+  "ocaml-config.2"
+  "ocaml-option-flambda.1"
+  "ocaml-variants.4.14.2+options"
+  "ocamlfind.1.9.6"
+  "opam-depext.1.2.3"
+  "ppx_derivers.1.2.1"
+  "ppx_deriving.6.0.3"
+  "ppx_optcomp.v0.16.0"
+  "ppxlib.0.35.0"
+  "re.1.14.0"
+  "rocq-bignums.9.0.0+rocq9.0"
+  "rocq-core.9.0.1"
+  "rocq-elpi.3.5.0"
+  "rocq-hierarchy-builder.1.10.3"
+  "rocq-mathcomp-ssreflect.2.4.0"
+  "rocq-parseque.0.3.1"
+  "rocq-runtime.9.0.1"
+  "rocq-stdlib.9.0.0"
+  "sexplib0.v0.16.0"
+  "stdio.v0.16.0"
+  "stdlib-shims.0.3.0"
+  "wasm.2.0.2"
+  "yojson.3.0.0"
+  "zarith.1.14"
+]
+pinned: [
+  "coqide-server.9.0.1"
+  "dune.3.21.1"
+  "num.1.5-1"
+  "ocamlfind.1.9.6"
+  "rocq-core.9.0.1"
+  "rocq-runtime.9.0.1"
+  "rocq-stdlib.9.0.0"
+  "zarith.1.14"
+]
+package "atd" {
+  opam-version: "2.0"
+  version: "4.2.0"
+  synopsis: "Parser for the ATD data format description language"
+  description: """\
+ATD is the OCaml library providing a parser for the ATD language and various
+utilities. ATD stands for Adjustable Type Definitions in reference to its main
+property of supporting annotations that allow a good fit with a variety of data
+formats. This package also provides the 'atdcat' and 'atddiff' command-line
+utilities."""
+  maintainer: [
+    "Louis Roché <louis@louisroche.net>"
+    "Martin Jambon <martin@mjambon.com>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+  ]
+  authors: [
+    "Martin Jambon <martin@mjambon.com>"
+    "Martin Jambon <martin@r2c.dev>"
+    "Rudi Grinberg <rudi.grinberg@gmail.com>"
+    "Martin Jambon <github@mjambon.com>"
+    "Alexandre Bourquelot <alexandre.bourquelot@ahrefs.com>"
+    "oleksiy <oleksiy.golovko@ahrefs.com>"
+    "Ivan Jager <aij+git@mrph.org>"
+    "Martin Jambon <martin@semgrep.com>"
+    "Gregoire Lionnet <gregoire.lionnet@ahrefs.com>"
+    "Sebastien Mondet <sebastien.mondet@ahrefs.com>"
+    "David Sheets <sheets@alum.mit.edu>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+    "Martin Jambon <martin@esper.com>"
+    "Rytis Jonynas <rytis.jonynas@ahrefs.com>"
+    "Jeff Meister <nanaki@gmail.com>"
+    "Raman Varabets <roman.vorobets@gmail.com>"
+    "Carmelo Piccione <carmelo.piccione@gmail.com>"
+    "Louis <louis.roche@ahrefs.com>"
+    "Caio Wakamatsu <caio.wakamatsu@ahrefs.com>"
+    "Marek Kubica <marek@tarides.com>"
+    "Daniel Weil <danweil68@gmail.com>"
+    "Egor Chemokhonenko <egor.chemohonenko@ahrefs.com>"
+    "Gabriel Scherer <gabriel.scherer@gmail.com>"
+    "Javier Chavarri <javier.chavarri@gmail.com>"
+    "Louis Roché (Ahrefs) <louis.roche@ahrefs.com>"
+    "Matthew McQuaid <matthew@returntocorp.com>"
+    "Raman Varabets <raman+git@ahrefs.com>"
+    "koonwen <koonwen@gmail.com>"
+    "tzm <frank@boldsolutions.de>"
+    "Mathieu Baudet <mathieubaudet@fb.com>"
+    "Oleksiy Golovko <alexei.golovko@gmail.com>"
+    "Rauan Mayemir <rauan@mayemir.io>"
+    "Seb Mondet <seb@mondet.org>"
+    "Alexandre Bourquelot <alexandre.bourquelot@gmail.com>"
+    "Carmelo Piccione <cep1@solvuu.com>"
+    "Hyeseong Kim <hey@hyeseong.kim>"
+    "John Billings <john@monkeynut.org>"
+    "Louis Roché <louis@louisroche.net>"
+    "Mathieu Barbin <mathieu.barbin@gmail.com>"
+    "Zach Yannes <zach@returntocorp.com>"
+    "Antonin Décimo <antonin@tarides.com>"
+    "Brendan Long <self@brendanlong.com>"
+    "Chris Yocum <cyocum@gmail.com>"
+    "Kate <kit.ty.kate@disroot.org>"
+    "Louis Roché <louis.roche@ahrefs.com>"
+    "Pavel Antoshkin <pavel.antoshkin@ahrefs.com>"
+    "Pierre Boutillier <pierre.boutillier@laposte.net>"
+    "Shon Feder <shon.feder@key.me>"
+    "metanivek <metanivek@gmail.com>"
+    "sebastiantoh <sebas.tsj.98@gmail.com>"
+    "Anurag Soni <anuragsoni.13@gmail.com>"
+    "Arjun Ravi Narayan <arjunravinarayan@gmail.com>"
+    "Asya-kawai <kawai-toshiki@aintek.xyz>"
+    "Christophe Troestler <christophe.Troestler@umons.ac.be>"
+    "Corentin Leruth <corentin.leruth@gmail.com>"
+    "Damien Doligez <ddoligez@janestreet.com>"
+    "Daniel M <dan.mntg@gmail.com>"
+    "Ding Xiang Fei <dingxiangfei2009@protonmail.ch>"
+    "Enrico Tassi <Enrico.Tassi@Inria.fr>"
+    "François Pottier <francois.pottier@inria.fr>"
+    "Javier Chávarri <javier.chavarri@gmail.com>"
+    "Jonas Bergler <jonas@bergler.name>"
+    "Kate <kit-ty-kate@exn.st>"
+    "Koon Wen Lee <koonwen@gmail.com>"
+    "Louis <mail+github@louisroche.net>"
+    "Louis Roché <louis@cryptosense.com>"
+    "Stephane Legrand <slegrand45@gmail.com>"
+    "Vincent Bernardoff <vb@luminar.eu.org>"
+    "Zach <zachyannes@gmail.com>"
+    "haoyang <haoyang@esper.co>"
+    "pmundkur <prashanth.mundkur@gmail.com>"
+    "rr0gi <igor@ahrefs.com>"
+    "ygrek <ygrek@autistici.org>"
+  ]
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ahrefs/atd"
+  bug-reports: "https://github.com/ahrefs/atd/issues"
+  depends: [
+    "dune" {>= "3.18"}
+    "ocaml" {>= "4.14"}
+    "menhir" {>= "20180523" & != "20211230"}
+    "easy-format"
+    "alcotest" {with-test}
+    "testo" {>= "0.3.0" & with-test}
+    "odoc" {with-doc}
+    "re" {>= "1.9.0"}
+    "yojson" {>= "1.6.0"}
+    "cmdliner" {>= "1.1.0"}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs "@install" "@doc" {with-doc}]
+  ]
+  dev-repo: "git+https://github.com/ahrefs/atd.git"
+  url {
+    src:
+      "https://github.com/ahrefs/atd/releases/download/4.2.0/atd-4.2.0.tbz"
+    checksum: [
+      "sha256=40e54c8ecdc45794155221f4299c2a9d49170f4ec41424e8c889d235a52d3a55"
+      "sha512=337f2739167936de28e042bf2d05df8c535c0c8293fb86c086861c8cc8a617d0d6c0bafb09e4817c5ae6d77dff7d0afcaed3f235c6c9ae7104c784c17d286605"
+    ]
+  }
+  x-commit-hash: "14d80ac8cf7e9769866943766d80c2b1a1b82ab7"
+  x-maintenance-intent: ["(latest)"]
+}
+package "atdgen" {
+  opam-version: "2.0"
+  version: "4.2.0"
+  synopsis:
+    "Generates efficient JSON serializers, deserializers and validators"
+  description: """\
+Atdgen is a command-line program that takes as input type definitions in the ATD
+syntax and produces OCaml code suitable for data serialization and
+deserialization.
+Two data formats are currently supported, these are biniou and JSON.
+Atdgen-biniou and Atdgen-json will refer to Atdgen used in one context or the
+other.
+Atdgen was designed with efficiency and durability in mind. Software authors are
+encouraged to use Atdgen directly and to write tools that may reuse part of
+Atdgen’s source code."""
+  maintainer: [
+    "Louis Roché <louis@louisroche.net>"
+    "Martin Jambon <martin@mjambon.com>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+  ]
+  authors: [
+    "Martin Jambon <martin@mjambon.com>"
+    "Martin Jambon <martin@r2c.dev>"
+    "Rudi Grinberg <rudi.grinberg@gmail.com>"
+    "Martin Jambon <github@mjambon.com>"
+    "Alexandre Bourquelot <alexandre.bourquelot@ahrefs.com>"
+    "oleksiy <oleksiy.golovko@ahrefs.com>"
+    "Ivan Jager <aij+git@mrph.org>"
+    "Martin Jambon <martin@semgrep.com>"
+    "Gregoire Lionnet <gregoire.lionnet@ahrefs.com>"
+    "Sebastien Mondet <sebastien.mondet@ahrefs.com>"
+    "David Sheets <sheets@alum.mit.edu>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+    "Martin Jambon <martin@esper.com>"
+    "Rytis Jonynas <rytis.jonynas@ahrefs.com>"
+    "Jeff Meister <nanaki@gmail.com>"
+    "Raman Varabets <roman.vorobets@gmail.com>"
+    "Carmelo Piccione <carmelo.piccione@gmail.com>"
+    "Louis <louis.roche@ahrefs.com>"
+    "Caio Wakamatsu <caio.wakamatsu@ahrefs.com>"
+    "Marek Kubica <marek@tarides.com>"
+    "Daniel Weil <danweil68@gmail.com>"
+    "Egor Chemokhonenko <egor.chemohonenko@ahrefs.com>"
+    "Gabriel Scherer <gabriel.scherer@gmail.com>"
+    "Javier Chavarri <javier.chavarri@gmail.com>"
+    "Louis Roché (Ahrefs) <louis.roche@ahrefs.com>"
+    "Matthew McQuaid <matthew@returntocorp.com>"
+    "Raman Varabets <raman+git@ahrefs.com>"
+    "koonwen <koonwen@gmail.com>"
+    "tzm <frank@boldsolutions.de>"
+    "Mathieu Baudet <mathieubaudet@fb.com>"
+    "Oleksiy Golovko <alexei.golovko@gmail.com>"
+    "Rauan Mayemir <rauan@mayemir.io>"
+    "Seb Mondet <seb@mondet.org>"
+    "Alexandre Bourquelot <alexandre.bourquelot@gmail.com>"
+    "Carmelo Piccione <cep1@solvuu.com>"
+    "Hyeseong Kim <hey@hyeseong.kim>"
+    "John Billings <john@monkeynut.org>"
+    "Louis Roché <louis@louisroche.net>"
+    "Mathieu Barbin <mathieu.barbin@gmail.com>"
+    "Zach Yannes <zach@returntocorp.com>"
+    "Antonin Décimo <antonin@tarides.com>"
+    "Brendan Long <self@brendanlong.com>"
+    "Chris Yocum <cyocum@gmail.com>"
+    "Kate <kit.ty.kate@disroot.org>"
+    "Louis Roché <louis.roche@ahrefs.com>"
+    "Pavel Antoshkin <pavel.antoshkin@ahrefs.com>"
+    "Pierre Boutillier <pierre.boutillier@laposte.net>"
+    "Shon Feder <shon.feder@key.me>"
+    "metanivek <metanivek@gmail.com>"
+    "sebastiantoh <sebas.tsj.98@gmail.com>"
+    "Anurag Soni <anuragsoni.13@gmail.com>"
+    "Arjun Ravi Narayan <arjunravinarayan@gmail.com>"
+    "Asya-kawai <kawai-toshiki@aintek.xyz>"
+    "Christophe Troestler <christophe.Troestler@umons.ac.be>"
+    "Corentin Leruth <corentin.leruth@gmail.com>"
+    "Damien Doligez <ddoligez@janestreet.com>"
+    "Daniel M <dan.mntg@gmail.com>"
+    "Ding Xiang Fei <dingxiangfei2009@protonmail.ch>"
+    "Enrico Tassi <Enrico.Tassi@Inria.fr>"
+    "François Pottier <francois.pottier@inria.fr>"
+    "Javier Chávarri <javier.chavarri@gmail.com>"
+    "Jonas Bergler <jonas@bergler.name>"
+    "Kate <kit-ty-kate@exn.st>"
+    "Koon Wen Lee <koonwen@gmail.com>"
+    "Louis <mail+github@louisroche.net>"
+    "Louis Roché <louis@cryptosense.com>"
+    "Stephane Legrand <slegrand45@gmail.com>"
+    "Vincent Bernardoff <vb@luminar.eu.org>"
+    "Zach <zachyannes@gmail.com>"
+    "haoyang <haoyang@esper.co>"
+    "pmundkur <prashanth.mundkur@gmail.com>"
+    "rr0gi <igor@ahrefs.com>"
+    "ygrek <ygrek@autistici.org>"
+  ]
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ahrefs/atd"
+  bug-reports: "https://github.com/ahrefs/atd/issues"
+  depends: [
+    "dune" {>= "3.18"}
+    "ocaml" {>= "4.14"}
+    "alcotest" {with-test}
+    "atd" {= version}
+    "atdgen-runtime" {= version}
+    "atdgen-codec-runtime" {with-test & = version}
+    "biniou" {>= "1.0.6"}
+    "yojson" {>= "2.0.1"}
+    "odoc" {with-doc}
+    "re"
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs "@install" "@doc" {with-doc}]
+  ]
+  dev-repo: "git+https://github.com/ahrefs/atd.git"
+  url {
+    src:
+      "https://github.com/ahrefs/atd/releases/download/4.2.0/atd-4.2.0.tbz"
+    checksum: [
+      "sha256=40e54c8ecdc45794155221f4299c2a9d49170f4ec41424e8c889d235a52d3a55"
+      "sha512=337f2739167936de28e042bf2d05df8c535c0c8293fb86c086861c8cc8a617d0d6c0bafb09e4817c5ae6d77dff7d0afcaed3f235c6c9ae7104c784c17d286605"
+    ]
+  }
+  x-commit-hash: "14d80ac8cf7e9769866943766d80c2b1a1b82ab7"
+  x-maintenance-intent: ["(latest)"]
+}
+package "atdgen-runtime" {
+  opam-version: "2.0"
+  version: "4.2.0"
+  synopsis: "Runtime library for code generated by atdgen"
+  description: """\
+This package should be used only in conjunction with the atdgen code
+generator"""
+  maintainer: [
+    "Louis Roché <louis@louisroche.net>"
+    "Martin Jambon <martin@mjambon.com>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+  ]
+  authors: [
+    "Martin Jambon <martin@mjambon.com>"
+    "Martin Jambon <martin@r2c.dev>"
+    "Rudi Grinberg <rudi.grinberg@gmail.com>"
+    "Martin Jambon <github@mjambon.com>"
+    "Alexandre Bourquelot <alexandre.bourquelot@ahrefs.com>"
+    "oleksiy <oleksiy.golovko@ahrefs.com>"
+    "Ivan Jager <aij+git@mrph.org>"
+    "Martin Jambon <martin@semgrep.com>"
+    "Gregoire Lionnet <gregoire.lionnet@ahrefs.com>"
+    "Sebastien Mondet <sebastien.mondet@ahrefs.com>"
+    "David Sheets <sheets@alum.mit.edu>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+    "Martin Jambon <martin@esper.com>"
+    "Rytis Jonynas <rytis.jonynas@ahrefs.com>"
+    "Jeff Meister <nanaki@gmail.com>"
+    "Raman Varabets <roman.vorobets@gmail.com>"
+    "Carmelo Piccione <carmelo.piccione@gmail.com>"
+    "Louis <louis.roche@ahrefs.com>"
+    "Caio Wakamatsu <caio.wakamatsu@ahrefs.com>"
+    "Marek Kubica <marek@tarides.com>"
+    "Daniel Weil <danweil68@gmail.com>"
+    "Egor Chemokhonenko <egor.chemohonenko@ahrefs.com>"
+    "Gabriel Scherer <gabriel.scherer@gmail.com>"
+    "Javier Chavarri <javier.chavarri@gmail.com>"
+    "Louis Roché (Ahrefs) <louis.roche@ahrefs.com>"
+    "Matthew McQuaid <matthew@returntocorp.com>"
+    "Raman Varabets <raman+git@ahrefs.com>"
+    "koonwen <koonwen@gmail.com>"
+    "tzm <frank@boldsolutions.de>"
+    "Mathieu Baudet <mathieubaudet@fb.com>"
+    "Oleksiy Golovko <alexei.golovko@gmail.com>"
+    "Rauan Mayemir <rauan@mayemir.io>"
+    "Seb Mondet <seb@mondet.org>"
+    "Alexandre Bourquelot <alexandre.bourquelot@gmail.com>"
+    "Carmelo Piccione <cep1@solvuu.com>"
+    "Hyeseong Kim <hey@hyeseong.kim>"
+    "John Billings <john@monkeynut.org>"
+    "Louis Roché <louis@louisroche.net>"
+    "Mathieu Barbin <mathieu.barbin@gmail.com>"
+    "Zach Yannes <zach@returntocorp.com>"
+    "Antonin Décimo <antonin@tarides.com>"
+    "Brendan Long <self@brendanlong.com>"
+    "Chris Yocum <cyocum@gmail.com>"
+    "Kate <kit.ty.kate@disroot.org>"
+    "Louis Roché <louis.roche@ahrefs.com>"
+    "Pavel Antoshkin <pavel.antoshkin@ahrefs.com>"
+    "Pierre Boutillier <pierre.boutillier@laposte.net>"
+    "Shon Feder <shon.feder@key.me>"
+    "metanivek <metanivek@gmail.com>"
+    "sebastiantoh <sebas.tsj.98@gmail.com>"
+    "Anurag Soni <anuragsoni.13@gmail.com>"
+    "Arjun Ravi Narayan <arjunravinarayan@gmail.com>"
+    "Asya-kawai <kawai-toshiki@aintek.xyz>"
+    "Christophe Troestler <christophe.Troestler@umons.ac.be>"
+    "Corentin Leruth <corentin.leruth@gmail.com>"
+    "Damien Doligez <ddoligez@janestreet.com>"
+    "Daniel M <dan.mntg@gmail.com>"
+    "Ding Xiang Fei <dingxiangfei2009@protonmail.ch>"
+    "Enrico Tassi <Enrico.Tassi@Inria.fr>"
+    "François Pottier <francois.pottier@inria.fr>"
+    "Javier Chávarri <javier.chavarri@gmail.com>"
+    "Jonas Bergler <jonas@bergler.name>"
+    "Kate <kit-ty-kate@exn.st>"
+    "Koon Wen Lee <koonwen@gmail.com>"
+    "Louis <mail+github@louisroche.net>"
+    "Louis Roché <louis@cryptosense.com>"
+    "Stephane Legrand <slegrand45@gmail.com>"
+    "Vincent Bernardoff <vb@luminar.eu.org>"
+    "Zach <zachyannes@gmail.com>"
+    "haoyang <haoyang@esper.co>"
+    "pmundkur <prashanth.mundkur@gmail.com>"
+    "rr0gi <igor@ahrefs.com>"
+    "ygrek <ygrek@autistici.org>"
+  ]
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ahrefs/atd"
+  bug-reports: "https://github.com/ahrefs/atd/issues"
+  depends: [
+    "dune" {>= "3.18"}
+    "ocaml" {>= "4.14"}
+    "yojson" {>= "3.0.0"}
+    "biniou" {>= "1.0.6"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs "@install" "@doc" {with-doc}]
+  ]
+  dev-repo: "git+https://github.com/ahrefs/atd.git"
+  url {
+    src:
+      "https://github.com/ahrefs/atd/releases/download/4.2.0/atd-4.2.0.tbz"
+    checksum: [
+      "sha256=40e54c8ecdc45794155221f4299c2a9d49170f4ec41424e8c889d235a52d3a55"
+      "sha512=337f2739167936de28e042bf2d05df8c535c0c8293fb86c086861c8cc8a617d0d6c0bafb09e4817c5ae6d77dff7d0afcaed3f235c6c9ae7104c784c17d286605"
+    ]
+  }
+  x-commit-hash: "14d80ac8cf7e9769866943766d80c2b1a1b82ab7"
+  x-maintenance-intent: ["(latest)"]
+}
+package "atdts" {
+  opam-version: "2.0"
+  version: "4.2.0"
+  synopsis: "TypeScript code generation for ATD APIs"
+  description: "TypeScript code generation for ATD APIs"
+  maintainer: [
+    "Louis Roché <louis@louisroche.net>"
+    "Martin Jambon <martin@mjambon.com>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+  ]
+  authors: [
+    "Martin Jambon <martin@mjambon.com>"
+    "Martin Jambon <martin@r2c.dev>"
+    "Rudi Grinberg <rudi.grinberg@gmail.com>"
+    "Martin Jambon <github@mjambon.com>"
+    "Alexandre Bourquelot <alexandre.bourquelot@ahrefs.com>"
+    "oleksiy <oleksiy.golovko@ahrefs.com>"
+    "Ivan Jager <aij+git@mrph.org>"
+    "Martin Jambon <martin@semgrep.com>"
+    "Gregoire Lionnet <gregoire.lionnet@ahrefs.com>"
+    "Sebastien Mondet <sebastien.mondet@ahrefs.com>"
+    "David Sheets <sheets@alum.mit.edu>"
+    "Rudi Grinberg <me@rgrinberg.com>"
+    "Martin Jambon <martin@esper.com>"
+    "Rytis Jonynas <rytis.jonynas@ahrefs.com>"
+    "Jeff Meister <nanaki@gmail.com>"
+    "Raman Varabets <roman.vorobets@gmail.com>"
+    "Carmelo Piccione <carmelo.piccione@gmail.com>"
+    "Louis <louis.roche@ahrefs.com>"
+    "Caio Wakamatsu <caio.wakamatsu@ahrefs.com>"
+    "Marek Kubica <marek@tarides.com>"
+    "Daniel Weil <danweil68@gmail.com>"
+    "Egor Chemokhonenko <egor.chemohonenko@ahrefs.com>"
+    "Gabriel Scherer <gabriel.scherer@gmail.com>"
+    "Javier Chavarri <javier.chavarri@gmail.com>"
+    "Louis Roché (Ahrefs) <louis.roche@ahrefs.com>"
+    "Matthew McQuaid <matthew@returntocorp.com>"
+    "Raman Varabets <raman+git@ahrefs.com>"
+    "koonwen <koonwen@gmail.com>"
+    "tzm <frank@boldsolutions.de>"
+    "Mathieu Baudet <mathieubaudet@fb.com>"
+    "Oleksiy Golovko <alexei.golovko@gmail.com>"
+    "Rauan Mayemir <rauan@mayemir.io>"
+    "Seb Mondet <seb@mondet.org>"
+    "Alexandre Bourquelot <alexandre.bourquelot@gmail.com>"
+    "Carmelo Piccione <cep1@solvuu.com>"
+    "Hyeseong Kim <hey@hyeseong.kim>"
+    "John Billings <john@monkeynut.org>"
+    "Louis Roché <louis@louisroche.net>"
+    "Mathieu Barbin <mathieu.barbin@gmail.com>"
+    "Zach Yannes <zach@returntocorp.com>"
+    "Antonin Décimo <antonin@tarides.com>"
+    "Brendan Long <self@brendanlong.com>"
+    "Chris Yocum <cyocum@gmail.com>"
+    "Kate <kit.ty.kate@disroot.org>"
+    "Louis Roché <louis.roche@ahrefs.com>"
+    "Pavel Antoshkin <pavel.antoshkin@ahrefs.com>"
+    "Pierre Boutillier <pierre.boutillier@laposte.net>"
+    "Shon Feder <shon.feder@key.me>"
+    "metanivek <metanivek@gmail.com>"
+    "sebastiantoh <sebas.tsj.98@gmail.com>"
+    "Anurag Soni <anuragsoni.13@gmail.com>"
+    "Arjun Ravi Narayan <arjunravinarayan@gmail.com>"
+    "Asya-kawai <kawai-toshiki@aintek.xyz>"
+    "Christophe Troestler <christophe.Troestler@umons.ac.be>"
+    "Corentin Leruth <corentin.leruth@gmail.com>"
+    "Damien Doligez <ddoligez@janestreet.com>"
+    "Daniel M <dan.mntg@gmail.com>"
+    "Ding Xiang Fei <dingxiangfei2009@protonmail.ch>"
+    "Enrico Tassi <Enrico.Tassi@Inria.fr>"
+    "François Pottier <francois.pottier@inria.fr>"
+    "Javier Chávarri <javier.chavarri@gmail.com>"
+    "Jonas Bergler <jonas@bergler.name>"
+    "Kate <kit-ty-kate@exn.st>"
+    "Koon Wen Lee <koonwen@gmail.com>"
+    "Louis <mail+github@louisroche.net>"
+    "Louis Roché <louis@cryptosense.com>"
+    "Stephane Legrand <slegrand45@gmail.com>"
+    "Vincent Bernardoff <vb@luminar.eu.org>"
+    "Zach <zachyannes@gmail.com>"
+    "haoyang <haoyang@esper.co>"
+    "pmundkur <prashanth.mundkur@gmail.com>"
+    "rr0gi <igor@ahrefs.com>"
+    "ygrek <ygrek@autistici.org>"
+  ]
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ahrefs/atd"
+  bug-reports: "https://github.com/ahrefs/atd/issues"
+  depends: [
+    "dune" {>= "3.18"}
+    "ocaml" {>= "4.14"}
+    "atd" {= version}
+    "cmdliner" {>= "1.1.0"}
+    "re"
+    "alcotest" {with-test}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs "@install" "@doc" {with-doc}]
+  ]
+  dev-repo: "git+https://github.com/ahrefs/atd.git"
+  url {
+    src:
+      "https://github.com/ahrefs/atd/releases/download/4.2.0/atd-4.2.0.tbz"
+    checksum: [
+      "sha256=40e54c8ecdc45794155221f4299c2a9d49170f4ec41424e8c889d235a52d3a55"
+      "sha512=337f2739167936de28e042bf2d05df8c535c0c8293fb86c086861c8cc8a617d0d6c0bafb09e4817c5ae6d77dff7d0afcaed3f235c6c9ae7104c784c17d286605"
+    ]
+  }
+  x-commit-hash: "14d80ac8cf7e9769866943766d80c2b1a1b82ab7"
+  x-maintenance-intent: ["(latest)"]
+}
+package "base" {
+  opam-version: "2.0"
+  version: "v0.16.5"
+  synopsis: "Full standard library replacement for OCaml"
+  description: """\
+Full standard library replacement for OCaml
+
+Base is a complete and portable alternative to the OCaml standard
+library. It provides all standard functionalities one would expect
+from a language standard library. It uses consistent conventions
+across all of its module.
+
+Base aims to be usable in any context. As a result system dependent
+features such as I/O are not offered by Base. They are instead
+provided by companion libraries such as stdio:
+
+  https://github.com/janestreet/stdio"""
+  maintainer: "Jane Street developers"
+  authors: "Jane Street Group, LLC"
+  license: "MIT"
+  homepage: "https://github.com/janestreet/base"
+  doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/base/index.html"
+  bug-reports: "https://github.com/janestreet/base/issues"
+  depends: [
+    "ocaml" {>= "4.14.0"}
+    "sexplib0" {>= "v0.16" & < "v0.17"}
+    "dune" {>= "2.0.0"}
+    "dune-configurator"
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://github.com/janestreet/base.git"
+  url {
+    src:
+      "https://github.com/janestreet/base/archive/refs/tags/v0.16.5.tar.gz"
+    checksum: [
+      "md5=109456ad2350671ad3159cbbca993e3e"
+      "sha512=445d08b965e0d559e4046b874f611c8f36de47fa5c23a047146f48ee638588c1b73789a7adb5ead235c0ad2f44b56fd513a6d60bcb8b6c9f11566d32fd7760f2"
+    ]
+  }
+}
+package "base-bigarray" {
+  opam-version: "2.0"
+  version: "base"
+  synopsis: ""
+  description: "Bigarray library distributed with the OCaml compiler"
+  maintainer: "https://github.com/ocaml/opam-repository/issues"
+}
+package "base-threads" {
+  opam-version: "2.0"
+  version: "base"
+  synopsis: ""
+  description: "Threads library distributed with the OCaml compiler"
+  maintainer: "https://github.com/ocaml/opam-repository/issues"
+}
+package "base-unix" {
+  opam-version: "2.0"
+  version: "base"
+  synopsis: ""
+  description: "Unix library distributed with the OCaml compiler"
+  maintainer: "https://github.com/ocaml/opam-repository/issues"
+}
+package "biniou" {
+  opam-version: "2.0"
+  version: "1.2.2"
+  synopsis:
+    "Binary data format designed for speed, safety, ease of use and backward compatibility as protocols evolve"
+  description: """\
+Biniou (pronounced "be new") is a binary data format designed for speed, safety,
+ease of use and backward compatibility as protocols evolve. Biniou is vastly
+equivalent to JSON in terms of functionality but allows implementations several
+times faster (4 times faster than yojson), with 25-35% space savings.
+
+Biniou data can be decoded into human-readable form without knowledge of type
+definitions except for field and variant names which are represented by 31-bit
+hashes. A program named bdump is provided for routine visualization of biniou
+data files.
+
+The program atdgen is used to derive OCaml-Biniou serializers and deserializers
+from type definitions.
+
+Biniou format specification: mjambon.github.io/atdgen-doc/biniou-format.txt"""
+  maintainer: "martin@mjambon.com"
+  authors: "Martin Jambon"
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/mjambon/biniou"
+  doc: "https://mjambon.github.io/biniou/"
+  bug-reports: "https://github.com/mjambon/biniou/issues"
+  depends: [
+    "easy-format"
+    "camlp-streams"
+    "dune" {>= "1.10"}
+    "ocaml" {>= "4.02.3"}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs]
+    ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+    ["dune" "build" "-p" name "@doc"] {with-doc}
+  ]
+  dev-repo: "git+https://github.com/mjambon/biniou.git"
+  url {
+    src:
+      "https://github.com/mjambon/biniou/releases/download/1.2.2/biniou-1.2.2.tbz"
+    checksum: [
+      "sha256=8bf3ff17cd0ecb2d6b6d1d94cb08ef089d44caef96e9bae6be6839d428fa318f"
+      "sha512=7d03b3759a3a2e1c77713aa1b8375a1f1917f49d14fe5e3cb01d5e53a12e6385b7a3b0f4827f3be71182c31c416d780e1f9ef011dc205cb8f9b0ab2d8fc23cfd"
+    ]
+  }
+  x-commit-hash: "b434dd9ad488e042cf71554af7296b7bd98c9a6a"
+}
+package "camlp-streams" {
+  opam-version: "2.0"
+  version: "5.0.1"
+  synopsis: "The Stream and Genlex libraries for use with Camlp4 and Camlp5"
+  description: """\
+This package provides two library modules:
+- Stream: imperative streams, with in-place update and memoization
+  of the latest element produced.
+- Genlex: a small parameterized lexical analyzer producing streams
+  of tokens from streams of characters.
+
+The two modules are designed for use with Camlp4 and Camlp5:
+- The stream patterns and stream expressions of Camlp4/Camlp5 consume
+  and produce data of type 'a Stream.t.
+- The Genlex tokenizer can be used as a simple lexical analyzer for
+  Camlp4/Camlp5-generated parsers.
+
+The Stream module can also be used by hand-written recursive-descent
+parsers, but is not very convenient for this purpose.
+
+The Stream and Genlex modules have been part of the OCaml standard library
+for a long time, and have been distributed as part of the core OCaml system.
+They will be removed from the OCaml standard library at some future point,
+but will be maintained and distributed separately in this camlpstreams package."""
+  maintainer: [
+    "Florian Angeletti <florian.angeletti@inria.fr>"
+    "Xavier Leroy <xavier.leroy@college-de-france.fr>"
+  ]
+  authors: ["Daniel de Rauglaudre" "Xavier Leroy"]
+  license: "LGPL-2.1-only WITH OCaml-LGPL-linking-exception"
+  homepage: "https://github.com/ocaml/camlp-streams"
+  bug-reports: "https://github.com/ocaml/camlp-streams/issues"
+  depends: [
+    "dune" {>= "2.7"}
+    "ocaml" {>= "4.02.3"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/ocaml/camlp-streams.git"
+  url {
+    src: "https://github.com/ocaml/camlp-streams/archive/v5.0.1.tar.gz"
+    checksum: [
+      "md5=afc874b25f7a1f13e8f5cfc1182b51a7"
+      "sha512=2efa8dd4a636217c8d49bac1e4e7e5558fc2f45cfea66514140a59fd99dd08d61fb9f1e17804997ff648b71b13820a5d4a1eb70fed9d848aa2abd6e41f853c86"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "cmdliner" {
+  opam-version: "2.0"
+  version: "2.1.1"
+  synopsis: "Declarative definition of command line interfaces for OCaml"
+  description: """\
+Cmdliner allows the declarative definition of command line interfaces
+for OCaml.
+
+It provides a simple and compositional mechanism to convert command
+line arguments to OCaml values and pass them to your functions. The
+module automatically handles command line completion, syntax errors,
+help messages and UNIX man page generation. It supports programs with
+single or multiple commands and respects most of the [POSIX] and [GNU]
+conventions.
+
+Cmdliner has no dependencies and is distributed under the ISC license.
+
+Homepage: <http://erratique.ch/software/cmdliner>
+
+[POSIX]: http://pubs.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap12.html
+[GNU]: http://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html"""
+  maintainer: "Daniel Bünzli <daniel.buenzl i@erratique.ch>"
+  authors: "The cmdliner programmers"
+  license: "ISC"
+  tags: ["cli" "system" "declarative" "org:erratique"]
+  homepage: "https://erratique.ch/software/cmdliner"
+  doc: "https://erratique.ch/software/cmdliner/doc"
+  bug-reports: "https://github.com/dbuenzli/cmdliner/issues"
+  depends: [
+    "ocaml" {>= "4.08.0"}
+  ]
+  build: [make "all" "PREFIX=%{prefix}%"]
+  install: [
+    [
+      make
+      "install"
+      "BINDIR=%{_:bin}%"
+      "LIBDIR=%{_:lib}%"
+      "DOCDIR=%{_:doc}%"
+      "SHAREDIR=%{share}%"
+      "MANDIR=%{man}%"
+    ]
+    [
+      make
+      "install-doc"
+      "LIBDIR=%{_:lib}%"
+      "DOCDIR=%{_:doc}%"
+      "SHAREDIR=%{share}%"
+      "MANDIR=%{man}%"
+    ]
+  ]
+  dev-repo: "git+https://erratique.ch/repos/cmdliner.git"
+  url {
+    src: "https://erratique.ch/software/cmdliner/releases/cmdliner-2.1.1.tbz"
+    checksum:
+      "sha512=cdc338ae2e56a72b7c75dae9564c57cca4e1fbfac454aabbf8303fcb612346284aede5984dfde7e8a7a496cc870bbd57ddf28cab3a38667279b31657f85c15dd"
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "conf-g++" {
+  opam-version: "2.0"
+  version: "1.0"
+  synopsis: "Virtual package relying on the g++ compiler (for C++)"
+  description:
+    "This package can only install if the g++ compiler is installed on the system."
+  maintainer: "unixjunkie@sdf.org"
+  authors: "Francois Berenger"
+  license: "GPL-2.0-or-later"
+  homepage: "https://github.com/ocaml/opam-repository"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  depends: [
+    ("host-arch-x86_32" {os = "win32" & os-distribution != "cygwinports"} &
+     "conf-mingw-w64-g++-i686"
+       {os = "win32" & os-distribution != "cygwinports"}) |
+    ("host-arch-x86_64" {os = "win32" & os-distribution != "cygwinports"} &
+     "conf-mingw-w64-g++-x86_64"
+       {os = "win32" & os-distribution != "cygwinports"})
+  ]
+  flags: conf
+  build: [
+    "i686-w64-mingw32-g++" {os = "win32" & host-arch-x86_32:installed}
+    "x86_64-w64-mingw32-g++" {os = "win32" & host-arch-x86_64:installed}
+    "g++"
+      {os != "win32" |
+       !host-arch-x86_32:installed & !host-arch-x86_64:installed}
+    "--version"
+  ]
+  depexts: [
+    ["gcc-c++"] {os-distribution = "centos"}
+    ["gcc-c++"] {os-family = "fedora"}
+    ["gcc-c++"] {os-family = "suse" | os-family = "opensuse"}
+    ["g++"] {os-family = "debian"}
+    ["g++"] {os-family = "ubuntu"}
+    ["g++"] {os-distribution = "alpine"}
+    ["gcc"] {os-distribution = "nixos"}
+    ["gcc"] {os-distribution = "arch"}
+    ["gcc"] {os = "macos" & os-distribution = "homebrew"}
+    ["gcc-g++"] {os = "win32" & os-distribution = "cygwinports"}
+    ["gcc"] {os = "freebsd"}
+  ]
+}
+package "conf-gmp" {
+  opam-version: "2.0"
+  version: "5"
+  synopsis: "Virtual package relying on a GMP lib system installation"
+  description:
+    "This package can only install if the GMP lib is installed on the system."
+  maintainer: "nbraud"
+  authors: "nbraud"
+  license: "GPL-1.0-or-later"
+  homepage: "http://gmplib.org/"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  depends: [
+    "conf-pkg-config" {os = "macos"}
+    (("host-arch-x86_32" {os = "win32" & os-distribution != "cygwinports"} &
+      "conf-mingw-w64-gmp-i686"
+        {os = "win32" & os-distribution != "cygwinports"}) |
+     ("host-arch-x86_64" {os = "win32" & os-distribution != "cygwinports"} &
+      "conf-mingw-w64-gmp-x86_64"
+        {os = "win32" & os-distribution != "cygwinports"}))
+  ]
+  flags: conf
+  build: [
+    [
+      "sh"
+      "-c"
+      "pkg-config --print-errors --exists gmp || cc -c $CFLAGS -I/usr/local/include test.c"
+    ] {os != "win32"}
+    [
+      "sh"
+      "-exc"
+      "$(ocamlc -config-var c_compiler) -c $CFLAGS -I/usr/local/include test.c"
+    ] {os = "win32" & os-distribution = "cygwinports"}
+    [
+      "sh"
+      "-exc"
+      "%{host-arch-x86_64:installed?x86_64:}%%{host-arch-x86_32:installed?i686:}%-w64-mingw32-gcc -c $CFLAGS test.c"
+    ] {os = "win32" & os-distribution != "cygwinports"}
+  ]
+  depexts: [
+    ["libgmp-dev"] {os-family = "debian"}
+    ["libgmp-dev"] {os-family = "ubuntu"}
+    ["gmp"] {os = "macos" & os-distribution = "homebrew"}
+    ["gmp"] {os-distribution = "macports" & os = "macos"}
+    ["gmp" "gmp-devel"] {os-distribution = "centos"}
+    ["gmp" "gmp-devel"] {os-family = "fedora" | os-family = "fedora"}
+    ["gmp" "gmp-devel"] {os-distribution = "ol"}
+    ["gmp"] {os = "openbsd"}
+    ["gmp"] {os = "freebsd"}
+    ["gmp"] {os-distribution = "arch"}
+    ["gmp-dev"] {os-distribution = "alpine"}
+    ["gmp-devel"] {os-family = "suse" | os-family = "opensuse"}
+    ["gmp"] {os = "win32" & os-distribution = "cygwinports"}
+    ["gmp"] {os-distribution = "nixos"}
+    ["libgmp-devel"] {os-family = "altlinux"}
+  ]
+  extra-source "test.c" {
+    src:
+      "https://raw.githubusercontent.com/ocaml/opam-source-archives/main/patches/conf-gmp/test.c.4"
+    checksum: [
+      "sha256=54a30735f1f271a2531526747e75716f4490dd7bc1546efd6498ccfe3cc4d6fb"
+      "md5=2fd2970c293c36222a6d299ec155823f"
+    ]
+  }
+}
+package "conf-linux-libc-dev" {
+  opam-version: "2.0"
+  version: "0"
+  synopsis:
+    "Virtual package relying on the installation of the Linux kernel headers files"
+  description:
+    "This package can only install if the kernel headers for user space applications are installed on the system."
+  maintainer: "Markus W. Weissmann <markus.weissmann@in.tum.de>"
+  authors: "Markus W. Weissmann <markus.weissmann@in.tum.de>"
+  license: "GPL-2.0-only"
+  homepage: "https://kernel.org/"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  available: os = "linux"
+  flags: conf
+  build: [
+    ["sh" "-exc" "echo '#include <linux/stddef.h>' > test.c"]
+    ["cc" "-E" "test.c"]
+  ]
+  depexts: [
+    ["linux-libc-dev"] {os-family = "debian"}
+    ["linux-libc-dev"] {os-family = "ubuntu"}
+    ["linux-glibc-devel"] {os-family = "suse" | os-family = "opensuse"}
+    ["kernel-headers"]
+      {os-family = "fedora" | os-distribution = "rhel" |
+       os-distribution = "centos" |
+       os-distribution = "ol"}
+    ["linux-headers"] {os-family = "alpine"}
+    ["linux-api-headers"] {os-family = "arch"}
+  ]
+}
+package "conf-pkg-config" {
+  opam-version: "2.0"
+  version: "5"
+  synopsis:
+    "Check if pkg-config is installed and create an opam switch local pkgconfig folder"
+  description: """\
+This package can only install if the pkg-config package is installed
+on the system."""
+  maintainer: "David Allsopp <dra27@dra27.uk>"
+  authors: [
+    "James Henstridge" "Tim Janik" "Havoc Pennington" "Scott Remnant"
+  ]
+  license: "GPL-2.0-or-later"
+  homepage: "http://www.freedesktop.org/wiki/Software/pkg-config/"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  depends: [
+    ("host-arch-x86_64"
+       {os = "win32" &
+        (os-distribution = "cygwin" | os-distribution = "msys2")} &
+     "conf-mingw-w64-gcc-x86_64"
+       {os = "win32" &
+        (os-distribution = "cygwin" | os-distribution = "msys2")} &
+     "conf-mingw-w64-pkgconf-x86_64"
+       {os = "win32" & os-distribution = "msys2"} |
+     "host-arch-x86_32"
+       {os = "win32" &
+        (os-distribution = "cygwin" | os-distribution = "msys2")} &
+     "conf-mingw-w64-gcc-i686"
+       {os = "win32" &
+        (os-distribution = "cygwin" | os-distribution = "msys2")} &
+     "conf-mingw-w64-pkgconf-i686" {os = "win32" & os-distribution = "msys2"})
+  ]
+  conflicts: [
+    "mingw-w64-shims" {< "1.0.0"}
+  ]
+  build: [
+    ["pkg-config" "--help"]
+      {os != "win32" & !(os = "macos" & os-distribution = "homebrew")}
+    ["pkgconf" "--version"]
+      {os = "win32" & os-distribution != "msys2" |
+       os = "macos" & os-distribution = "homebrew"}
+    [
+      "sh"
+      "./write-config.sh"
+      name
+      "-v"
+      "command:list"
+      "EOL"
+      "pkg-config"
+        {os != "win32" & !(os = "macos" & os-distribution = "homebrew")}
+      "pkgconf"
+        {os = "win32" & os-distribution != "msys2" |
+         os = "macos" & os-distribution = "homebrew"}
+      "i686-w64-mingw32-pkgconf"
+        {os = "win32" & os-distribution = "msys2" &
+         host-arch-x86_32:installed}
+      "--personality=i686-w64-mingw32"
+        {os = "win32" & os-distribution = "cygwin" &
+         host-arch-x86_32:installed}
+      "x86_64-w64-mingw32-pkgconf"
+        {os = "win32" & os-distribution = "msys2" &
+         host-arch-x86_64:installed}
+      "--personality=x86_64-w64-mingw32"
+        {os = "win32" & os-distribution = "cygwin" &
+         host-arch-x86_64:installed}
+      "EOL"
+    ]
+    ["sh" "./install-shim.sh" name "pkgconf" bin]
+      {os = "win32" & os-distribution = "cygwin"}
+  ]
+  depexts: [
+    ["pkg-config"] {os-family = "debian" | os-family = "ubuntu"}
+    ["pkgconf"] {os-distribution = "arch"}
+    ["pkgconf-pkg-config"] {os-family = "fedora"}
+    ["pkgconfig"] {os-distribution = "centos" & os-version <= "7"}
+    ["pkgconf-pkg-config"] {os-distribution = "mageia"}
+    ["pkgconfig"] {os-distribution = "rhel" & os-version <= "7"}
+    ["pkgconfig"] {os-distribution = "ol" & os-version <= "7"}
+    ["pkgconf"] {os-distribution = "alpine"}
+    ["pkg-config"] {os-distribution = "nixos"}
+    ["pkgconf"] {os = "macos" & os-distribution = "homebrew"}
+    ["pkgconfig"] {os = "macos" & os-distribution = "macports"}
+    ["pkgconf"] {os = "freebsd"}
+    ["pkgconf-pkg-config"] {os-distribution = "rhel" & os-version >= "8"}
+    ["pkgconf-pkg-config"] {os-distribution = "centos" & os-version >= "8"}
+    ["pkgconf-pkg-config"] {os-distribution = "ol" & os-version >= "8"}
+    ["system:pkgconf"] {os = "win32" & os-distribution = "cygwinports"}
+    ["pkgconf"] {os-distribution = "cygwin"}
+  ]
+  dev-repo: "git+https://github.com/dra27/mingw-w64-shims.git"
+  extra-source "install-shim.sh" {
+    src:
+      "https://raw.githubusercontent.com/dra27/mingw-w64-shims/refs/tags/1.0.1/install-shim.sh"
+    checksum: [
+      "sha256=9f99322c38b0889f5b1dafbb35ab31dc012ae98c4f98b0f740a89f943142d961"
+      "sha512=0b76a529454b00027b5768fa6ead1b8dda6bc3adab55f4288a702f4cc5d7b280be938cced6841b1556e8cf98f56ecc95b7b22006859d7a91f0ef852aea74e88c"
+    ]
+  }
+  extra-source "write-config.sh" {
+    src:
+      "https://raw.githubusercontent.com/dra27/mingw-w64-shims/refs/tags/1.0.1/write-config.sh"
+    checksum: [
+      "sha256=b6cc5f98c2cfc23a7bc7774038621a2e7e7b94ed3d3080db40bc455a2575fc7a"
+      "sha512=00c4e7c605e46c8fb4d24c40da0a9317e31e3ec723a7aac59546b1cfb180024cc76dbd27c2aca8d223047ad4b0a4bcd047443fc64a6e218a21931aaa672c3e71"
+    ]
+  }
+}
+package "coq" {
+  opam-version: "2.0"
+  version: "9.0.1"
+  synopsis: "Compatibility metapackage for Coq after the Rocq renaming"
+  maintainer:
+    "The Rocq development team <rocq+rocq-development@discoursemail.com>"
+  authors: "The Rocq development team, INRIA, CNRS, and contributors"
+  license: "LGPL-2.1-only"
+  homepage: "https://rocq-prover.org/"
+  doc: "https://rocq-prover.org/docs/"
+  bug-reports: "https://github.com/rocq-prover/rocq/issues"
+  depends: [
+    "coq-core" {= version}
+    "coq-stdlib" {= "9.0.0"}
+    "coqide-server" {= version}
+  ]
+  dev-repo: "git+https://github.com/rocq-prover/rocq.git"
+}
+package "coq-compcert" {
+  opam-version: "2.0"
+  version: "3.17"
+  synopsis: "The CompCert C compiler (64 bit)"
+  maintainer: "Michael Soegtrop and Xavier Leroy"
+  authors: "Xavier Leroy <xavier.leroy@college-de-france.fr>"
+  license: "INRIA Non-Commercial License Agreement"
+  tags: [
+    "category:Computer Science/Semantics and Compilation/Compilation"
+    "category:Computer Science/Semantics and Compilation/Semantics"
+    "keyword:C"
+    "keyword:compiler"
+    "logpath:compcert"
+    "date:2026-02-13"
+  ]
+  homepage: "https://compcert.org/"
+  bug-reports: "https://github.com/AbsInt/CompCert/issues"
+  depends: [
+    "coq" {>= "8.15.0" & < "9.2~"}
+    "menhir" {>= "20200624" & != "20260122" & != "dev"}
+    "ocaml" {>= "4.05.0" & < "5~"}
+    "coq-flocq" {>= "4.1.0" & < "5~"}
+    "coq-menhirlib" {>= "20200624"}
+  ]
+  build: [
+    [
+      "./configure"
+      "amd64-linux" {os = "linux" & arch = "x86_64"}
+      "amd64-macosx" {os = "macos" & arch = "x86_64"}
+      "arm64-linux" {os = "linux" & (arch = "arm64" | arch = "aarch64")}
+      "arm64-macosx" {os = "macos" & (arch = "arm64" | arch = "aarch64")}
+      "amd64-cygwin" {os = "cygwin"}
+      "amd64-cygwin" {os = "win32" & os-distribution = "cygwinports"}
+      "-toolprefix"
+        {os = "win32" & os-distribution = "cygwinports" & arch = "i686"}
+      "x86_64-pc-cygwin-"
+        {os = "win32" & os-distribution = "cygwinports" & arch = "i686"}
+      "-prefix"
+      "%{prefix}%"
+      "-install-coqdev"
+      "-clightgen"
+      "-use-external-Flocq"
+      "-use-external-MenhirLib"
+      "-coqdevdir"
+      "%{lib}%/coq/user-contrib/compcert"
+      "-ignore-coq-version"
+    ]
+    [make "-j%{jobs}%" {ocaml:version >= "4.06"}]
+  ]
+  install: [make "install"]
+  dev-repo: "git+https://github.com/AbsInt/CompCert.git"
+  url {
+    src: "https://github.com/AbsInt/CompCert/archive/v3.17.tar.gz"
+    checksum: [
+      "sha256=671425695c92d6c3a44d9f0833a803a9fa6b9199675a0b10dfdc131a0e2abffa"
+      "sha512=812a86696c11f10144ed8d1a840a8cbc7e06e3f635f006a19765f10fd30a6d4479c82232b6da54a9285dc5c433aa26c1dd0a459831b3d2f5b5e4feae5130167d"
+    ]
+  }
+}
+package "coq-core" {
+  opam-version: "2.0"
+  version: "9.0.1"
+  synopsis: "Compatibility binaries for Coq after the Rocq renaming"
+  description: """\
+The Rocq Prover is an interactive theorem prover, or proof assistant. It provides
+a formal language to write mathematical definitions, executable
+algorithms and theorems together with an environment for
+semi-interactive development of machine-checked proofs.
+
+Typical applications include the certification of properties of
+programming languages (e.g. the CompCert compiler certification
+project, or the Bedrock verified low-level programming library), the
+formalization of mathematics (e.g. the full formalization of the
+Feit-Thompson theorem or homotopy type theory) and teaching.
+
+This package includes compatibility binaries to call Rocq
+through previous Coq commands like coqc coqtop,..."""
+  maintainer:
+    "The Rocq development team <rocq+rocq-development@discoursemail.com>"
+  authors: "The Rocq development team, INRIA, CNRS, and contributors"
+  license: "LGPL-2.1-only"
+  homepage: "https://rocq-prover.org/"
+  doc: "https://rocq-prover.org/docs/"
+  bug-reports: "https://github.com/rocq-prover/rocq/issues"
+  depends: [
+    "dune" {>= "3.8"}
+    "rocq-runtime" {= version}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  post-messages: """\
+Coq has been renamed to The Rocq Prover, see https://rocq-prover.org/refman/changes.html#porting-to-the-rocq-prover for details.
+   This package provides compatibility binaries to ease the transition to the new rocq binary."""
+  dev-repo: "git+https://github.com/rocq-prover/rocq.git"
+  url {
+    src:
+      "https://github.com/rocq-prover/rocq/releases/download/V9.0.1/rocq-9.0.1.tar.gz"
+    checksum:
+      "sha256=051f7bf702ff0a3b370449728921e5a95e18bc2b31b8eb949d48422888c98af4"
+  }
+}
+package "coq-ext-lib" {
+  opam-version: "2.0"
+  version: "0.13.1"
+  synopsis: "A library of Coq definitions, theorems, and tactics"
+  description:
+    "A collection of theories and plugins that may be useful in other Coq developments."
+  maintainer: "gmalecha@gmail.com"
+  authors: "Gregory Malecha"
+  license: "BSD-2-Clause"
+  tags: "logpath:ExtLib"
+  homepage: "https://github.com/coq-community/coq-ext-lib"
+  doc: "https://coq-community.github.io/coq-ext-lib/"
+  bug-reports: "https://github.com/coq-community/coq-ext-lib/issues"
+  depends: [
+    ("coq" {>= "8.9" & (< "8.10" | >= "8.11")} |
+     ("coq-core" {>= "9.2~"} & "rocq-stdlib"))
+  ]
+  build: [make "-j%{jobs}%" "theories"]
+  run-test: [make "-j%{jobs}%" "examples"]
+  install: [make "install"]
+  dev-repo: "git+https://github.com/coq-community/coq-ext-lib.git"
+  url {
+    src:
+      "https://github.com/coq-community/coq-ext-lib/archive/refs/tags/v0.13.1.tar.gz"
+    checksum: [
+      "md5=2e20520bf90bfc691ae6b7de71beb0a2"
+      "sha512=888c6c8834cf1cb6232ad35e0af55d54543a7cacd3c943b305748f70e6e72261a9372368b6540e66aa93c1702d816f4382b16707b2971eb9aa13d29ad5e0895c"
+    ]
+  }
+}
+package "coq-flocq" {
+  opam-version: "2.0"
+  version: "4.2.2"
+  synopsis: "A formalization of floating-point arithmetic for the Coq system"
+  maintainer: "guillaume.melquiond@inria.fr"
+  authors: [
+    "Sylvie Boldo <sylvie.boldo@inria.fr>"
+    "Guillaume Melquiond <guillaume.melquiond@inria.fr>"
+  ]
+  license: "LGPL-3.0-or-later"
+  tags: [
+    "keyword:floating-point arithmetic" "logpath:Flocq" "date:2026-02-19"
+  ]
+  homepage: "https://flocq.gitlabpages.inria.fr/"
+  bug-reports: "https://gitlab.inria.fr/flocq/flocq/issues"
+  depends: [
+    ("coq" {>= "8.15" & < "8.17"} |
+     ("coq-core" {>= "8.17"} & ("coq-stdlib" | "rocq-stdlib")))
+    "conf-autoconf" {build & dev}
+    "ocaml" {build}
+    ("conf-g++" {build} | "conf-clang" {build})
+  ]
+  build: [
+    ["autoconf"] {dev}
+    ["./configure"]
+    ["./remake" "-j%{jobs}%"]
+  ]
+  install: ["./remake" "install" "install-glob"]
+  dev-repo: "git+https://gitlab.inria.fr/flocq/flocq.git"
+  url {
+    src: "https://flocq.gitlabpages.inria.fr/releases/flocq-4.2.2.tar.gz"
+    checksum:
+      "sha512=8afd91b74133dcce17a78aa923ad7fcedefeb46bf1f71b78e4e4c1900b936ebe5129924c7353c2728b4879601b44686ece98af89e2e779199bd3ccb77139c6f9"
+  }
+}
+package "coq-mathcomp-ssreflect" {
+  opam-version: "2.0"
+  version: "2.4.0"
+  synopsis: "Compatibility package for rocq-mathcomp-ssreflect"
+  maintainer: "Mathematical Components <mathcomp-dev@sympa.inria.fr>"
+  authors: "The Mathematical Components team"
+  license: "CECILL-B"
+  homepage: "https://math-comp.github.io/"
+  bug-reports: "https://github.com/math-comp/math-comp/issues"
+  depends: [
+    "coq-core"
+    "rocq-mathcomp-ssreflect" {= version}
+  ]
+  dev-repo: "git+https://github.com/math-comp/math-comp.git"
+  url {
+    src:
+      "https://github.com/math-comp/math-comp/archive/mathcomp-2.4.0.tar.gz"
+    checksum:
+      "sha256=6307218d7e434fb6ffc81b9275c673d3f7f1f4884ad59b904abd205c437021a0"
+  }
+}
+package "coq-menhirlib" {
+  opam-version: "2.0"
+  version: "20260209"
+  synopsis: "A support library for verified Rocq parsers produced by Menhir"
+  maintainer: "francois.pottier@inria.fr"
+  authors: "Jacques-Henri Jourdan <jacques-henri.jourdan@lri.fr>"
+  license: "LGPL-3.0-or-later"
+  tags: ["date:2026-02-09" "logpath:MenhirLib"]
+  homepage: "https://gitlab.inria.fr/fpottier/coq-menhirlib"
+  bug-reports: "https://gitlab.inria.fr/fpottier/menhir/-/issues"
+  depends: [
+    "coq" {>= "8.13" & < "9.3"}
+  ]
+  conflicts: [
+    "menhir" {!= version}
+  ]
+  build: [make "-C" "coq-menhirlib" "-j%{jobs}%"]
+  install: [make "-C" "coq-menhirlib" "install"]
+  dev-repo: "git+https://gitlab.inria.fr/fpottier/menhir.git"
+  url {
+    src:
+      "https://gitlab.inria.fr/fpottier/menhir/-/archive/20260209/archive.tar.gz"
+    checksum: [
+      "md5=e993231085db95ab011ffe0cd606d9dd"
+      "sha512=aafad186f328ae8dd4cc69af0f30c1a0b208cf5148a7a94c150099be03838503c5ec12918de26cd7f794b5a72f114bc1bae8d81058bd0ea10372a3b06818687e"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "coq-stdlib" {
+  opam-version: "2.0"
+  version: "9.0.0"
+  synopsis:
+    "Compatibility metapackage for Coq Stdlib library after the Rocq renaming"
+  maintainer: "The Rocq standard library development team"
+  authors: "The Rocq development team, INRIA, CNRS, and contributors"
+  license: "LGPL-2.1-only"
+  homepage: "https://coq.inria.fr/"
+  doc: "https://coq.github.io/doc/"
+  bug-reports: "https://github.com/coq/stdlib/issues"
+  depends: [
+    "coq-core"
+    "rocq-stdlib" {= version}
+  ]
+  dev-repo: "git+https://github.com/coq/stdlib.git"
+}
+package "cppo" {
+  opam-version: "2.0"
+  version: "1.8.0"
+  synopsis: "Code preprocessor like cpp for OCaml"
+  description: """\
+Cppo is an equivalent of the C preprocessor for OCaml programs.
+It allows the definition of simple macros and file inclusion.
+
+Cppo is:
+
+* more OCaml-friendly than cpp
+* easy to learn without consulting a manual
+* reasonably fast
+* simple to install and to maintain"""
+  maintainer: [
+    "Martin Jambon <martin@mjambon.com>" "Yishuai Li <yishuai@upenn.edu>"
+  ]
+  authors: "Martin Jambon"
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ocaml-community/cppo"
+  doc: "https://ocaml-community.github.io/cppo"
+  bug-reports: "https://github.com/ocaml-community/cppo/issues"
+  depends: [
+    "ocaml" {>= "4.02.3"}
+    "dune" {>= "2.0"}
+    "base-unix"
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test & dune:version < "3.24"}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/ocaml-community/cppo.git"
+  url {
+    src: "https://github.com/ocaml-community/cppo/archive/v1.8.0.tar.gz"
+    checksum: [
+      "md5=a197cb393b84f6b30e0ff55080ac429b"
+      "sha512=3840725b767a0300bdc48f11d26d798bdcae0a764ed6798df3a08dfc8cc76fe124b14a19d47c9b5ea8e229d68b0311510afce77c0e4d9131fbda5116dc2689a2"
+    ]
+  }
+}
+package "csexp" {
+  opam-version: "2.0"
+  version: "1.5.2"
+  synopsis: "Parsing and printing of S-expressions in Canonical form"
+  description: """\
+This library provides minimal support for Canonical S-expressions
+[1]. Canonical S-expressions are a binary encoding of S-expressions
+that is super simple and well suited for communication between
+programs.
+
+This library only provides a few helpers for simple applications. If
+you need more advanced support, such as parsing from more fancy input
+sources, you should consider copying the code of this library given
+how simple parsing S-expressions in canonical form is.
+
+To avoid a dependency on a particular S-expression library, the only
+module of this library is parameterised by the type of S-expressions.
+
+[1] https://en.wikipedia.org/wiki/Canonical_S-expressions"""
+  maintainer: "Jeremie Dimino <jeremie@dimino.org>"
+  authors: [
+    "Quentin Hocquet <mefyl@gruntech.org>"
+    "Jane Street Group, LLC <opensource@janestreet.com>"
+    "Jeremie Dimino <jeremie@dimino.org>"
+  ]
+  license: "MIT"
+  homepage: "https://github.com/ocaml-dune/csexp"
+  doc: "https://ocaml-dune.github.io/csexp/"
+  bug-reports: "https://github.com/ocaml-dune/csexp/issues"
+  depends: [
+    "dune" {>= "3.4"}
+    "ocaml" {>= "4.03.0"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs "@install" "@doc" {with-doc}]
+  ]
+  dev-repo: "git+https://github.com/ocaml-dune/csexp.git"
+  url {
+    src:
+      "https://github.com/ocaml-dune/csexp/releases/download/1.5.2/csexp-1.5.2.tbz"
+    checksum: [
+      "sha256=1a14dd04bb4379a41990248550628c77913a9c07f3c35c1370b6960e697787ff"
+      "sha512=be281018bcfc20d4db14894ef51c4b836d6338d2fdfe22e63d46f405f8dea7349e16f1c0ecd65f73d4c85a2a80e618cdbb8c9dafcbb9f229f04f1adca5b1973c"
+    ]
+  }
+  x-commit-hash: "e6c4768e10c61bcb04d09748744dad55602149c6"
+}
+package "dune-configurator" {
+  opam-version: "2.0"
+  version: "3.21.1"
+  synopsis: "Helper library for gathering system configuration"
+  description: """\
+dune-configurator is a small library that helps writing OCaml scripts that
+test features available on the system, in order to generate config.h
+files for instance.
+Among other things, dune-configurator allows one to:
+- test if a C program compiles
+- query pkg-config
+- import #define from OCaml header files
+- generate config.h file"""
+  maintainer: "Jane Street Group, LLC <opensource@janestreet.com>"
+  authors: "Jane Street Group, LLC <opensource@janestreet.com>"
+  license: "MIT"
+  homepage: "https://github.com/ocaml/dune"
+  doc: "https://dune.readthedocs.io/"
+  bug-reports: "https://github.com/ocaml/dune/issues"
+  depends: [
+    "dune" {>= "3.21"}
+    "ocaml" {>= "4.08.0"}
+    "base-unix"
+    "csexp" {>= "1.5.0"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["rm" "-rf" "vendor/csexp"]
+    ["rm" "-rf" "vendor/pp"]
+    ["dune" "build" "-p" name "-j" jobs "@install" "@doc" {with-doc}]
+  ]
+  dev-repo: "git+https://github.com/ocaml/dune.git"
+  url {
+    src:
+      "https://github.com/ocaml/dune/releases/download/3.21.1/dune-3.21.1.tbz"
+    checksum: [
+      "sha256=84f7a82c6d80a7124f3847e9a489e80cfbeafb7bed3573ac01286ef56fd08d94"
+      "sha512=d9fa44e24036d2593adfe59e52e0ad64f3e7e973d23f84af57fc79e38fa210630b0cb55590f314d6ef455333b96a8e0ce188c2720eaae44576222541ba78efb3"
+    ]
+  }
+  x-commit-hash: "0b5863d9be475453b3cc2bd321fde222af2544d4"
+  x-maintenance-intent: ["(latest)"]
+}
+package "easy-format" {
+  opam-version: "2.0"
+  version: "1.3.4"
+  synopsis:
+    "High-level and functional interface to the Format module of the OCaml standard library"
+  description: """\
+This module offers a high-level and functional interface to the Format module of
+the OCaml standard library. It is a pretty-printing facility, i.e. it takes as
+input some code represented as a tree and formats this code into the most
+visually satisfying result, breaking and indenting lines of code where
+appropriate.
+
+Input data must be first modelled and converted into a tree using 3 kinds of
+nodes:
+
+* atoms
+* lists
+* labelled nodes
+
+Atoms represent any text that is guaranteed to be printed as-is. Lists can model
+any sequence of items such as arrays of data or lists of definitions that are
+labelled with something like "int main", "let x =" or "x:"."""
+  maintainer: ["martin@mjambon.com" "rudi.grinberg@gmail.com"]
+  authors: "Martin Jambon"
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ocaml-community/easy-format"
+  doc: "https://mjambon.github.io/mjambon2016/easy-format.html"
+  bug-reports: "https://github.com/ocaml-community/easy-format/issues"
+  depends: [
+    "dune" {>= "3.2" & >= "1.10"}
+    "ocaml" {>= "4.08"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/ocaml-community/easy-format.git"
+  url {
+    src:
+      "https://github.com/ocaml-community/easy-format/releases/download/1.3.4/easy-format-1.3.4.tbz"
+    checksum: [
+      "sha256=1dbf051e9f68574dde6e2e254a66b9c524ca425e80b36e99af96ed964ab610c3"
+      "sha512=90264864dde4cbf51f60fb5c21cf033e11bdeb662e76b62ce27b496c298ca9102174885ed7a6d29a6b8e43089e27d5bb5be247f88d9739c15cfd8470fec29d33"
+    ]
+  }
+  x-commit-hash: "ba4962884509ceec63905dd6e0ccb429be4f9f66"
+}
+package "elpi" {
+  opam-version: "2.0"
+  version: "3.7.2"
+  synopsis: "ELPI - Embeddable λProlog Interpreter"
+  description: """\
+ELPI implements a variant of λProlog enriched with Constraint Handling Rules,
+a programming language well suited to manipulate syntax trees with binders.
+
+ELPI is designed to be embedded into larger applications written in OCaml as
+an extension language. It comes with an API to drive the interpreter and 
+with an FFI for defining built-in predicates and data types, as well as
+quotations and similar goodies that are handy to adapt the language to the host
+application.
+
+This package provides both a command line interpreter (elpi) and a library to
+be linked in other applications (eg by passing -package elpi to ocamlfind).
+
+The ELPI programming language has the following features:
+
+- Native support for variable binding and substitution, via an Higher Order
+  Abstract Syntax (HOAS) embedding of the object language. The programmer
+  does not need to care about technical devices to handle bound variables,
+  like De Bruijn indices.
+
+- Native support for hypothetical context. When moving under a binder one can
+  attach to the bound variable extra information that is collected when the
+  variable gets out of scope. For example when writing a type-checker the
+  programmer needs not to care about managing the typing context.
+
+- Native support for higher order unification variables, again via HOAS.
+  Unification variables of the meta-language (λProlog) can be reused to
+  represent the unification variables of the object language. The programmer
+  does not need to care about the unification-variable assignment map and
+  cannot assign to a unification variable a term containing variables out of
+  scope, or build a circular assignment.
+
+- Native support for syntactic constraints and their meta-level handling rules.
+  The generative semantics of Prolog can be disabled by turning a goal into a
+  syntactic constraint (suspended goal). A syntactic constraint is resumed as
+  soon as relevant variables gets assigned. Syntactic constraints can be
+  manipulated by constraint handling rules (CHR).
+
+- Native support for backtracking. To ease implementation of search.
+
+- The constraint store is extensible.  The host application can declare
+  non-syntactic constraints and use custom constraint solvers to check their
+  consistency.
+
+- Clauses are graftable. The user is free to extend an existing program by
+  inserting/removing clauses, both at runtime (using implication) and at
+  "compilation" time by accumulating files.
+
+ELPI is free software released under the terms of LGPL 2.1 or above."""
+  maintainer: "Enrico Tassi <enrico.tassi@inria.fr>"
+  authors: ["Claudio Sacerdoti Coen" "Enrico Tassi"]
+  license: "LGPL-2.1-or-later"
+  homepage: "https://github.com/LPCIC/elpi"
+  doc: "https://LPCIC.github.io/elpi/"
+  bug-reports: "https://github.com/LPCIC/elpi/issues"
+  depends: [
+    "ocaml" {>= "4.13.0"}
+    "stdlib-shims"
+    "ppxlib" {>= "0.12.0"}
+    "ppx_optcomp"
+    "menhir" {>= "20211230"}
+    "re" {>= "1.7.2"}
+    "ppx_deriving" {>= "4.3"}
+    "ANSITerminal" {with-test}
+    "cmdliner" {with-test & < "2.0"}
+    "fileutils" {with-test}
+    "yojson" {with-test}
+    "dune" {>= "2.9.0"}
+    "conf-time" {with-test}
+    "atdgen" {>= "2.10.0"}
+    "atdts" {>= "2.10.0"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs]
+    [
+      make
+      "tests"
+      "DUNE_OPTS=-p %{name}%"
+      "SKIP=performance_HO"
+      "SKIP+=performance_FO"
+      "SKIP+=elpi_api_performance"
+    ]
+      {with-test & os != "macos" & os-distribution != "alpine" &
+       os-distribution != "freebsd" &
+       arch != "arm32" &
+       arch != "x86_32"}
+  ]
+  dev-repo: "git+https://github.com/LPCIC/elpi.git"
+  url {
+    src:
+      "https://github.com/LPCIC/elpi/releases/download/v3.7.2/elpi-3.7.2.tbz"
+    checksum: [
+      "sha256=bab7cfcad2c06372702f907743216cf059cc56744f820a5a99296f8530aa27e2"
+      "sha512=3e82719bb44b90ea196b3eeadfc21073ea15517cc1e8bd46d8beb7b9eb87746c2deb1a530f4f7653d228c33c223a1160580d05902e4b1de0eded576137c89048"
+    ]
+  }
+  x-commit-hash: "d0fc14802181fe00625628b56d8026205222365a"
+  x-maintenance-intent: ["(latest)"]
+}
+package "menhir" {
+  opam-version: "2.0"
+  version: "20260209"
+  synopsis: "An LR(1) parser generator"
+  maintainer: "francois.pottier@inria.fr"
+  authors: [
+    "François Pottier <francois.pottier@inria.fr>"
+    "Yann Régis-Gianas <yrg@pps.univ-paris-diderot.fr>"
+  ]
+  license: "GPL-2.0-only"
+  homepage: "http://gitlab.inria.fr/fpottier/menhir"
+  bug-reports: "https://gitlab.inria.fr/fpottier/menhir/-/issues"
+  depends: [
+    "ocaml" {>= "4.08"}
+    "dune" {>= "2.8.0"}
+    "menhirLib" {= version}
+    "menhirSdk" {= version}
+    "menhirCST" {= version}
+    "menhirGLR" {= version}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://gitlab.inria.fr/fpottier/menhir.git"
+  url {
+    src:
+      "https://gitlab.inria.fr/fpottier/menhir/-/archive/20260209/archive.tar.gz"
+    checksum: [
+      "md5=e993231085db95ab011ffe0cd606d9dd"
+      "sha512=aafad186f328ae8dd4cc69af0f30c1a0b208cf5148a7a94c150099be03838503c5ec12918de26cd7f794b5a72f114bc1bae8d81058bd0ea10372a3b06818687e"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "menhirCST" {
+  opam-version: "2.0"
+  version: "20260209"
+  synopsis: "Runtime support library for unparsers generated by Menhir"
+  maintainer: "francois.pottier@inria.fr"
+  authors: "François Pottier <francois.pottier@inria.fr>"
+  license: "LGPL-2.0-only WITH OCaml-LGPL-linking-exception"
+  homepage: "http://gitlab.inria.fr/fpottier/menhir"
+  bug-reports: "https://gitlab.inria.fr/fpottier/menhir/-/issues"
+  depends: [
+    "ocaml" {>= "4.08"}
+    "dune" {>= "2.8.0"}
+  ]
+  conflicts: [
+    "menhir" {!= version}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://gitlab.inria.fr/fpottier/menhir.git"
+  url {
+    src:
+      "https://gitlab.inria.fr/fpottier/menhir/-/archive/20260209/archive.tar.gz"
+    checksum: [
+      "md5=e993231085db95ab011ffe0cd606d9dd"
+      "sha512=aafad186f328ae8dd4cc69af0f30c1a0b208cf5148a7a94c150099be03838503c5ec12918de26cd7f794b5a72f114bc1bae8d81058bd0ea10372a3b06818687e"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "menhirGLR" {
+  opam-version: "2.0"
+  version: "20260209"
+  synopsis: "Runtime support library for GLR parsers generated by Menhir"
+  maintainer: "francois.pottier@inria.fr"
+  authors: "François Pottier <francois.pottier@inria.fr>"
+  license: "LGPL-2.0-only WITH OCaml-LGPL-linking-exception"
+  homepage: "http://gitlab.inria.fr/fpottier/menhir"
+  bug-reports: "https://gitlab.inria.fr/fpottier/menhir/-/issues"
+  depends: [
+    "ocaml" {>= "4.08"}
+    "dune" {>= "2.8.0"}
+  ]
+  conflicts: [
+    "menhir" {!= version}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://gitlab.inria.fr/fpottier/menhir.git"
+  url {
+    src:
+      "https://gitlab.inria.fr/fpottier/menhir/-/archive/20260209/archive.tar.gz"
+    checksum: [
+      "md5=e993231085db95ab011ffe0cd606d9dd"
+      "sha512=aafad186f328ae8dd4cc69af0f30c1a0b208cf5148a7a94c150099be03838503c5ec12918de26cd7f794b5a72f114bc1bae8d81058bd0ea10372a3b06818687e"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "menhirLib" {
+  opam-version: "2.0"
+  version: "20260209"
+  synopsis: "Runtime support library for parsers generated by Menhir"
+  maintainer: "francois.pottier@inria.fr"
+  authors: [
+    "François Pottier <francois.pottier@inria.fr>"
+    "Yann Régis-Gianas <yrg@pps.univ-paris-diderot.fr>"
+  ]
+  license: "LGPL-2.0-only WITH OCaml-LGPL-linking-exception"
+  homepage: "http://gitlab.inria.fr/fpottier/menhir"
+  bug-reports: "https://gitlab.inria.fr/fpottier/menhir/-/issues"
+  depends: [
+    "ocaml" {>= "4.08"}
+    "dune" {>= "2.8.0"}
+  ]
+  conflicts: [
+    "menhir" {!= version}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://gitlab.inria.fr/fpottier/menhir.git"
+  url {
+    src:
+      "https://gitlab.inria.fr/fpottier/menhir/-/archive/20260209/archive.tar.gz"
+    checksum: [
+      "md5=e993231085db95ab011ffe0cd606d9dd"
+      "sha512=aafad186f328ae8dd4cc69af0f30c1a0b208cf5148a7a94c150099be03838503c5ec12918de26cd7f794b5a72f114bc1bae8d81058bd0ea10372a3b06818687e"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "menhirSdk" {
+  opam-version: "2.0"
+  version: "20260209"
+  synopsis: "Compile-time library for auxiliary tools related to Menhir"
+  maintainer: "francois.pottier@inria.fr"
+  authors: [
+    "François Pottier <francois.pottier@inria.fr>"
+    "Yann Régis-Gianas <yrg@pps.univ-paris-diderot.fr>"
+  ]
+  license: "LGPL-2.0-only WITH OCaml-LGPL-linking-exception"
+  homepage: "http://gitlab.inria.fr/fpottier/menhir"
+  bug-reports: "https://gitlab.inria.fr/fpottier/menhir/-/issues"
+  depends: [
+    "ocaml" {>= "4.08"}
+    "dune" {>= "2.8.0"}
+  ]
+  conflicts: [
+    "menhir" {!= version}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://gitlab.inria.fr/fpottier/menhir.git"
+  url {
+    src:
+      "https://gitlab.inria.fr/fpottier/menhir/-/archive/20260209/archive.tar.gz"
+    checksum: [
+      "md5=e993231085db95ab011ffe0cd606d9dd"
+      "sha512=aafad186f328ae8dd4cc69af0f30c1a0b208cf5148a7a94c150099be03838503c5ec12918de26cd7f794b5a72f114bc1bae8d81058bd0ea10372a3b06818687e"
+    ]
+  }
+  x-maintenance-intent: ["(latest)"]
+}
+package "ocaml" {
+  opam-version: "2.0"
+  version: "4.14.2"
+  synopsis: "The OCaml compiler (virtual package)"
+  description: """\
+This package requires a matching implementation of OCaml,
+and polls it to initialise specific variables like `ocaml:native-dynlink`"""
+  maintainer: "David Allsopp <dra27@dra27.uk>"
+  authors: [
+    "Xavier Leroy"
+    "Damien Doligez"
+    "Alain Frisch"
+    "Jacques Garrigue"
+    "Didier Rémy"
+    "Jérôme Vouillon"
+  ]
+  license: "LGPL-2.1-or-later WITH OCaml-LGPL-linking-exception"
+  homepage: "https://ocaml.org"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  depends: [
+    "ocaml-config" {>= "2"}
+    "ocaml-base-compiler" {>= "4.14.2~" & < "4.14.3~"} |
+    "ocaml-variants" {>= "4.14.2~" & < "4.14.3~"} |
+    "ocaml-system" {>= "4.14.2" & < "4.14.3~"} |
+    "dkml-base-compiler" {>= "4.14.2~" & < "4.14.3~"}
+    ("ocaml-env-mingw64" {os = "win32"} | "ocaml-env-mingw32" {os = "win32"} |
+     "ocaml-env-msvc64" {os = "win32"} |
+     "ocaml-env-msvc32" {os = "win32"})
+  ]
+  flags: conf
+  setenv: [
+    [OCAMLTOP_INCLUDE_PATH += "%{toplevel}%"]
+    [CAML_LD_LIBRARY_PATH = "%{_:stubsdir}%"]
+    [CAML_LD_LIBRARY_PATH += "%{lib}%/stublibs"]
+    [OCAML_TOPLEVEL_PATH = "%{toplevel}%"]
+  ]
+  build: [
+    "ocaml" "%{ocaml-config:share}%/gen_ocaml_config.ml" _:version _:name
+  ]
+  build-env: CAML_LD_LIBRARY_PATH = ""
+  x-env-path-rewrite: [
+    [CAML_LD_LIBRARY_PATH (";" {os = "win32"} ":" {os != "win32"}) "target"]
+    [OCAMLTOP_INCLUDE_PATH (";" {os = "win32"} ":" {os != "win32"}) "target"]
+  ]
+  x-revision: "5"
+}
+package "ocaml-compiler-libs" {
+  opam-version: "2.0"
+  version: "v0.12.4"
+  synopsis: "OCaml compiler libraries repackaged"
+  description: """\
+This packages exposes the OCaml compiler libraries repackages under
+the toplevel names Ocaml_common, Ocaml_bytecomp, Ocaml_optcomp, ..."""
+  maintainer: "Jane Street developers"
+  authors: "Jane Street Group, LLC"
+  license: "MIT"
+  homepage: "https://github.com/janestreet/ocaml-compiler-libs"
+  bug-reports: "https://github.com/janestreet/ocaml-compiler-libs/issues"
+  depends: [
+    "dune" {>= "2.8"}
+    "ocaml" {>= "4.04.1" & < "5.2.0"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/janestreet/ocaml-compiler-libs.git"
+  url {
+    src:
+      "https://github.com/janestreet/ocaml-compiler-libs/releases/download/v0.12.4/ocaml-compiler-libs-v0.12.4.tbz"
+    checksum: [
+      "sha256=4ec9c9ec35cc45c18c7a143761154ef1d7663036a29297f80381f47981a07760"
+      "sha512=978dba8dfa61f98fa24fda7a9c26c2e837081f37d1685fe636dc19cfc3278a940cf01a10293504b185c406706bc1008bc54313d50f023bcdea6d5ac6c0788b35"
+    ]
+  }
+  x-commit-hash: "8cd12f18bb7171c2b67d661868c4271fae528d93"
+}
+package "ocaml-config" {
+  opam-version: "2.0"
+  version: "2"
+  synopsis: "OCaml Switch Configuration"
+  description:
+    "This package is used by the OCaml package to set-up its variables."
+  maintainer: "David Allsopp <david@tarides.com>"
+  authors: [
+    "Louis Gesbert <louis.gesbert@ocamlpro.com>"
+    "David Allsopp <david.allsopp@metastack.com>"
+  ]
+  license: "ISC"
+  homepage: "https://opam.ocaml.org/"
+  bug-reports: "https://github.com/ocaml/opam/issues"
+  depends: [
+    "ocaml-base-compiler" {>= "4.12.0~"} | "ocaml-variants" {>= "4.12.0~"} |
+    "ocaml-system" {>= "4.12.0~"}
+  ]
+  available: os != "win32"
+  substs: "gen_ocaml_config.ml"
+  extra-source "gen_ocaml_config.ml.in" {
+    src:
+      "https://raw.githubusercontent.com/ocaml/ocaml/749a918bb85033b0a6370b85a7c6a4be33620c58/tools/opam/gen_ocaml_config.ml.in"
+    checksum: [
+      "sha256=22eb7c0211fc426028e444b272b97eac1e8287a49a512aebaa33c608652cfd29"
+      "md5=a4b41e3236593d8271295b84b0969172"
+    ]
+  }
+  extra-source "ocaml-config.install" {
+    src:
+      "https://raw.githubusercontent.com/ocaml/ocaml/363fb9f5a2fb87dbd5f8cc579af87dd04e14343b/tools/opam/ocaml-config.install"
+    checksum: [
+      "sha256=6e4fd93f4cce6bad0ed3c08afd0248dbe7d7817109281de6294e5b5ef5597051"
+      "md5=8e50c5e2517d3463b3aad649748cafd7"
+    ]
+  }
+}
+package "ocaml-option-flambda" {
+  opam-version: "2.0"
+  version: "1"
+  synopsis: "Set OCaml to be compiled with flambda activated"
+  maintainer: "David Allsopp <david@tarides.com>"
+  authors: ["David Allsopp" "Louis Gesbert"]
+  license: "CC0-1.0+"
+  homepage: "https://opam.ocaml.org"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  depends: [
+    "ocaml-variants" {post & >= "4.12.0~"}
+  ]
+  flags: compiler
+}
+package "ocaml-variants" {
+  opam-version: "2.0"
+  version: "4.14.2+options"
+  synopsis: "Official release of OCaml 4.14.2"
+  maintainer: [
+    "David Allsopp <dra27@dra27.uk>"
+    "Florian Angeletti <florian.angeletti@inria.fr>"
+  ]
+  authors: [
+    "Xavier Leroy"
+    "Damien Doligez"
+    "Alain Frisch"
+    "Jacques Garrigue"
+    "Didier Rémy"
+    "Jérôme Vouillon"
+  ]
+  license: "LGPL-2.1-or-later WITH OCaml-LGPL-linking-exception"
+  homepage: "https://ocaml.org"
+  bug-reports: "https://github.com/ocaml/opam-repository/issues"
+  depends: [
+    "ocaml" {= "4.14.2" & post}
+    "base-unix" {post}
+    "base-bigarray" {post}
+    "base-threads" {post}
+    (("arch-x86_64" {os = "win32" & arch = "x86_64"} &
+      ("system-mingw" | "system-msvc")) |
+     ("arch-x86_32" {os = "win32"} & ("system-mingw" | "system-msvc")) |
+     "base-unix" {os != "win32" & post})
+    "flexdll" {>= "0.36" & os = "win32"}
+  ]
+  depopts: [
+    "ocaml-option-32bit"
+    "ocaml-option-afl"
+    "ocaml-option-bytecode-only"
+    "ocaml-option-default-unsafe-string"
+    "ocaml-option-no-flat-float-array"
+    "ocaml-option-flambda"
+    "ocaml-option-fp"
+    "ocaml-option-musl"
+    "ocaml-option-static"
+    "ocaml-option-nnp"
+    "ocaml-option-nnpchecker"
+  ]
+  conflicts: ["relocatable"]
+  conflict-class: "ocaml-core-compiler"
+  flags: compiler
+  setenv: CAML_LD_LIBRARY_PATH = "%{lib}%/stublibs"
+  build: [
+    [
+      "./configure"
+      "--host=x86_64-pc-windows"
+        {system-msvc:installed & arch-x86_64:installed}
+      "--host=x86_64-w64-mingw32"
+        {os-distribution = "cygwin" & system-mingw:installed &
+         arch-x86_64:installed}
+      "--host=i686-pc-windows"
+        {system-msvc:installed & arch-x86_32:installed}
+      "--host=i686-w64-mingw32"
+        {os-distribution = "cygwin" & system-mingw:installed &
+         arch-x86_32:installed}
+      "--prefix=%{prefix}%"
+      "--docdir=%{doc}%/ocaml"
+      "--with-flexdll=%{flexdll:share}%" {os = "win32" & flexdll:installed}
+      "-C"
+      "--with-afl" {ocaml-option-afl:installed}
+      "--disable-native-compiler" {ocaml-option-bytecode-only:installed}
+      "--disable-force-safe-string"
+        {ocaml-option-default-unsafe-string:installed}
+      "DEFAULT_STRING=unsafe" {ocaml-option-default-unsafe-string:installed}
+      "--disable-flat-float-array"
+        {ocaml-option-no-flat-float-array:installed}
+      "--enable-flambda" {ocaml-option-flambda:installed}
+      "--enable-frame-pointers" {ocaml-option-fp:installed}
+      "--disable-naked-pointers" {ocaml-option-nnp:installed}
+      "--enable-naked-pointers-checker" {ocaml-option-nnpchecker:installed}
+      "CC=cc"
+        {!ocaml-option-32bit:installed & !ocaml-option-musl:installed &
+         (os = "openbsd" | os = "macos")}
+      "CC=musl-gcc"
+        {ocaml-option-musl:installed & os-distribution != "alpine"}
+      "CFLAGS=-Os" {ocaml-option-musl:installed}
+      "CC=gcc -m32" {ocaml-option-32bit:installed & os = "linux"}
+      "CC=gcc -Wl,-read_only_relocs,suppress -arch i386 -m32"
+        {ocaml-option-32bit:installed & os = "macos"}
+      "ASPP=cc -c"
+        {!ocaml-option-32bit:installed & !ocaml-option-musl:installed &
+         (os = "openbsd" | os = "macos")}
+      "ASPP=musl-gcc -c"
+        {ocaml-option-musl:installed & os-distribution != "alpine"}
+      "ASPP=gcc -m32 -c" {ocaml-option-32bit:installed & os = "linux"}
+      "ASPP=gcc -arch i386 -m32 -c"
+        {ocaml-option-32bit:installed & os = "macos"}
+      "AS=as --32" {ocaml-option-32bit:installed & os = "linux"}
+      "AS=as -arch i386" {ocaml-option-32bit:installed & os = "macos"}
+      "--host=i386-linux" {ocaml-option-32bit:installed & os = "linux"}
+      "--host=i386-apple-darwin13.2.0"
+        {ocaml-option-32bit:installed & os = "macos"}
+      "PARTIALLD=ld -r -melf_i386"
+        {ocaml-option-32bit:installed & os = "linux"}
+      "LIBS=-static" {ocaml-option-static:installed}
+    ]
+    [make "-j%{jobs}%"]
+  ]
+  install: [make "install"]
+  build-env: MSYS2_ARG_CONV_EXCL = "*"
+  dev-repo: "git+https://github.com/ocaml/ocaml.git#4.14"
+  url {
+    src: "https://github.com/ocaml/ocaml/archive/4.14.2.tar.gz"
+    checksum:
+      "sha256=c2d706432f93ba85bd3383fa451d74543c32a4e84a1afaf3e8ace18f7f097b43"
+  }
+  extra-source "ocaml-variants.install" {
+    src:
+      "https://raw.githubusercontent.com/ocaml/ocaml/8c17fd444391392c5f9801241374d749c080c1a8/ocaml-variants.install"
+    checksum: [
+      "sha256=79f2a1a5044a91350a0eb6ce12e261a72a2855c094c425cddf3860e58c486678"
+      "md5=3e969b841df1f51ca448e6e6295cb451"
+    ]
+  }
+  x-env-path-rewrite: [
+    [CAML_LD_LIBRARY_PATH (";" {os = "win32"} ":" {os != "win32"}) "target"]
+  ]
+  x-revision: "9"
+}
+package "opam-depext" {
+  opam-version: "2.0"
+  version: "1.2.3"
+  synopsis: "Install OS distribution packages"
+  description: """\
+opam-depext is a simple program intended to facilitate the interaction between
+OPAM packages and the host package management system. It can query OPAM for the
+right external dependencies on a set of packages, depending on the host OS, and
+call the OS's package manager in the appropriate way to install them."""
+  maintainer: [
+    "Louis Gesbert <louis.gesbert@ocamlpro.com>"
+    "Anil Madhavapeddy <anil@recoil.org>"
+  ]
+  authors: [
+    "Louis Gesbert <louis.gesbert@ocamlpro.com>"
+    "Anil Madhavapeddy <anil@recoil.org>"
+  ]
+  license: "LGPL-2.1-only WITH OCaml-LGPL-linking-exception"
+  homepage: "https://github.com/ocaml/opam-depext"
+  bug-reports: "https://github.com/ocaml/opam-depext/issues"
+  depends: [
+    "ocaml" {>= "4.00"}
+    "base-unix"
+    "cmdliner" {dev & >= "0.9.8" & < "2.0.0"}
+    "ocamlfind" {dev}
+  ]
+  available: opam-version >= "2.0.0~beta5" & os != "win32"
+  flags: plugin
+  build: [
+    [make] {!dev}
+    [
+      "ocamlfind"
+      "%{ocaml:native?ocamlopt:ocamlc}%"
+      "-package"
+      "unix,cmdliner"
+      "-linkpkg"
+      "-o"
+      "opam-depext"
+      "depext.ml"
+    ] {dev}
+  ]
+  post-messages:
+    "opam-depext is unnecessary when used with opam >= 2.1. Please use opam install directly instead"
+      {opam-version >= "2.1"}
+  dev-repo: "git+https://github.com/ocaml/opam-depext.git#2.0"
+  url {
+    src:
+      "https://github.com/ocaml-opam/opam-depext/releases/download/v1.2.3/opam-depext-full-1.2.3.tbz"
+    checksum: [
+      "md5=9e2b6ede3d21ab5062e7d8e16f4ff71d"
+      "sha512=66bad919d86f3c2e5c493ee1df942e9c8653916f154e37dd8253d11189813a4848fe0b8bf22b44174c0210f74affa83803fd06cf2976ab789873335910b49f08"
+    ]
+  }
+}
+package "ppx_derivers" {
+  opam-version: "2.0"
+  version: "1.2.1"
+  synopsis: "Shared [@@deriving] plugin registry"
+  description: """\
+Ppx_derivers is a tiny package whose sole purpose is to allow
+ppx_deriving and ppx_type_conv to inter-operate gracefully when linked
+as part of the same ocaml-migrate-parsetree driver."""
+  maintainer: "jeremie@dimino.org"
+  authors: "Jérémie Dimino"
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ocaml-ppx/ppx_derivers"
+  bug-reports: "https://github.com/ocaml-ppx/ppx_derivers/issues"
+  depends: ["ocaml" "dune"]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://github.com/ocaml-ppx/ppx_derivers.git"
+  url {
+    src: "https://github.com/ocaml-ppx/ppx_derivers/archive/1.2.1.tar.gz"
+    checksum: [
+      "sha256=b6595ee187dea792b31fc54a0e1524ab1e48bc6068d3066c45215a138cc73b95"
+      "md5=5dc2bf130c1db3c731fe0fffc5648b41"
+    ]
+  }
+}
+package "ppx_deriving" {
+  opam-version: "2.0"
+  version: "6.0.3"
+  synopsis: "Type-driven code generation for OCaml"
+  description: """\
+ppx_deriving provides common infrastructure for generating
+code based on type definitions, and a set of useful plugins
+for common tasks."""
+  maintainer: "whitequark <whitequark@whitequark.org>"
+  authors: "whitequark <whitequark@whitequark.org>"
+  license: "MIT"
+  tags: "syntax"
+  homepage: "https://github.com/ocaml-ppx/ppx_deriving"
+  doc: "https://ocaml-ppx.github.io/ppx_deriving/"
+  bug-reports: "https://github.com/ocaml-ppx/ppx_deriving/issues"
+  depends: [
+    "ocaml" {>= "4.05.0" & < "5.4"}
+    "dune" {>= "1.6.3"}
+    "cppo" {>= "1.1.0" & build}
+    "ocamlfind"
+    "ppx_derivers"
+    "ppxlib" {>= "0.32.0" & < "0.36.0"}
+    "ounit2" {with-test}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    ["dune" "build" "-p" name "-j" jobs]
+    ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+    ["dune" "build" "@doc" "-p" name "-j" jobs] {with-doc}
+  ]
+  dev-repo: "git+https://github.com/ocaml-ppx/ppx_deriving.git"
+  url {
+    src:
+      "https://github.com/ocaml-ppx/ppx_deriving/releases/download/v6.0.3/ppx_deriving-6.0.3.tbz"
+    checksum: [
+      "sha256=374aa97b32c5e01c09a97810a48bfa218c213b5b649e4452101455ac19c94a6d"
+      "sha512=971443a5df0acbdad577360deed8c9af137695bec6d826ef517a382941371f3546aef53456dda7c89d0ed30fefadf45d5dae2a8b1940a75aee7f7382c68cedb0"
+    ]
+  }
+  x-commit-hash: "275140702ca6f97e0407f80e86de9d3940ee3ac8"
+}
+package "ppx_optcomp" {
+  opam-version: "2.0"
+  version: "v0.16.0"
+  synopsis: "Optional compilation for OCaml"
+  description: "Part of the Jane Street's PPX rewriters collection."
+  maintainer: "Jane Street developers"
+  authors: "Jane Street Group, LLC"
+  license: "MIT"
+  homepage: "https://github.com/janestreet/ppx_optcomp"
+  doc:
+    "https://ocaml.janestreet.com/ocaml-core/latest/doc/ppx_optcomp/index.html"
+  bug-reports: "https://github.com/janestreet/ppx_optcomp/issues"
+  depends: [
+    "ocaml" {>= "4.14.0"}
+    "base" {>= "v0.16" & < "v0.17"}
+    "stdio" {>= "v0.16" & < "v0.17"}
+    "dune" {>= "2.0.0"}
+    "ppxlib" {>= "0.28.0" & < "0.36.0"}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://github.com/janestreet/ppx_optcomp.git"
+  url {
+    src:
+      "https://ocaml.janestreet.com/ocaml-core/v0.16/files/ppx_optcomp-v0.16.0.tar.gz"
+    checksum:
+      "sha256=99b209084a5375dafce4c6b128979661ab2ab6bf898a6872d596e65ded590ba2"
+  }
+}
+package "ppxlib" {
+  opam-version: "2.0"
+  version: "0.35.0"
+  synopsis: "Standard infrastructure for ppx rewriters"
+  description: """\
+Ppxlib is the standard infrastructure for ppx rewriters
+and other programs that manipulate the in-memory representation of
+OCaml programs, a.k.a the "Parsetree".
+
+It also comes bundled with two ppx rewriters that are commonly used to
+write tools that manipulate and/or generate Parsetree values;
+`ppxlib.metaquot` which allows to construct Parsetree values using the
+OCaml syntax directly and `ppxlib.traverse` which provides various
+ways of automatically traversing values of a given type, in particular
+allowing to inject a complex structured value into generated code."""
+  maintainer: "opensource@janestreet.com"
+  authors: "Jane Street Group, LLC <opensource@janestreet.com>"
+  license: "MIT"
+  homepage: "https://github.com/ocaml-ppx/ppxlib"
+  doc: "https://ocaml-ppx.github.io/ppxlib/"
+  bug-reports: "https://github.com/ocaml-ppx/ppxlib/issues"
+  depends: [
+    "dune" {>= "3.8"}
+    "ocaml" {>= "4.08.0" & < "5.4.0"}
+    "ocaml-compiler-libs" {>= "v0.11.0"}
+    "ppx_derivers" {>= "1.0"}
+    "sexplib0" {>= "v0.12"}
+    "sexplib0" {with-test & >= "v0.15"}
+    "stdlib-shims"
+    "ocamlfind" {with-test}
+    "re" {with-test & >= "1.9.0"}
+    "cinaps" {with-test & >= "v0.12.1"}
+    "ocamlformat" {with-dev-setup & = "0.26.2"}
+    "odoc" {with-doc}
+  ]
+  conflicts: [
+    "ocaml-migrate-parsetree" {< "2.0.0"}
+    "ocaml-base-compiler" {= "5.1.0~alpha1"}
+    "ocaml-variants" {= "5.1.0~alpha1+options"}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/ocaml-ppx/ppxlib.git"
+  url {
+    src:
+      "https://github.com/ocaml-ppx/ppxlib/releases/download/0.35.0/ppxlib-0.35.0.tbz"
+    checksum: [
+      "sha256=d9d959fc9f84260487e45684dc741898a92fc5506b61a7f5cac65d21832db925"
+      "sha512=e428b1e3b89261c7efdaa18016264d1afbf067cb9b0d41124b04796c2487ac7ca8ee9a24a60d56f20d1774cb44aaa9ecf1512f17455812ba8d62d4ef93616ee7"
+    ]
+  }
+  x-commit-hash: "3a791083c612e91fa4e6a9660ef69776ea750324"
+  x-maintenance-intent: ["(latest)"]
+}
+package "re" {
+  opam-version: "2.0"
+  version: "1.14.0"
+  synopsis: "RE is a regular expression library for OCaml"
+  description: """\
+Pure OCaml regular expressions with:
+* Perl-style regular expressions (module Re.Perl)
+* Posix extended regular expressions (module Re.Posix)
+* Emacs-style regular expressions (module Re.Emacs)
+* Shell-style file globbing (module Re.Glob)
+* Compatibility layer for OCaml's built-in Str module (module Re.Str)"""
+  maintainer: "Rudi Grinberg <me@rgrinberg.com>"
+  authors: [
+    "Jerome Vouillon"
+    "Thomas Gazagnaire"
+    "Anil Madhavapeddy"
+    "Rudi Grinberg"
+    "Gabriel Radanne"
+  ]
+  license: "LGPL-2.1-or-later WITH OCaml-LGPL-linking-exception"
+  homepage: "https://github.com/ocaml/ocaml-re"
+  bug-reports: "https://github.com/ocaml/ocaml-re/issues"
+  depends: [
+    "dune" {>= "3.17"}
+    "ocaml" {>= "4.13.0"}
+    "ppx_expect" {with-test}
+    "ounit2" {with-test}
+    "js_of_ocaml" {with-test}
+    "conf-npm" {with-test}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/ocaml/ocaml-re.git"
+  url {
+    src: "https://github.com/ocaml/ocaml-re/archive/refs/tags/1.14.0.tar.gz"
+    checksum: [
+      "md5=03f4a83100cb9229a796b85c698076e1"
+      "sha512=cd2cc39f951ca6b7be631bbb5531ed13bc040e629842671bf6fef3911b20ef1653fa9a1f0aa23b094d252cffc9a9efe7ffca69e50d362ab935bc0cc447548124"
+    ]
+  }
+}
+package "rocq-bignums" {
+  opam-version: "2.0"
+  version: "9.0.0+rocq9.0"
+  synopsis: "Bignums, the Rocq library of arbitrarily large numbers"
+  description: """\
+This Rocq library provides BigN, BigZ, and BigQ that used to
+be part of the standard library."""
+  maintainer: "pierre.roux@onera.fr"
+  authors: [
+    "Laurent Théry"
+    "Benjamin Grégoire"
+    "Arnaud Spiwack"
+    "Evgeny Makarov"
+    "Pierre Letouzey"
+  ]
+  license: "LGPL-2.1-only"
+  tags: [
+    "category:Miscellaneous/Coq Extensions"
+    "category:Mathematics/Arithmetic and Number Theory/Number theory"
+    "category:Mathematics/Arithmetic and Number Theory/Rational numbers"
+    "keyword:integer numbers"
+    "keyword:rational numbers"
+    "keyword:arithmetic"
+    "keyword:arbitrary precision"
+    "logpath:Bignums"
+    "date:2024-06-20"
+  ]
+  homepage: "https://github.com/coq-community/bignums"
+  bug-reports: "https://github.com/coq-community/bignums/issues"
+  depends: [
+    "ocaml"
+    "rocq-core" {>= "9.0" & < "9.1~"}
+    "rocq-stdlib"
+  ]
+  build: [make "-j%{jobs}%"]
+  install: [
+    [make "install"]
+    [make "-C" "tests" "-j%{jobs}%"] {with-test}
+  ]
+  dev-repo: "git+https://github.com/coq-community/bignums.git"
+  url {
+    src: "https://github.com/coq/bignums/archive/v9.0.0+rocq9.0.tar.gz"
+    checksum:
+      "sha512=8ce63ee88b671ab7d20359dcd7025286af61d2b6e4e1b88f0deb39a716a455f824f739bbd1cd291e673c870e9fd95f3f5d2326192bdcca786b25f1663d9cb326"
+  }
+}
+package "rocq-elpi" {
+  opam-version: "2.0"
+  version: "3.5.0"
+  synopsis: "Elpi extension language for Coq"
+  description:
+    "Coq-elpi provides a Coq plugin that embeds ELPI. It also provides a way to embed Coq's terms into λProlog using the Higher-Order Abstract Syntax approach and a way to read terms back. In addition to that it exports to ELPI a set of Coq's primitives, e.g. printing a message, accessing the environment of theorems and data types, defining a new constant and so on. For convenience it also provides a quotation and anti-quotation for Coq's syntax in λProlog. E.g., `{{nat}}` is expanded to the type name of natural numbers, or `{{A -> B}}` to the representation of a product by unfolding the `->` notation. Finally it provides a way to define new vernacular commands and new tactics."
+  maintainer: "Enrico Tassi <enrico.tassi@inria.fr>"
+  authors: "Enrico Tassi <enrico.tassi@inria.fr>"
+  license: "LGPL-2.1-or-later"
+  tags: [
+    "category:Miscellaneous/Coq Extensions"
+    "keyword:λProlog"
+    "keyword:higher order abstract syntax"
+    "logpath:elpi"
+  ]
+  homepage: "https://github.com/LPCIC/coq-elpi"
+  bug-reports: "https://github.com/LPCIC/coq-elpi/issues"
+  depends: [
+    "dune" {>= "3.13" & < "3.24"}
+    "ocaml" {>= "4.10.0"}
+    "elpi" {>= "3.7.1" & < "3.8.0~"}
+    "rocq-core" {>= "9.0+rc1" & < "9.4~" | = "dev"}
+    "ppx_optcomp"
+    "ocaml-lsp-server" {with-dev-setup}
+    "odoc" {with-doc}
+    "rocq-stdlib" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "etc/with-rocq-wrap.sh" {!coq-core:installed}
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/LPCIC/coq-elpi.git"
+  url {
+    src:
+      "https://github.com/LPCIC/coq-elpi/releases/download/v3.5.0/rocq-elpi-3.5.0.tar.gz"
+    checksum: [
+      "md5=a708d596a01ce746e066e01882830262"
+      "sha512=bc4f5c2d8c153d471702fe307715723b56f0e4d8a80722225e0e65ffaa036342edcd69ebdec9a56e910abadb9928faea3932d27446db022f860a0459355c07a0"
+    ]
+  }
+}
+package "rocq-hierarchy-builder" {
+  opam-version: "2.0"
+  version: "1.10.3"
+  synopsis:
+    "High level commands to declare and evolve a hierarchy based on packed classes"
+  description: """\
+Hierarchy Builder is a high level language to build hierarchies of algebraic structures and make these
+hierarchies evolve without breaking user code. The key concepts are the ones of factory, builder
+and abbreviation that let the hierarchy developer describe an actual interface for their library.
+Behind that interface the developer can provide appropriate code to ensure retro compatibility."""
+  maintainer: "Enrico Tassi <enrico.tassi@inria.fr>"
+  authors: ["Cyril Cohen" "Kazuhiko Sakaguchi" "Enrico Tassi"]
+  license: "MIT"
+  tags: "logpath:HB"
+  homepage: "https://github.com/math-comp/hierarchy-builder"
+  bug-reports: "https://github.com/math-comp/hierarchy-builder/issues"
+  depends: [
+    "rocq-core" {(>= "9.0" & < "9.4~") | = "dev"}
+    "rocq-elpi" {>= "3" | = "dev"}
+  ]
+  conflicts: [
+    "coq-hierarchy-builder" {< "1.9~"}
+    "coq-hierarchy-builder-shim"
+  ]
+  build: [
+    [make "build"]
+    [make "test-suite"] {with-test & rocq-core:installed}
+  ]
+  install: [make "install"]
+  depexts: ["wdiff"] {os-family = "debian" & with-test}
+  dev-repo: "git+https://github.com/math-comp/hierarchy-builder"
+  url {
+    src:
+      "https://github.com/math-comp/hierarchy-builder/releases/download/v1.10.3/hierarchy-builder-1.10.3.tar.gz"
+    checksum: [
+      "md5=483fa6b055841255424923592b185dc2"
+      "sha512=d9a84616bf77215585cf1f60c53daa49de7247bc66eee8ab3808442f94bca8559189572757be94fb6a79589b46f381fdb260eefeb5e99a5d454d23447cc4b5ed"
+    ]
+  }
+}
+package "rocq-mathcomp-ssreflect" {
+  opam-version: "2.0"
+  version: "2.4.0"
+  synopsis: "Small Scale Reflection"
+  description: """\
+This library includes the small scale reflection proof language
+extension and the minimal set of libraries to take advantage of it.
+This includes libraries on lists (seq), boolean and boolean
+predicates, natural numbers and types with decidable equality,
+finite types, finite sets, finite functions, finite graphs, basic arithmetics
+and prime numbers, big operators"""
+  maintainer: "Mathematical Components <mathcomp-dev@sympa.inria.fr>"
+  authors: "The Mathematical Components team"
+  license: "CECILL-B"
+  tags: [
+    "keyword:small scale reflection"
+    "keyword:mathematical components"
+    "keyword:bigop"
+    "keyword:big operators"
+    "keyword:biomial coefficient"
+    "keyword:integer division theory"
+    "keyword:finite sets"
+    "keyword:functions with finite domain"
+    "keyword:finite graphs"
+    "keyword:quotient types"
+    "keyword:order theory"
+    "keyword:partial order"
+    "keyword:lattices"
+    "keyword:lists"
+    "keyword:ordering and sorting lists"
+    "keyword:prime numbers"
+    "keyword:tuples"
+    "keyword:bounded lists"
+    "logpath:mathcomp.ssreflect"
+  ]
+  homepage: "https://math-comp.github.io/"
+  bug-reports: "https://github.com/math-comp/math-comp/issues"
+  depends: [
+    ("coq" {>= "8.19" & < "8.21~"} | "rocq-core" {>= "9.0" & < "9.2~"})
+    "elpi" {>= "1.17.0"}
+    ("coq-hierarchy-builder" {>= "1.7.0" & < "1.9~"} |
+     "rocq-hierarchy-builder" {>= "1.9.0"})
+  ]
+  conflicts: [
+    "coq-mathcomp-ssreflect" {< "2.4~"}
+  ]
+  build: [make "-C" "ssreflect" "-j" "%{jobs}%"]
+  install: [make "-C" "ssreflect" "install"]
+  dev-repo: "git+https://github.com/math-comp/math-comp.git"
+  url {
+    src:
+      "https://github.com/math-comp/math-comp/archive/mathcomp-2.4.0.tar.gz"
+    checksum:
+      "sha256=6307218d7e434fb6ffc81b9275c673d3f7f1f4884ad59b904abd205c437021a0"
+  }
+}
+package "rocq-parseque" {
+  opam-version: "2.0"
+  version: "0.3.1"
+  synopsis: "Total parser combinators in Rocq/Coq"
+  description: "Port of agdarsec to Rocq/Coq"
+  maintainer: ["G. Allais" "W. Meier"]
+  authors: "G. Allais"
+  license: "MIT"
+  tags: [
+    "category:Computer Science/Data Types and Data Structures"
+    "date:2026-06-17"
+    "logpath:parseque"
+  ]
+  homepage: "https://github.com/rocq-community/parseque"
+  bug-reports: "https://github.com/rocq-community/parseque/issues"
+  depends: [
+    "rocq-core" {>= "9.0" & < "9.4~"}
+    "rocq-stdlib"
+  ]
+  build: [make "-j%{jobs}%"]
+  install: [make "install"]
+  dev-repo: "git+https://github.com/rocq-community/parseque"
+  url {
+    src:
+      "https://github.com/rocq-community/parseque/archive/refs/tags/v0.3.1.tar.gz"
+    checksum:
+      "sha256=46c7d2c89c38257cb50ce8c7295adc2b45bb7ba3a9c005588acc7133a12d9b44"
+  }
+}
+package "sexplib0" {
+  opam-version: "2.0"
+  version: "v0.16.0"
+  synopsis:
+    "Library containing the definition of S-expressions and some base converters"
+  description: """\
+Part of Jane Street's Core library
+The Core suite of libraries is an industrial strength alternative to
+OCaml's standard library that was developed by Jane Street, the
+largest industrial user of OCaml."""
+  maintainer: "Jane Street developers"
+  authors: "Jane Street Group, LLC"
+  license: "MIT"
+  homepage: "https://github.com/janestreet/sexplib0"
+  doc:
+    "https://ocaml.janestreet.com/ocaml-core/latest/doc/sexplib0/index.html"
+  bug-reports: "https://github.com/janestreet/sexplib0/issues"
+  depends: [
+    "ocaml" {>= "4.08.0"}
+    "dune" {>= "2.0.0"}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://github.com/janestreet/sexplib0.git"
+  url {
+    src:
+      "https://ocaml.janestreet.com/ocaml-core/v0.16/files/sexplib0-v0.16.0.tar.gz"
+    checksum:
+      "sha256=86dba26468194512f789f2fb709063515a9cb4e5c4461c021c239a369590701d"
+  }
+}
+package "stdio" {
+  opam-version: "2.0"
+  version: "v0.16.0"
+  synopsis: "Standard IO library for OCaml"
+  description: """\
+Stdio implements simple input/output functionalities for OCaml.
+
+It re-exports the input/output functions of the OCaml standard
+libraries using a more consistent API."""
+  maintainer: "Jane Street developers"
+  authors: "Jane Street Group, LLC"
+  license: "MIT"
+  homepage: "https://github.com/janestreet/stdio"
+  doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/stdio/index.html"
+  bug-reports: "https://github.com/janestreet/stdio/issues"
+  depends: [
+    "ocaml" {>= "4.14.0"}
+    "base" {>= "v0.16" & < "v0.17"}
+    "dune" {>= "2.0.0"}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://github.com/janestreet/stdio.git"
+  url {
+    src:
+      "https://ocaml.janestreet.com/ocaml-core/v0.16/files/stdio-v0.16.0.tar.gz"
+    checksum:
+      "sha256=61f0b75950614ac5378c6ec0d822cce6463402d919d5810b736fc46522b3a73e"
+  }
+}
+package "stdlib-shims" {
+  opam-version: "2.0"
+  version: "0.3.0"
+  synopsis: "Backport some of the new stdlib features to older compiler"
+  description: """\
+Backport some of the new stdlib features to older compiler,
+such as the Stdlib module.
+
+This allows projects that require compatibility with older compiler to
+use these new features in their code."""
+  maintainer: "The stdlib-shims programmers"
+  authors: "The stdlib-shims programmers"
+  license: "LGPL-2.1-only WITH OCaml-LGPL-linking-exception"
+  tags: ["stdlib" "compatibility" "org:ocaml"]
+  homepage: "https://github.com/ocaml/stdlib-shims"
+  doc: "https://ocaml.github.io/stdlib-shims/"
+  bug-reports: "https://github.com/ocaml/stdlib-shims/issues"
+  depends: [
+    "dune"
+    "ocaml" {>= "4.02.3"}
+  ]
+  build: ["dune" "build" "-p" name "-j" jobs]
+  dev-repo: "git+https://github.com/ocaml/stdlib-shims.git"
+  url {
+    src:
+      "https://github.com/ocaml/stdlib-shims/releases/download/0.3.0/stdlib-shims-0.3.0.tbz"
+    checksum: [
+      "sha256=babf72d3917b86f707885f0c5528e36c63fccb698f4b46cf2bab5c7ccdd6d84a"
+      "sha512=1151d7edc8923516e9a36995a3f8938d323aaade759ad349ed15d6d8501db61ffbe63277e97c4d86149cf371306ac23df0f581ec7e02611f58335126e1870980"
+    ]
+  }
+  x-commit-hash: "fb6815e5d745f07fd567c11671149de6ef2e74c8"
+}
+package "wasm" {
+  opam-version: "2.0"
+  version: "2.0.2"
+  synopsis:
+    "Library to read and write WebAssembly (Wasm) files and manipulate their AST"
+  maintainer: "Andreas Rossberg <rossberg@mpi-sws.org"
+  authors: "Andreas Rossberg <rossberg@mpi-sws.org"
+  license: "Apache-2.0"
+  tags: ["wasm" "webassembly" "spec" "interpreter"]
+  homepage: "https://github.com/WebAssembly/spec"
+  bug-reports: "https://github.com/WebAssembly/spec/issues"
+  depends: [
+    "dune" {>= "2.9"}
+    "ocaml" {>= "4.12"}
+    "menhir" {>= "20220210"}
+    "odoc" {with-doc}
+  ]
+  build: [make "-C" "interpreter"]
+  install: [make "-C" "interpreter" "install"]
+  dev-repo: "git+https://github.com/WebAssembly/spec.git"
+  url {
+    src: "https://github.com/WebAssembly/spec/archive/opam-2.0.2.zip"
+    checksum: [
+      "md5=5129a11a3426689d0e9e027b2d9b8d5e"
+      "sha256=6dae267d47b92ac1d6cb47b34ab4108c4cf7471f35969bf75676a1620a9284cb"
+    ]
+  }
+}
+package "yojson" {
+  opam-version: "2.0"
+  version: "3.0.0"
+  synopsis:
+    "Yojson is an optimized parsing and printing library for the JSON format"
+  description: """\
+Yojson is an optimized parsing and printing library for the JSON format.
+
+ydump is a pretty-printing command-line program provided with the
+yojson package."""
+  maintainer: [
+    "paul-elliot@tarides.com" "nathan@tarides.com" "marek@tarides.com"
+  ]
+  authors: "Martin Jambon"
+  license: "BSD-3-Clause"
+  homepage: "https://github.com/ocaml-community/yojson"
+  doc: "https://ocaml.org/p/yojson/latest"
+  bug-reports: "https://github.com/ocaml-community/yojson/issues"
+  depends: [
+    "dune" {>= "2.7"}
+    "ocaml" {>= "4.08"}
+    "alcotest" {with-test & >= "0.8.5"}
+    "odoc" {with-doc}
+  ]
+  build: [
+    ["dune" "subst"] {dev}
+    [
+      "dune"
+      "build"
+      "-p"
+      name
+      "-j"
+      jobs
+      "@install"
+      "@runtest" {with-test}
+      "@doc" {with-doc}
+    ]
+  ]
+  dev-repo: "git+https://github.com/ocaml-community/yojson.git"
+  url {
+    src:
+      "https://github.com/ocaml-community/yojson/releases/download/3.0.0/yojson-3.0.0.tbz"
+    checksum: [
+      "sha256=99414da7609b92a02474ef4b49ecda15edc8cbba5229341b124e7e4695c39610"
+      "sha512=896d0ea829a36ccadba6628800369c1a3ab9e7c64dbda8b76331889c9db481cd64e137f467481ae80a8dd5fca45d748bfa71f58641806cc1bb1a007f8291789f"
+    ]
+  }
+  x-commit-hash: "b2193e8e0c88c6501710d08b836b3219673383f3"
+}

@@ -1,0 +1,29 @@
+{
+  "scope": "Sunbeam-only Milestone 1 pipeline; universal functional checks plus the separate reviewed bytecode argument",
+  "build_script_sha256": "216ccbb072394fc18b735d3cd22ecddfd3988b6da478fc5749d5eee984748b97",
+  "verifier_script_sha256": "1cd10b96480ee14d6f2047ca7f3cd3c4f90c23328c528eba102439d57628a655",
+  "build_seconds": 23.068,
+  "verification_seconds": 353.711,
+  "artifact_order": [
+    "archive",
+    "component",
+    "module",
+    "harness"
+  ],
+  "reproduced_identities": {
+    "correct": [
+      "91e75727baa3b235339cf84250d8d1cb905566796bf0b8347d8a38a65af7cc30",
+      "bbbf082cecd58c37f15b3ad72465007e95e75c01ee699d3ba851c51574e6ce7a",
+      "03e2854f303c7f978be5c3b358c8ae9b3d14652eada3023c6766bc2bafd5c4fb",
+      "07f6a58ac1e0581e8a3bc4aaebfa7a7cbe0891db6da04d97cbfff6b3be0f2c4f"
+    ],
+    "faulty": [
+      "664885c7667fb645a52bf5729c315843851c0f844792447daa29dc1df85b9611",
+      "4ebe5e06398638a5055713a7a221c0d0c43046e6b375d1d1771168847f73f336",
+      "ae239dc83f0dc6e609eada8e417eac15124222d02d3dc8b8dd5d174087d39a25",
+      "5d286d5cd9a88e447d2ff9dba743add4ed92ca613cba5621f23c0999d75cead7"
+    ]
+  },
+  "identical_to_previous_packaged_artifacts": true,
+  "exit": 0
+}
