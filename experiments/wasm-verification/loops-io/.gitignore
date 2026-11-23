@@ -1,0 +1,5 @@
+/out/
+/byte-sum-petal/petal/
+/byte-sum-petal/route/target/
+/wasi-petal/target/
+/wasi-petal-std/target/

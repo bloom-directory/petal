@@ -1,0 +1,10 @@
+stage	seconds
+UpperBytes	0.270
+UpperArtifact	0.635
+UpperSem	0.576
+WasiMem	0.490
+WasiHost	0.568
+UpperWp	0.500
+UpperExecution	1.310
+UpperAssumptions	1.236
+coqchk	26.374

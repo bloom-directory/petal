@@ -1,0 +1,3 @@
+# The Petal defines its own `_start`; do not link wasi-libc's crt1-command.o.
+[target.wasm32-wasip1]
+rustflags = ["-C", "link-self-contained=no"]
