@@ -1,0 +1,8 @@
+schema = "bloom.petal.package.v1"
+name = "byte-sum"
+
+[consent]
+summary = "Verification fixture: sums the bytes of a text parameter. No host effects."
+
+[caps]
+allowed = []

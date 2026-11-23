@@ -1,0 +1,12 @@
+schema = "bloom.petal.build.v1"
+name = "byte-sum"
+routes = "route/files"
+output = "petal/byte-sum"
+
+[route_crate]
+package = "byte-sum-route"
+path = "route"
+alias = "byte_sum_route"
+
+[dependencies]
+serde_json = "1"

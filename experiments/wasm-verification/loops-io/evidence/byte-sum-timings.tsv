@@ -1,0 +1,8 @@
+stage	seconds
+ByteSumBytes	1.476
+ByteSumArtifact	0.474
+ByteSumLib	0.540
+ByteSumFacts	0.482
+ByteSumExecution	1.627
+ByteSumAssumptions	0.882
+coqchk	26.372

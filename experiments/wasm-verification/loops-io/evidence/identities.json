@@ -1,0 +1,17 @@
+{
+  "byte_sum": {
+    "archive_sha256": "5fdfeb76c32c759b9f9346db8618b719c38ab79f6e3204eb9d919230d512ab25",
+    "component_sha256": "04e8be036e63e75d6f8a5f279a0de7f786e3983ad690253ace8d88fb1f1045ee",
+    "module_sha256": "4244e2d461ae00897e3be2c05333b7b3fb3d4b8336ff77e1a7e7b7d506970a98",
+    "module_bytes": 80323,
+    "body_sha256": "08574a0872322f325b45bd060958f5d14547591991e48d4c61f3e2a3b58bdb1e",
+    "body_bytes": 166,
+    "function_index": 67,
+    "export": "bloom_verify_byte_sum"
+  },
+  "upper": {
+    "module_sha256": "e6bda3a823331e25dace316823d7a1d8a4356a888d96e792c55198409c6e293e",
+    "module_bytes": 517,
+    "export": "_start"
+  }
+}
