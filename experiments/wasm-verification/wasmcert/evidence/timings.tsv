@@ -1,0 +1,9 @@
+stage	seconds
+ArtifactBytes	5.691
+Artifact	2.137
+Arithmetic	1.216
+MemoryFacts	1.117
+Execution	2.632
+Negative	1.897
+Assumptions	3.425
+coqchk	51.412

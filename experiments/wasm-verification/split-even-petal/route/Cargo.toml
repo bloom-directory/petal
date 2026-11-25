@@ -1,0 +1,12 @@
+[package]
+name = "split-even-route"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# An isolated verification fixture: its own workspace, outside the SDK's.
+[workspace]
+
+[dependencies]
+petal = { package = "bloom-petal-sdk", path = "../../../../crates/petal-sdk" }
+serde_json = "1"

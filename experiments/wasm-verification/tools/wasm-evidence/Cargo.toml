@@ -1,0 +1,20 @@
+[package]
+name = "petal-wasm-evidence"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Milestone 1 spike: extract, decode, harness and test the verification target in a packaged Petal"
+
+# Isolated from the SDK workspace; none of these dependencies reach production crates.
+[workspace]
+
+[dependencies]
+# Same decoder line as the pinned wasm-tools 1.249.0.
+wasmparser = { version = "=0.249.0", default-features = false, features = ["std", "validate", "component-model", "features"] }
+wasm-encoder = { version = "=0.249.0", features = ["wasmparser"] }
+wasmi = "=2.0.1"
+sha2 = "0.11"
+hex = "0.4"
+flate2 = "1"
+tar = "0.4"
+serde_json = "1"

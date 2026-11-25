@@ -1,0 +1,8 @@
+schema = "bloom.petal.package.v1"
+name = "split-even"
+
+[consent]
+summary = "Verification fixture: splits an allocation total into two even shares. No host effects."
+
+[caps]
+allowed = []

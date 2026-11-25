@@ -1,0 +1,63 @@
+Axioms:
+ClassicalDedekindReals.sig_not_dec : forall P : Prop, {~ ~ P} + {~ P}
+ClassicalDedekindReals.sig_forall_dec :
+  forall P : nat -> Prop,
+  (forall n : nat, {P n} + {~ P n}) ->
+  {n : nat | ~ P n} + {forall n : nat, P n}
+FunctionalExtensionality.functional_extensionality_dep :
+  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+  (forall x : A, f x = g x) -> f = g
+Classical_Prop.classic : forall P : Prop, P \/ ~ P
+Axioms:
+ClassicalDedekindReals.sig_not_dec : forall P : Prop, {~ ~ P} + {~ P}
+ClassicalDedekindReals.sig_forall_dec :
+  forall P : nat -> Prop,
+  (forall n : nat, {P n} + {~ P n}) ->
+  {n : nat | ~ P n} + {forall n : nat, P n}
+FunctionalExtensionality.functional_extensionality_dep :
+  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+  (forall x : A, f x = g x) -> f = g
+Classical_Prop.classic : forall P : Prop, P \/ ~ P
+Closed under the global context
+Axioms:
+ClassicalDedekindReals.sig_not_dec : forall P : Prop, {~ ~ P} + {~ P}
+ClassicalDedekindReals.sig_forall_dec :
+  forall P : nat -> Prop,
+  (forall n : nat, {P n} + {~ P n}) ->
+  {n : nat | ~ P n} + {forall n : nat, P n}
+FunctionalExtensionality.functional_extensionality_dep :
+  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+  (forall x : A, f x = g x) -> f = g
+Classical_Prop.classic : forall P : Prop, P \/ ~ P
+simd_execute.SIMD_ops.app_vunop_str :
+  datatypes.vunop -> String.string -> String.string
+simd_execute.SIMD_ops.app_vtestop_str :
+  datatypes.vtestop -> String.string -> String.string
+simd_execute.SIMD_ops.app_vternop_str :
+  datatypes.vternop ->
+  String.string -> String.string -> String.string -> String.string
+simd_execute.SIMD_ops.app_vshiftop_str :
+  datatypes.vshiftop -> String.string -> String.string -> String.string
+simd_execute.SIMD_ops.app_vbinop_str :
+  datatypes.vbinop -> String.string -> String.string -> String.string
+Axioms:
+ClassicalDedekindReals.sig_not_dec : forall P : Prop, {~ ~ P} + {~ P}
+ClassicalDedekindReals.sig_forall_dec :
+  forall P : nat -> Prop,
+  (forall n : nat, {P n} + {~ P n}) ->
+  {n : nat | ~ P n} + {forall n : nat, P n}
+FunctionalExtensionality.functional_extensionality_dep :
+  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+  (forall x : A, f x = g x) -> f = g
+Classical_Prop.classic : forall P : Prop, P \/ ~ P
+simd_execute.SIMD_ops.app_vunop_str :
+  datatypes.vunop -> String.string -> String.string
+simd_execute.SIMD_ops.app_vtestop_str :
+  datatypes.vtestop -> String.string -> String.string
+simd_execute.SIMD_ops.app_vternop_str :
+  datatypes.vternop ->
+  String.string -> String.string -> String.string -> String.string
+simd_execute.SIMD_ops.app_vshiftop_str :
+  datatypes.vshiftop -> String.string -> String.string -> String.string
+simd_execute.SIMD_ops.app_vbinop_str :
+  datatypes.vbinop -> String.string -> String.string -> String.string

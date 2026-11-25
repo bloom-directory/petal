@@ -1,0 +1,8 @@
+Checking library: Negative
+  checking module: Negative
+  checking cst:Negative.faulty_frame
+  checking cst:Negative.faulty_body_execution
+  checking cst:Negative.faulty_violates_SPLIT_1
+Checking library: Assumptions
+  checking module: Assumptions
+Modules were successfully checked
