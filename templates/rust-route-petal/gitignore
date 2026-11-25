@@ -1,0 +1,6 @@
+/target/
+/route/target/
+# Built by `scripts/build.sh`; releases build it again from source.
+/petal/
+/dist/
+*.petal.tar.gz

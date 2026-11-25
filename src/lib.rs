@@ -14,6 +14,10 @@ pub const ROUTE_INDEX_SCHEMA: &str = "bloom.petal.route-index.v1";
 pub const BUILD_MANIFEST_SCHEMA: &str = "bloom.petal.build-manifest.v1";
 pub const PACKAGE_DIGEST_PREFIX: &[u8] = b"bloom.petal.package.v1\0";
 
+/// The `wasm-tools` release this repository builds and checks components with,
+/// from `[workspace.metadata.tools]`.
+pub const WASM_TOOLS_VERSION: &str = "1.249.0";
+
 /// The reserved route captures for a wallet-scoped route. Bloom only grants a
 /// Petal wallet authority on a route that declares these two adjacently, so the
 /// names are part of the contract rather than a convention. They were spelled
@@ -112,12 +116,58 @@ pub const RUST_TEMPLATE_FILES: &[(&str, &str)] = &[
         include_str!("../templates/rust-route-petal/route/src/lib.rs"),
     ),
     (
+        "route/files/$index.rs",
+        include_str!("../templates/rust-route-petal/route/files/$index.rs"),
+    ),
+    (
         "route/files/status.json.rs",
         include_str!("../templates/rust-route-petal/route/files/status.json.rs"),
     ),
     (
+        "route/files/account/$index.rs",
+        include_str!("../templates/rust-route-petal/route/files/account/$index.rs"),
+    ),
+    (
+        "route/files/account/[wallet]/$index.rs",
+        include_str!("../templates/rust-route-petal/route/files/account/[wallet]/$index.rs"),
+    ),
+    (
+        "route/files/account/[wallet]/[index]/$index.rs",
+        include_str!(
+            "../templates/rust-route-petal/route/files/account/[wallet]/[index]/$index.rs"
+        ),
+    ),
+    (
+        "route/files/account/[wallet]/[index]/address.json.rs",
+        include_str!(
+            "../templates/rust-route-petal/route/files/account/[wallet]/[index]/address.json.rs"
+        ),
+    ),
+    (
         "scripts/check-route-architecture.sh",
         include_str!("../templates/rust-route-petal/scripts/check-route-architecture.sh"),
+    ),
+    (
+        "scripts/petal.sh",
+        include_str!("../templates/rust-route-petal/scripts/petal.sh"),
+    ),
+    (
+        "scripts/build.sh",
+        include_str!("../templates/rust-route-petal/scripts/build.sh"),
+    ),
+    // Kept without the leading dot in this repository, so neither Git nor
+    // GitHub applies them here.
+    (
+        ".gitignore",
+        include_str!("../templates/rust-route-petal/gitignore"),
+    ),
+    (
+        ".github/workflows/ci.yml",
+        include_str!("../templates/rust-route-petal/github/workflows/ci.yml"),
+    ),
+    (
+        ".github/workflows/release.yml",
+        include_str!("../templates/rust-route-petal/github/workflows/release.yml"),
     ),
 ];
 
@@ -187,6 +237,16 @@ mod tests {
         assert_eq!(wit_digest().len(), 64);
         assert_eq!(WIT_FILES.len(), 9);
         assert!(WIT_FILES.iter().all(|(_, bytes)| !bytes.is_empty()));
+    }
+
+    #[test]
+    fn wasm_tools_version_is_the_workspace_pin() {
+        let manifest = include_str!("../Cargo.toml");
+        let pin = format!("wasm-tools = \"={WASM_TOOLS_VERSION}\"");
+        assert!(
+            manifest.lines().any(|line| line.trim() == pin),
+            "Cargo.toml [workspace.metadata.tools] must pin {pin}"
+        );
     }
 
     #[test]
