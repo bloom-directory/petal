@@ -151,6 +151,87 @@ and conformance fixture use -2 for denials; VM-level evidence does not prove
 IPC propagation. Machine's owner must confirm which exact-signing explanations
 are safe to expose before a consumer routes them through another error code.
 
+## Shared helpers
+
+A Petal takes these from the SDK instead of copying them from another Petal.
+They are contract-level only; protocol types and route policy stay in the
+Petal.
+
+- **Route errors.** `petal::not_found`, `denied`, `invalid` and `backend`
+  build the `-1` to `-4` responses. `petal::host_error(&err)` turns a failed
+  host call into one: the code follows Bloom's status, and the message is
+  `sdk::describe_error`, so it keeps Bloom's reason. Call it straight after
+  the failing call. The status comes from the SDK's reading of Bloom's whole
+  message, so a backend failure that says `not found` or `invalid`, such as
+  an RPC node's `header not found`, gets `-1` or `-3`; map chain-read errors
+  yourself where that would mislead.
+- **Store.** `sdk::store_get_opt` reads a key and returns `None` when it is
+  missing. `sdk::store_get_secret` reads what `store_put(key, value, true)`
+  wrote; `store_get` finds a secret only under `creds/`.
+  `petal::store::get_json`, `put_json` and `put_json_new` read and write a
+  JSON record and return route errors, and `list_names(prefix, suffix)` lists
+  the records directly under a prefix.
+- **`sdk::eth_call(chain, to, data)`** sends the one `eth_call` shape Bloom
+  accepts and returns the bytes the contract returned.
+- **`petal::units::parse_units` and `format_units`** convert between an
+  amount such as `"1.5"` and base units such as `"1500000"`, as decimal
+  strings, for any `uint256`. `parse_units` refuses an amount finer than the
+  token's decimals; it never rounds.
+- **`petal::validate_record_id`** checks an id that names a stored record,
+  such as a draft, before it goes into a store key or a path.
+- **`PetalClaim::sign_request` and `batch_request`** take the
+  `&WalletAccount` Bloom resolved: `claim.sign_request(&account, …)`. A
+  wallet id string is still accepted for now.
+
+### One host interface
+
+Host imports are `unreachable!()` off `wasm32`, so code that calls
+`petal::sdk` directly cannot run in a unit test. `petal::host::Host` has one
+method per `petal::sdk` call and returns the same `SdkError`. Write domain
+code against it. A route file passes `petal::host::BloomHost`:
+
+```rust
+pub fn read_draft(
+    host: &mut impl petal::host::Host,
+    account: &petal::WalletAccount,
+    id: &str,
+) -> Result<Draft, petal::DispatchResponse> {
+    let id = petal::validate_record_id(id).map_err(petal::invalid)?;
+    let key = format!("drafts/{}/{}/{id}.json", account.wallet(), account.number());
+    petal::store::get_json_with(host, &key, 64 * 1024)?
+        .ok_or_else(|| petal::not_found(format!("no draft {id}")))
+}
+```
+
+A test passes `petal::testing::FakeHost`. It keeps the store, the secret
+store and the VFS in memory, answers HTTP, chain reads, signing and the
+outbox with replies the test scripts, and logs every call:
+
+```rust
+let mut host = petal::testing::FakeHost::new();
+host.with_state("drafts/alice/0/7.json", br#"{"amount":"5"}"#);
+let account = petal::testing::wallet_account("alice", 0);
+assert_eq!(read_draft(&mut host, &account, "7").unwrap().amount, "5");
+assert_eq!(host.calls(), ["store_get_opt drafts/alice/0/7.json"]);
+```
+
+A scripted failure is the message Bloom would send, such as
+`host.reply_sign(Err("denied: USER_REJECTED: the owner declined"))`, so the
+code under test sees the status and the reason it would see in production.
+`host.fail_next("store_put", "backend: store put: disk full")` fails one call
+of any method. A Petal that keeps a test host of its own builds the same
+errors with `petal::testing::bloom_error(message)`.
+
+In a function that returns `Result<_, String>`, `?` on a host call works:
+the error converts to `sdk::describe_error`'s text.
+
+`FakeHost` exists only with the SDK's `testing` feature. Enable it under
+`[dev-dependencies]`, as the scaffold does, so it never compiles into a
+component; the SDK refuses to build for `wasm32` with it. The older fixtures
+in `petal::testing`, `RouteCtx`, `MapVfs` and `wallet_account`, still compile
+without the feature for now, and a later release moves them behind it. Each
+`petal::store` function has a `_with` form that takes the host, as above.
+
 ## Message review
 
 A payload whose first byte is `0x19`, signed with

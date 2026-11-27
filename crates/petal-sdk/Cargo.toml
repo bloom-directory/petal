@@ -13,6 +13,9 @@ name = "petal"
 [features]
 default = []
 host-error-detail = []
+# `petal::testing::FakeHost`: an in-memory host for a Petal's host-side
+# tests. Enable it under [dev-dependencies] only.
+testing = []
 
 [dependencies]
 getrandom.workspace = true
